@@ -1,0 +1,74 @@
+# Ignore FAISS and JSON files generated during embedding / code analysis
+**/chunks.json
+**/dependencies.json
+**/code_index.faiss
+**/metadata.json
+
+# Ignore .NET build artifacts
+[Bb]in/
+[Oo]bj/
+_ReSharper*/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# IDE files
+.vscode/
+.idea/
+
+# Logs / temp
+*.log
+*.tmp
+*.bak
+*.cache
+*.swp
+*.DS_Store
+*.ncrunchproject
+*.localhistory/
+*.vs/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Jupyter checkpoints
+.ipynb_checkpoints/
+
+# Build/analysis outputs
+**/output/
+
+# === MODELS (CURRENT POLICY) ===
+# Ignore everything in all model trees...
+models/**
+
+# ...but keep the folder structure
+!models/
+!models/**/
+# ...and keep ONLY the model download instruction files
+!models/**/DOWNLOAD_MODEL.md
+
+# Extra safeguard: ignore common model weight formats globally
+**/*.gguf
+**/*.bin
+**/*.safetensors
+**/*.onnx
+**/*.pt
+
+# Handy notes
+commands.txt
+branches/
+
+
+# Summarizer artifacts
+sumarizing_tests/batches
+sumarizing_tests/output
+out_proc_rag/
+
+# Environment file
+.env
+
+.coverage
+.coverage.*

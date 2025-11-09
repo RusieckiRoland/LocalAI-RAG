@@ -1,0 +1,12 @@
+{
+  "output_dir": "branches",
+  "model_path_embd": "models/embedding/e5-base-v2",
+  "model_path_analysis": "models/code_analysis/codeLlama_13b_Instruct/codellama-13b-instruct.Q8_0.gguf",
+  "model_translation_en_pl":"models/translation/en_pl/Helsinki_NLPopus_mt_en_pl",
+  "model_translation_pl_en":"models/translation/pl_en/Helsinki_NLPopus_mt_pl_en",
+  "log_path":"log/ai_interaction.log",
+  "use_gpu": true,
+  "plantuml_server" : "http://localhost:8080",
+  "branch":"master"
+}
+

@@ -1,0 +1,537 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Aplikacja do zapytań RAG z konsultantami.">
+  <title>Zapytanie RAG</title>
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans:wght@400;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/styles/github.min.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/highlight.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/languages/csharp.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/languages/python.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/languages/sql.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/languages/javascript.min.js"></script>
+  <style>
+    html, body { height: 100%; margin: 0; font-family: 'Noto Sans', sans-serif; line-height: 1.6; }
+    #chat-container { display: flex; flex-direction: column; height: 100%; position: relative; }
+    #response { display: flex; flex-direction: column-reverse; overflow-y: auto; padding-bottom: 1rem; flex-grow: 1; }
+    .response-entry { margin-bottom: 1rem; }
+    #queryForm {
+      background-color: white;
+      padding: 1rem;
+      box-shadow: 0 -1px 3px rgba(0, 0, 0, 0.1);
+      border-top-left-radius: 0.5rem;
+      border-top-right-radius: 0.5rem;
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+    }
+    #queryForm.centered {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 100%;
+      max-width: 800px;
+    }
+    /* Markdown */
+    .markdown-content { color: #374151; }
+    .markdown-content h1, .markdown-content h2, .markdown-content h3, .markdown-content h4 {
+      margin-top: 1.5em; margin-bottom: 0.5em; font-weight: 600; color: #111827;
+    }
+    .markdown-content h1 { font-size: 1.8em; border-bottom: 1px solid #e5e7eb; padding-bottom: 0.3em; }
+    .markdown-content h2 { font-size: 1.5em; border-bottom: 1px solid #e5e7eb; padding-bottom: 0.3em; }
+    .markdown-content h3 { font-size: 1.3em; }
+    .markdown-content p { margin-bottom: 1em; }
+    .markdown-content a { color: #3b82f6; text-decoration: underline; }
+    .markdown-content a:hover { color: #2563eb; }
+    .markdown-content code {
+      background-color: #f3f4f6; padding: 0.2em 0.4em; border-radius: 0.25em;
+      font-family: 'Courier New', monospace; font-size: 0.9em;
+    }
+    .markdown-content pre {
+      background-color: #1e1e1e; padding: 1em; border-radius: 0.5em;
+      overflow-x: auto; margin-bottom: 1.5em; position: relative;
+    }
+    .markdown-content pre code { background-color: transparent; padding: 0; color: #d4d4d4; }
+    .markdown-content blockquote {
+      border-left: 4px solid #e5e7eb; padding-left: 1em; color: #6b7280;
+      margin: 0 0 1em 0;
+    }
+    .markdown-content ul, .markdown-content ol { margin-bottom: 1em; padding-left: 2em; }
+    .markdown-content ul { list-style-type: disc; }
+    .markdown-content ol { list-style-type: decimal; }
+    .markdown-content li { margin-bottom: 0.5em; }
+    .markdown-content table {
+      border-collapse: collapse; width: 100%; margin-bottom: 1.5em;
+    }
+    .markdown-content th, .markdown-content td {
+      border: 1px solid #e5e7eb; padding: 0.5em 1em; text-align: left;
+    }
+    .markdown-content th { background-color: #f3f4f6; font-weight: 600; }
+    .markdown-content img { max-width: 100%; height: auto; margin-bottom: 1em; border-radius: 0.5em; }
+    .markdown-content hr { border: none; border-top: 1px solid #e5e7eb; margin: 1.5em 0; }
+    /* Kopiowanie kodu */
+    .copy-btn {
+      position: absolute; right: 0.5em; top: 0.5em;
+      background-color: #3b82f6; color: white; border: none; border-radius: 0.25em;
+      padding: 0.25em 0.5em; font-size: 0.75em; cursor: pointer; opacity: 0;
+      transition: opacity 0.2s;
+    }
+    pre:hover .copy-btn { opacity: 1; }
+    .copy-btn:hover { background-color: #2563eb; }
+    .copy-btn.copied { background-color: #10b981; }
+    /* Konsultanci */
+    .consultant-card.active { border-color: #3b82f6; background-color: #eff6ff; }
+    /* Welcome */
+    .welcome-message {
+      text-align: center; font-size: 1.5rem; font-weight: 600; color: #111827;
+      margin-bottom: 1rem; display: block;
+    }
+    #queryForm.centered .welcome-message { display: block; }
+    #queryForm:not(.centered) .welcome-message { display: none; }
+    /* Ikony konsultantów */
+    .consultant-icon {
+      font-size: 1.5rem;
+      width: 2rem;
+      height: 2rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background-color: #f3f4f6;
+      border-radius: 50%;
+    }
+    /* Ujednolicone style dla buttonów i inputów */
+    .btn-primary {
+      background-color: #3b82f6;
+      color: white;
+      padding: 0.5rem 1rem;
+      border-radius: 0.375rem;
+      font-weight: 500;
+      transition: background-color 0.2s;
+    }
+    .btn-primary:hover { background-color: #2563eb; }
+    .btn-secondary {
+      background-color: #ef4444;
+      color: white;
+      padding: 0.5rem 1rem;
+      border-radius: 0.375rem;
+      font-weight: 500;
+      transition: background-color 0.2s;
+    }
+    .btn-secondary:hover { background-color: #dc2626; }
+    .input-field {
+      border: 1px solid #d1d5db;
+      border-radius: 0.375rem;
+      padding: 0.5rem 1rem;
+      background-color: white;
+      outline: none;
+    }
+    .input-field:focus {
+      border-color: #3b82f6;
+      box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+    }
+    .select-field {
+      border: 1px solid #d1d5db;
+      border-radius: 0.375rem;
+      padding: 0.5rem 1rem;
+      background-color: white;
+      outline: none;
+    }
+    .select-field:focus {
+      border-color: #3b82f6;
+      box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+    }
+    #queryForm textarea {
+      resize: vertical;
+      min-height: 80px;
+    }
+    .consultant-card {
+      border: 1px solid #d1d5db;
+      border-radius: 0.375rem;
+      padding: 0.5rem 1rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      cursor: pointer;
+      transition: background-color 0.2s;
+    }
+    .consultant-card:hover { background-color: #f3f4f6; }
+   
+
+/* Delikatny, elegancki link w nagłówku welcome */
+.welcome-message a {
+  color: #2563eb;                 /* subtelny niebieski */
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-color: #bfdbfe; /* bardzo jasny błękit */
+  transition: color .2s ease, text-decoration-color .2s ease;
+}
+
+.welcome-message a:hover,
+.welcome-message a:focus-visible {
+  color: #1d4ed8;                 /* lekko ciemniejszy przy hoverze */
+  text-decoration-color: #60a5fa; /* mocniejszy błękit przy hoverze */
+  outline: none;
+}
+
+
+</style>
+</head>
+  <div class="max-w-7xl mx-auto h-screen" id="chat-container">    
+    <!-- TODO: Remove this badge in the production version. List of improvements:
+      - Update Tailwind to 3.4.14 and Highlight.js to 11.10.0.
+      - Move custom CSS to Tailwind utilities (e.g., btn-secondary).
+      - Add visual error handling in UI instead of alert (red div in response).
+      - Enable auto-resize textarea: queryInput.addEventListener('input', () => { queryInput.style.height = 'auto'; queryInput.style.height = `${queryInput.scrollHeight}px`; });
+      - Add console.log('RAG Response:', json); in handleSubmit for debugging.
+      - Test on mobile and Markdown edge cases (long codes, tables).
+      - Add sanitize for query: query = query.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    -->
+    <div class="fixed top-2 right-2 bg-yellow-300 text-yellow-900 px-3 py-1 rounded-full text-xs font-semibold shadow-md opacity-80 z-50">
+      Development Mode
+    </div>
+
+    <!-- Pasek konsultantów -->
+    <div class="flex justify-between items-center p-1 bg-white shadow-md rounded-b-md mb-2">
+      <div class="flex gap-2" id="consultants">
+        <div onclick="selectConsultant('rejewski')" class="consultant-card border rounded-md px-2 py-1 flex items-center gap-1 cursor-pointer hover:bg-gray-100 active text-sm">
+          <div class="consultant-icon text-lg">🧠</div>
+          <span><span class="consultant-name" data-consultant="rejewski">Marian Rejewski</span> <small class="block text-gray-500 text-xs">Analiza kodu</small></span>
+        </div>
+        <div onclick="selectConsultant('ada')" class="consultant-card border rounded-md px-2 py-1 flex items-center gap-1 cursor-pointer hover:bg-gray-100 text-sm">
+          <div class="consultant-icon text-lg">📐</div>
+          <span><span class="consultant-name" data-consultant="ada">Ada Lovelace</span> <small class="block text-gray-500 text-xs">Diagramy UML</small></span>
+        </div>
+      </div>
+      <!-- 🔹 Prawa strona: Branch + Nowy Chat -->
+      <div class="flex items-center gap-2">        
+        <button onclick="newChat()" class="btn-secondary text-sm">♻️ Nowy Chat</button>
+      </div>
+    </div>
+
+    <div id="response" class="px-4"></div>
+    <form id="queryForm">
+      <div class="welcome-message">Zapytaj Mariana Rejewskiego, mistrza w analizie kodu.</div>
+      <textarea id="query" placeholder="Wpisz pytanie..." class="input-field w-full"></textarea>
+        <div class="flex justify-between items-center gap-2">
+         <div id="branchInfo" class="text-sm px-2 py-0.5 bg-gray-100 border border-gray-300 rounded-md leading-tight">
+           🔀 Branch: <span class="font-semibold text-gray-700"></span>
+         </div>
+         <div class="flex gap-2 items-center">
+           <select id="lang" class="select-field h-9 text-sm px-2 leading-none">
+             <option value="pl">PL Rozmawiaj po polsku</option>
+             <option value="en">EN English (no translation)</option>
+           </select>
+            <button type="submit" class="bg-blue-500 text-white px-4 py-2 rounded-md hover:bg-blue-600 transition">Wyślij</button>
+  </div>
+</div>
+
+</div>
+
+    </form>
+  </div>
+
+<script>
+  let sessionId = localStorage.getItem("sessionId") || null;
+let selectedConsultant = "rejewski";
+
+const form = document.getElementById("queryForm");
+const queryInput = document.getElementById("query");
+const responseDiv = document.getElementById("response");
+const submitButton = form.querySelector("button[type=submit]");
+const welcomeMessage = document.querySelector(".welcome-message");
+const langSelect = document.getElementById("lang");
+
+const uiTexts = {
+  pl: {
+    send: "Wyślij",
+    wait: "Czekaj...",
+    error: "Wystąpił błąd podczas przetwarzania zapytania.",
+    noResponse: "Brak odpowiedzi",
+    ask: "zapytanie",
+    placeholder: "Wpisz pytanie...",
+    rejewski: "Zapytaj Mariana Rejewskiego, mistrza w analizie kodu.",
+    ada: "Zapytaj Adę Lovelace, mistrzynię diagramów i wizualizacji.",
+    newChat: "♻️ Nowy Chat",
+    locale: "pl-PL",
+    cards: {
+      rejewski: { title: "Marian Rejewski", desc: "Analiza kodu" },
+      ada: { title: "Ada Lovelace", desc: "Diagramy UML" }
+    }
+  },
+  en: {
+    send: "Send",
+    wait: "Please wait...",
+    error: "An error occurred while processing the request.",
+    noResponse: "No response",
+    ask: "query",
+    placeholder: "Type your question...",
+    rejewski: "Ask Marian Rejewski, the master of code analysis.",
+    ada: "Ask Ada Lovelace, the master of diagrams and visualization.",
+    newChat: "♻️ New Chat",
+    locale: "en-GB",
+    cards: {
+      rejewski: { title: "Marian Rejewski", desc: "Code analysis" },
+      ada: { title: "Ada Lovelace", desc: "UML diagrams" }
+    }
+  }
+};
+
+const wikiLinks = {
+  pl: {
+    rejewski: "https://pl.wikipedia.org/wiki/Marian_Rejewski",
+    ada: "https://pl.wikipedia.org/wiki/Ada_Lovelace"
+  },
+  en: {
+    rejewski: "https://en.wikipedia.org/wiki/Marian_Rejewski",
+    ada: "https://en.wikipedia.org/wiki/Ada_Lovelace"
+  }
+};
+
+// Pomocnicze funkcje
+function getCurrentLang() {
+  return localStorage.getItem("lang") || (langSelect?.value || "pl");
+}
+
+function getTexts(lang) {
+  return uiTexts[lang] || uiTexts.pl;
+}
+
+function updateCardDescriptions(lang) {
+  const dict = getTexts(lang).cards;
+  const rejewskiSmall = document.querySelector('.consultant-card[onclick*="rejewski"] span small');
+  if (rejewskiSmall) rejewskiSmall.textContent = dict.rejewski.desc;
+  const adaSmall = document.querySelector('.consultant-card[onclick*="ada"] span small');
+  if (adaSmall) adaSmall.textContent = dict.ada.desc;
+}
+
+function extractNameFromWelcome(full, lang) {
+  if (!full) return null;
+  const regex = (lang === "pl") ? /Zapytaj\s+([^,]+),/i : /Ask\s+([^,]+),/i;
+  const match = full.match(regex);
+  return match ? match[1].trim() : null;
+}
+
+function renderWelcomeMessage(lang = getCurrentLang()) {
+  if (!welcomeMessage) return;
+  const t = getTexts(lang);
+  const full = t[selectedConsultant] || "";
+  const href = wikiLinks[lang]?.[selectedConsultant];
+  const nameInSentence = extractNameFromWelcome(full, lang) || t.cards?.[selectedConsultant]?.title;
+
+  if (href && nameInSentence) {
+    const esc = nameInSentence.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const re = new RegExp(esc);
+    const html = full.replace(
+      re,
+      `<a href="${href}" target="_blank" rel="noopener noreferrer" title="${lang === 'pl' ? 'Wikipedia – otwiera się w nowej karcie' : 'Wikipedia – opens in new tab'}">${nameInSentence}</a>`
+    );
+    welcomeMessage.innerHTML = html;
+  } else {
+    welcomeMessage.textContent = full;
+  }
+}
+
+function renderActiveConsultantLink() {
+  document.querySelectorAll(".consultant-name").forEach(el => {
+    const a = el.querySelector("a");
+    if (a) el.textContent = a.textContent;
+  });
+}
+
+function applyLang(lang) {
+  const t = getTexts(lang);
+  updateCardDescriptions(lang);
+
+  if (submitButton) submitButton.innerText = t.send;
+  if (queryInput) queryInput.placeholder = t.placeholder;
+
+  const newChatBtn = document.querySelector(".btn-secondary.text-sm");
+  if (newChatBtn) newChatBtn.textContent = t.newChat;
+
+  localStorage.setItem("lang", lang);
+  if (langSelect && langSelect.value !== lang) langSelect.value = lang;
+
+  renderWelcomeMessage(lang);
+  renderActiveConsultantLink();
+}
+
+// Funkcje związane z konsultantami i chatem
+function selectConsultant(name) {
+  selectedConsultant = name;
+  document.querySelectorAll(".consultant-card").forEach(el => {
+    el.classList.toggle("active", el.getAttribute("onclick").includes(name));
+  });
+  renderWelcomeMessage(getCurrentLang());
+  renderActiveConsultantLink();
+}
+
+async function fetchBranch() {
+  try {
+    const res = await fetch("http://localhost:5000/branch");
+    if (!res.ok) throw new Error(`Błąd ${res.status}: ${await res.text()}`);
+    const json = await res.json();
+    document.querySelector("#branchInfo span").textContent = json.branch || "";
+  } catch (err) {
+    console.error("Błąd fetchBranch:", err);
+    document.querySelector("#branchInfo span").textContent = "";
+  }
+}
+
+function newChat() {
+  sessionId = null;
+  localStorage.removeItem("sessionId");
+  responseDiv.innerHTML = "";
+  updateFormPosition();
+}
+
+function updateFormPosition() {
+  const isEmpty = responseDiv.children.length === 0;
+  form.classList.toggle("centered", isEmpty);
+}
+
+function addCopyButtons() {
+  document.querySelectorAll("pre").forEach(pre => {
+    if (pre.querySelector(".copy-btn")) return;
+    const button = document.createElement("button");
+    button.className = "copy-btn";
+    const t = getTexts(getCurrentLang());
+    button.textContent = (t.locale === "en-GB") ? "Copy" : "Kopiuj";
+    button.addEventListener("click", e => {
+      e.preventDefault();
+      const code = pre.querySelector("code")?.textContent || "";
+      navigator.clipboard.writeText(code).then(() => {
+        const t2 = getTexts(getCurrentLang());
+        button.textContent = (t2.locale === "en-GB") ? "Copied!" : "Skopiowano!";
+        button.classList.add("copied");
+        setTimeout(() => {
+          const t3 = getTexts(getCurrentLang());
+          button.textContent = (t3.locale === "en-GB") ? "Copy" : "Kopiuj";
+          button.classList.remove("copied");
+        }, 2000);
+      });
+    });
+    pre.appendChild(button);
+  });
+}
+
+function scrollToLatestResponse() {
+  if (responseDiv.firstChild) {
+    responseDiv.scrollTo({ top: 0, behavior: "smooth" });
+  }
+}
+
+// Konfiguracja Markdown
+marked.setOptions({
+  breaks: true,
+  gfm: true,
+  highlight: function(code, lang) {
+    if (lang && hljs.getLanguage(lang)) {
+      return hljs.highlight(code, { language: lang }).value;
+    }
+    return hljs.highlightAuto(code).value;
+  }
+});
+
+// Obsługa formularza
+async function handleSubmit(e) {
+  e.preventDefault();
+  let query = queryInput.value.trim();
+  const lang = getCurrentLang();
+  if (!query || query.length > 1000) {
+    if (query.length > 1000) alert(getTexts(lang).error + " (Za długie zapytanie)");
+    return;
+  }
+
+  const originalQuery = query;
+  const translatedQuery = query; // Tu ewentualnie logika tłumaczenia, jeśli potrzeba
+
+  submitButton.disabled = true;
+  submitButton.innerText = getTexts(lang).wait;
+  const translate = (lang === "pl");
+
+  const body = { query: translatedQuery, consultant: selectedConsultant, translateChat: translate };
+
+  try {
+    const res = await fetch("http://localhost:5000/search", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(sessionId ? { "X-Session-ID": sessionId } : {})
+      },
+      body: JSON.stringify(body)
+    });
+
+    if (!res.ok) throw new Error(`Błąd ${res.status}: ${await res.text()}`);
+
+    const json = await res.json();
+    if (json.session_id) {
+      sessionId = json.session_id;
+      localStorage.setItem("sessionId", sessionId);
+    }
+
+    const t = getTexts(lang);
+    const markdown = json.results || t.noResponse;
+    const html = marked.parse(markdown);
+    const timestamp = new Date().toLocaleString(t.locale);
+    const translatedQueryRes = json.translated;
+
+    const translationInfo = (lang === "pl" && translatedQueryRes && translatedQueryRes.trim().toLowerCase() !== originalQuery.trim().toLowerCase())
+      ? `<br><span class="text-gray-400">[Asystent otrzymał: ${translatedQueryRes}]</span>`
+      : "";
+
+    const questionHTML = `
+      <div class="bg-white p-4 rounded-md shadow-md response-entry">
+        <div class="text-sm text-gray-500 mb-2">
+          ${timestamp} ${t.ask}: <i>${originalQuery}</i>
+          ${translationInfo}
+        </div>
+        <div class="markdown-content text-gray-900">${html}</div>
+      </div>
+    `;
+
+    responseDiv.innerHTML = questionHTML + responseDiv.innerHTML;
+    queryInput.value = "";
+    addCopyButtons();
+    scrollToLatestResponse();
+  } catch (error) {
+    console.error("Błąd w submit:", error);
+    alert(getTexts(lang).error);
+  } finally {
+    submitButton.disabled = false;
+    submitButton.innerText = getTexts(lang).send;
+    updateFormPosition();
+    fetchBranch();
+    localStorage.setItem("lang", lang);
+  }
+}
+
+// Inicjalizacja
+document.addEventListener("DOMContentLoaded", () => {
+  const savedLang = getCurrentLang();
+  applyLang(savedLang);
+  if (langSelect) {
+    langSelect.value = savedLang;
+    langSelect.addEventListener("change", e => applyLang(e.target.value));
+  }
+  updateFormPosition();
+  fetchBranch();
+  queryInput.focus();
+});
+
+form.addEventListener("submit", handleSubmit);
+
+queryInput.addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && !e.shiftKey) {
+    e.preventDefault();
+    form.dispatchEvent(new Event("submit", { cancelable: true }));
+  }
+});
+</script>
+
+</body>
+</html>

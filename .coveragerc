@@ -1,0 +1,33 @@
+[run]
+omit =
+    # --- CLI / glue / IO-heavy ---
+    build_vector_index.py
+    mergeAllFiles.py
+    process_recover_assess.py
+    start_AI_server.py
+    start_FAISS_search.py
+    sumarizer.py
+    vector_db/build_cs_index.py
+    vector_db/build_sql_index.py
+    vector_db/search_code.py
+
+    # --- HTTP/LLM servers & models ---
+    code_query_engine/query_server.py
+    code_query_engine/model.py
+    code_query_engine/log_utils.py
+
+    # --- Heavy loaders / translators ---
+    common/search_engine.py
+    common/translator_pl_en.py
+    common/markdown_translator_en_pl.py
+
+    # --- T-SQL CLI/glue (parsowanie mierzymy osobno) ---
+    tsql_summarizer/__main__.py
+    tsql_summarizer/main.py
+    tsql_summarizer/api.py
+    tsql_summarizer/emit.py
+    tsql_summarizer/analysis.py
+
+    # --- Legacy / temporary exclusions (podbijamy global coverage) ---
+    common/sqlrag_core.py
+    tsql_summarizer/ddl_extractors.py
