@@ -334,7 +334,12 @@ def compress_chunks(
     per_chunk_hard_cap: Optional[int] = None,
     header_prefix: str = "- ",
 ) -> str:
-    """Compress retrieved chunks by deletion-only cleanup."""
+    """Compress retrieved chunks by deletion-only cleanup.
+
+    Zero-guessing policy:
+    - We never trim individual snippets mid-code.
+    - A snippet is either included in full (after cleanup) or skipped entirely.
+    """
     if not chunks:
         return ""
 
@@ -363,11 +368,11 @@ def compress_chunks(
         prepared_snippet: Optional[str] = None
         digest: Optional[str] = None
         is_dup = False
+
         if mode == "snippets":
             raw = c.get("content") or ""
             prepared_snippet = _clean(_extract_windows(raw, c.get("hit_lines"), window), language)
-            if per_chunk_hard_cap:
-                prepared_snippet = _trim_to_token_budget(prepared_snippet, per_chunk_hard_cap)
+            # Zero-guessing: do NOT trim individual snippets here.
             if prepared_snippet.strip():
                 digest = _digest(prepared_snippet)
                 is_dup = digest in snippet_digests
@@ -382,7 +387,10 @@ def compress_chunks(
         if mode in {"metadata", "two_stage"}:
             continue
 
-        snippet = prepared_snippet or _clean(_extract_windows(c.get("content") or "", c.get("hit_lines"), window), language)
+        snippet = prepared_snippet or _clean(
+            _extract_windows(c.get("content") or "", c.get("hit_lines"), window),
+            language,
+        )
         if not snippet.strip():
             continue
         if is_dup:
@@ -393,15 +401,9 @@ def compress_chunks(
         code_block = f"{fence_open}{snippet}\n```"
         block_cost = _estimate_tokens(code_block + "\n")
 
+        # Zero-guessing: if full snippet does not fit, do not trim; stop adding code.
         if used_tokens + block_cost > token_budget:
-            remaining = max(0, token_budget - used_tokens - _estimate_tokens("```\n\n```\n"))
-            trimmed = _trim_to_token_budget(snippet, remaining)
-            if not trimmed.strip():
-                continue
-            code_block = f"{fence_open}{trimmed}\n```"
-            block_cost = _estimate_tokens(code_block + "\n")
-            if used_tokens + block_cost > token_budget:
-                break
+            break
 
         out_lines.append(code_block)
         used_tokens += block_cost

@@ -161,6 +161,7 @@ def build_compressed_context_from_faiss(
     try:
         history_manager.add_iteration(followup, faiss_results)
     except Exception:
+        # History must never break the main flow
         pass
 
     source_chunks: List[Dict[str, Any]] = []
@@ -190,6 +191,30 @@ def build_compressed_context_from_faiss(
                     "distance": 1.0,
                 })
 
+    # ------- FAISS debug logging (before compression) -------
+    try:
+        debug_payload = {
+            "followup": followup,
+            "top_k": top_k,
+            "mode": mode,
+            "token_budget": token_budget,
+            "window": window,
+            "max_chunks": max_chunks,
+            "language": language,
+            "per_chunk_hard_cap": per_chunk_hard_cap,
+            "include_related": include_related,
+            "source_chunks": source_chunks,
+        }
+        # NOTE: using the shared InteractionLogger instance's underlying logger
+        logger.logger.info(
+            "FAISS debug - input for compression:\n%s",
+            json.dumps(debug_payload, ensure_ascii=False, indent=2),
+        )
+    except Exception:
+        # Logging must never break the main flow
+        pass
+    # --------------------------------------------------------
+
     context_text = compress_chunks(
         source_chunks,
         mode=mode,
@@ -200,6 +225,7 @@ def build_compressed_context_from_faiss(
         per_chunk_hard_cap=per_chunk_hard_cap,
     )
     return context_text
+
 
 # === Main search logic ===
 def search_logic(query: str, translate_chat: bool, session_id: str, consultant: str, branch: str):

@@ -7,6 +7,6 @@
   "log_path":"log/ai_interaction.log",
   "use_gpu": true,
   "plantuml_server" : "http://localhost:8080",
-  "branch":"master"
+  "branch":"develop"
 }
 
