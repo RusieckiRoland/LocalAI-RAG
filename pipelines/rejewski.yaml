@@ -1,0 +1,38 @@
+pipeline:
+  name: marian_rejewski_code_analysis
+
+  settings:
+    model_language: en
+    answer_prefix: "[Answer:]"
+    followup_prefix: "[Requesting data on:]"
+    max_context_tokens: 5000
+
+
+  steps:
+    - id: maybe_translate_in
+      action: translate_in_if_needed
+      next: call_model_initial
+
+    - id: call_model_initial
+      action: call_model
+      prompt_key: "rejewski_code_v1"
+      next: handle_prefix
+
+    - id: handle_prefix
+      action: handle_prefix
+      on_answer: finalize
+      on_followup: fetch_more_context
+      on_other: finalize_heuristic
+
+    - id: fetch_more_context
+      action: fetch_more_context
+      search_mode: "hybrid"   
+      next: call_model_initial
+
+    - id: finalize_heuristic
+      action: finalize_heuristic
+      next: finalize
+
+    - id: finalize
+      action: finalize
+      end: true

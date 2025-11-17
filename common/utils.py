@@ -136,38 +136,33 @@ def _extract_plantuml_code(md: str) -> str | None:
 
 # --- FOLLOWUP extraction ------------------------------------------------------
 
-def extract_followup(response: str) -> str | None:
+def extract_followup(text: str, followup_prefix: str = constants.FOLLOWUP_PREFIX) -> Optional[str]:
     """
-    Extract a single follow-up query from a model response based on a fixed prefix.
+    Extract follow-up query text after the given prefix.
 
-    Rules:
-    - Prefer an exact, literal prefix at the beginning of the response.
-    - Otherwise, use a safe regex anchored at ^ with `re.escape(prefix)`.
-    - Only the **first line** after the prefix is taken (models sometimes add notes below).
-    - Strip surrounding quotes/backticks and square brackets.
-
-    Returns the cleaned follow-up string, or None if not present.
+    Examples
+    --------
+    "[Requesting data on:] SELECT * FROM T" -> "SELECT * FROM T"
+    ' [Requesting data on:]  "[orders by date]" ' -> "orders by date"
+    "no prefix here" -> None
     """
-    resp = (response or "").strip()
+    if not text:
+        return None
 
-    # 1) Most reliable: literal prefix at the very start
-    if resp.startswith(FOLLOWUP_PREFIX):
-        raw = resp[len(FOLLOWUP_PREFIX):].strip()
-    else:
-        # 2) Safe regex with re.escape and ^ anchor
-        m = re.search(rf"^{re.escape(FOLLOWUP_PREFIX)}\s*(.+)$", resp, flags=re.DOTALL)
-        if not m:
-            return None
-        raw = m.group(1).strip()
+    marker = followup_prefix or ""
+    idx = text.find(marker)
+    if idx == -1:
+        # When there is no prefix at all, we return None
+        return None
 
-    # Keep only the first line (the model may append comments below)
-    raw = raw.splitlines()[0].strip()
+    candidate = text[idx + len(marker):].strip()
 
-    # Remove surrounding symmetric quotes/backticks if present
-    if len(raw) >= 2 and raw[0] in "'\"`" and raw[-1] == raw[0]:
-        raw = raw[1:-1].strip()
+    # Strip optional surrounding quotes: "..." or '...'
+    if len(candidate) >= 2 and candidate[0] == candidate[-1] and candidate[0] in ("'", '"'):
+        candidate = candidate[1:-1].strip()
 
-    # Remove surrounding brackets (common stylistic addition)
-    raw = raw.strip("[]")
+    # Strip optional surrounding square brackets: [...]
+    if len(candidate) >= 2 and candidate[0] == "[" and candidate[-1] == "]":
+        candidate = candidate[1:-1].strip()
 
-    return raw or None
+    return candidate or None

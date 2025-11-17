@@ -24,7 +24,7 @@ if args.env:
         print("⚠️  .env file not found, skipping.")
 
 # --- Main app import and run ---
-from code_query_engine.query_server import app
+from code_query_engine.query_server_dynamic import app  # <-- nowy serwer
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=True)
