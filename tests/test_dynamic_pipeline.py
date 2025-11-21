@@ -39,9 +39,12 @@ class FakeSearcher:
         self._results = results
         self.last_query: Optional[Dict[str, Any]] = None
 
-    def search(self, query: str, top_k: int = 5) -> List[Dict[str, Any]]:
-        """Capture search query and return prepared results."""
-        self.last_query = {"query": query, "top_k": top_k}
+    def search(self, query: str, top_k: int = 5, **kwargs) -> List[Dict[str, Any]]:
+        """Capture search query (including mode-specific kwargs) and return prepared results."""
+        recorded: Dict[str, Any] = {"query": query, "top_k": top_k}
+        # Store any keyword arguments so tests can assert on them (e.g. alpha/beta for vector mode).
+        recorded.update(kwargs)
+        self.last_query = recorded
         return list(self._results)
 
 
@@ -276,6 +279,36 @@ def test_call_model_falls_back_to_consultant_when_prompt_key_missing():
     assert call["prompt_key"] == "rejewski"  # consultant is used as fallback
 
 
+def test_call_model_uses_default_prompt_key_when_step_missing():
+    """
+    If step.prompt_key is missing but settings.default_prompt_key is set,
+    _step_call_model should use that default prompt key.
+    """
+    env = make_pipeline_context_and_runner(
+        settings={
+            "default_prompt_key": "ada_default",
+        }
+    )
+    ctx = env["ctx"]
+    runner = env["runner"]
+    fake_model = env["fake_model"]
+
+    ctx.model_input_en = "[EN]Where is web app entry point?"
+    step = {
+        "action": "call_model",
+        "id": "call_model_initial",
+        # no prompt_key here
+    }
+
+    runner._step_call_model(step, ctx)
+
+    assert fake_model.calls, "Model.ask should have been called."
+    call = fake_model.calls[-1]
+    assert call["prompt_key"] == "ada_default"
+
+
+
+
 # ---------- Tests: _step_fetch_more_context (prefix + search_mode) ----------
 
 def test_fetch_more_context_uses_followup_prefix_and_extends_context():
@@ -336,7 +369,7 @@ def test_fetch_more_context_uses_followup_prefix_and_extends_context():
 def test_fetch_more_context_respects_search_mode_from_step():
     """
     _step_fetch_more_context should read search_mode from step first.
-    In this test we only assert that the mode is read and that search is still called.
+    When step overrides to 'vector', we call the searcher in vector-only mode.
     """
     fake_results: List[Dict[str, Any]] = []
 
@@ -355,13 +388,14 @@ def test_fetch_more_context_respects_search_mode_from_step():
     step = {
         "action": "fetch_more_context",
         "id": "fetch_more_context",
-        "search_mode": "faiss",  # step-level override
+        "search_mode": "vector",  # step-level override
     }
 
     runner._step_fetch_more_context(step, ctx)
 
-    # Even though we do not yet differentiate implementation for faiss/hybrid,
-    # search should still be called with the followup.
+    # Vector mode should still call search, but with vector-only parameters.
     assert fake_searcher.last_query is not None
     assert fake_searcher.last_query["query"] == "some followup"
+    assert fake_searcher.last_query.get("alpha") == 1.0
+    assert fake_searcher.last_query.get("beta") == 0.0
     assert ctx.query_type == "vector query"

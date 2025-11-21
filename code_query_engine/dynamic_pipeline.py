@@ -85,7 +85,7 @@ class DynamicPipelineRunner:
             )
         with open(path, encoding="utf-8") as f:
             return yaml.safe_load(f)
-
+    
     def run(
         self,
         user_query: str,
@@ -119,8 +119,16 @@ class DynamicPipelineRunner:
             settings=settings,
         )
 
-        # Keep original question; model_input_en is set later
-        ctx.history_manager.start_user_query(ctx.user_query, ctx.user_query)
+        # Historia: chcemy zachować to samo zachowanie co w search_logic:
+        # - przy translate_chat=True: w polu "en" trzymamy angielskie tłumaczenie,
+        #   a w "pl" oryginalne pytanie użytkownika,
+        # - przy translate_chat=False: pytanie traktujemy jako EN i zapisujemy je w obu polach.
+        if translate_chat:
+            model_input_en_for_history = self.translator_pl_en.translate(user_query)
+        else:
+            model_input_en_for_history = user_query
+
+        ctx.history_manager.start_user_query(model_input_en_for_history, user_query)
 
         current_step_id = steps[0]["id"] if steps else None
         max_steps = len(steps) + 5  # simple safety limit
@@ -143,6 +151,7 @@ class DynamicPipelineRunner:
         self._log_final(ctx)
         return final_answer, ctx.query_type, ctx.steps_used, ctx.model_input_en or ctx.user_query
 
+   
     # ---------- STEP DISPATCH ----------
 
     def _execute_step(self, step: Dict[str, Any], ctx: PipelineContext) -> Optional[str]:
@@ -195,16 +204,24 @@ class DynamicPipelineRunner:
         question = ctx.model_input_en or ctx.user_query
 
         # Prompt key resolution:
-        # 1) step["prompt_key"]   – per-step configuration in YAML
-        # 2) ctx.consultant       – legacy fallback (old behavior)
-        prompt_key = step.get("prompt_key") or ctx.consultant
+        # 1) step["prompt_key"]              – per-step configuration in YAML
+        # 2) ctx.settings["default_prompt_key"] – optional pipeline-level default
+        # 3) ctx.consultant                  – legacy fallback (old behavior)
+        prompt_key = (
+            step.get("prompt_key")
+            or ctx.settings.get("default_prompt_key")
+            or ctx.consultant
+        )
 
-        print(f"[Dynamic] Step {ctx.steps_used} - Prompt key: {prompt_key}, question: {question[:200]}...")
+        print(
+            f"[Dynamic] Step {ctx.steps_used} - Prompt key: {prompt_key}, "
+            f"question: {question[:200]}..."
+        )
         response = ctx.main_model.ask(context_str, question, prompt_key)
         print(f"[Dynamic] Step {ctx.steps_used} - LLM: {response[:200]}...")
 
         ctx.last_response = response
-
+    
 
 
     def _step_handle_prefix(self, step: Dict[str, Any], ctx: PipelineContext) -> Optional[str]:
@@ -230,10 +247,10 @@ class DynamicPipelineRunner:
             return step.get("on_other")
     
     def _step_fetch_more_context(self, step: Dict[str, Any], ctx: PipelineContext) -> None:
-        """Run FAISS/Hybrid search and extend context."""
+        """Run FAISS / Hybrid search (according to search_mode) and extend context."""
         resp = ctx.last_response or ""
 
-        # Prefix pobieramy z YAML (settings), a jeśli go tam nie ma – z constants.
+        # Prefix is taken from YAML settings; if missing, we fall back to constants.
         foll_pref = ctx.settings.get("followup_prefix", constants.FOLLOWUP_PREFIX)
         followup = extract_followup(resp, followup_prefix=foll_pref)
         if not followup:
@@ -241,10 +258,10 @@ class DynamicPipelineRunner:
             ctx.query_type = "fallback error"
             return
 
-        # --- wybór trybu wyszukiwania ---
-        # Priorytet:
-        # 1) step["search_mode"]          – konfiguracja per krok
-        # 2) ctx.settings["search_mode"] – opcjonalny default dla całego pipeline
+        # --- search mode selection ---
+        # Priority:
+        # 1) step["search_mode"]          – per-step configuration
+        # 2) ctx.settings["search_mode"] – optional default for the pipeline
         # 3) "hybrid"                    – fallback
         search_mode = (
             step.get("search_mode")
@@ -252,12 +269,22 @@ class DynamicPipelineRunner:
             or "hybrid"
         ).lower()
 
-        if search_mode == "faiss":
-            # TODO: jeśli jest osobny czysty FAISS (np. query_faiss),
-            # to tutaj go wywołaj zamiast HybridSearch.
-            faiss_results = ctx.searcher.search(followup, top_k=5) or []
+        # "none" → we do not call the searcher at all, context remains unchanged
+        if search_mode == "none":
+            # We explicitly skip vector search for this step.
+            return
+
+        # "vector" → embedding-only scoring (alpha=1.0, beta=0.0)
+        # anything else → hybrid mode (default)
+        if search_mode == "vector":
+            faiss_results = ctx.searcher.search(
+                followup,
+                top_k=5,
+                alpha=1.0,
+                beta=0.0,
+            ) or []
         else:
-            # Domyślnie – HybridSearch
+            # Default – HybridSearch (also for unknown values)
             faiss_results = ctx.searcher.search(followup, top_k=5) or []
 
         source_chunks: List[Dict[str, Any]] = []
@@ -297,35 +324,3 @@ class DynamicPipelineRunner:
         )
         ctx.context_blocks.append(context_text)
         ctx.query_type = "vector query"
-
-
-
-   
-    def _step_finalize_heuristic(self, ctx: PipelineContext) -> None:
-        """Used when we heuristically treat response as answer."""
-        # No-op, finalize will handle translation and history.
-        pass
-
-    def _step_finalize(self, ctx: PipelineContext) -> None:
-        """Translate answer back to PL if needed, save history."""
-        ans_en = ctx.answer_en or ""
-        ans_pl: Optional[str] = None
-
-        if ctx.user_language == "pl" and ctx.consultant != constants.UML_CONSULTANT:
-            ans_pl = ctx.markdown_translator.translate_markdown(ans_en)
-            ctx.answer_pl = ans_pl
-
-        ctx.history_manager.set_final_answer(ans_en, ans_pl)
-
-    def _log_final(self, ctx: PipelineContext) -> None:
-        """Log final interaction to interaction logger."""
-        self.logger.log_interaction(
-            original_question=ctx.user_query,
-            model_input_en=ctx.model_input_en or ctx.user_query,
-            codellama_response=ctx.last_response or "",
-            followup_query=None,
-            query_type=ctx.query_type,
-            final_answer=ctx.answer_en,
-            context_blocks=ctx.context_blocks,
-            next_codellama_prompt=None,
-        )
