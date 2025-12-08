@@ -102,6 +102,29 @@ def filter_designer(files: List[Path]) -> List[Path]:
         filtered.append(p)
     return filtered
 
+def filter_dump_artifacts(files: List[Path], out_file: Path, kind: str) -> List[Path]:
+    """
+    Remove dump artifacts from the input set:
+    - the current output file itself
+    - any '*_dump_*.txt' (previous py/rag dumps)
+    """
+    if kind != "rag":
+        # For safety we only touch RAG mode here.
+        return files
+
+    cleaned: List[Path] = []
+    out_file_resolved = out_file.resolve()
+    for f in files:
+        if f.resolve() == out_file_resolved:
+            # Do not read our own output file as input.
+            continue
+        name = f.name.lower()
+        if name.endswith(".txt") and "_dump_" in name:
+            # Previous dump artifacts are not useful as RAG input.
+            continue
+        cleaned.append(f)
+    return cleaned
+
 # ---------- Comment style per file kind ----------
 
 def comment_tokens_for(path: Path) -> Tuple[str, Optional[str]]:
@@ -163,7 +186,8 @@ def main():
     # Default excluded folders + new ones
     default_exclude = {
         "bin", "obj", ".git", ".vs", "packages", "node_modules", "__pycache__",
-        "models", "branches"  # new exclusions
+        "models", "branches",  # existing exclusions
+        ".pytest_cache", ".vscode",  # new exclusions
     }
     exclude_folders = set(x.strip() for x in args.extra_exclude_folder) | default_exclude
 
@@ -185,6 +209,9 @@ def main():
     files = collect_files(root, kind, exclude_folders)
     if (kind in ("cs", "csxaml", "rag")) and not args.include_designer:
         files = filter_designer(files)
+
+    # NEW: remove dump artifacts (our own outfile, previous *_dump_*.txt)
+    files = filter_dump_artifacts(files, out_file, kind)
 
     with out_file.open("a", encoding="utf-8", newline="") as w:
         for f in files:
