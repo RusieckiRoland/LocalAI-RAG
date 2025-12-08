@@ -7,6 +7,10 @@
   "log_path":"log/ai_interaction.log",
   "use_gpu": true,
   "plantuml_server" : "http://localhost:8080",
-  "branch":"develop"
+  "branch":"develop",
+  
+  "vector_indexes_root": "vector_indexes",
+  "active_index_id": "nop_main_index",
+  "repo_name": "nopCommerce"
 }
 
