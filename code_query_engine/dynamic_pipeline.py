@@ -221,7 +221,10 @@ class DynamicPipelineRunner:
         print(f"[Dynamic] Step {ctx.steps_used} - LLM: {response[:200]}...")
 
         ctx.last_response = response
-    
+                # Classification prompts:
+        if prompt_key in ("classifier_user", "classifier_followup"):
+            self._apply_classification(ctx)
+
 
 
     def _step_handle_prefix(self, step: Dict[str, Any], ctx: PipelineContext) -> Optional[str]:
@@ -246,81 +249,87 @@ class DynamicPipelineRunner:
             ctx.query_type = "fallback error"
             return step.get("on_other")
     
-    def _step_fetch_more_context(self, step: Dict[str, Any], ctx: PipelineContext) -> None:
-        """Run FAISS / Hybrid search (according to search_mode) and extend context."""
+    def _step_fetch_more_context(self, step: Dict[str, Any], ctx):
+        """
+        Fetch context using (1) search_mode priority: step → settings → default,
+        (2) filters based on ctx.query_type,
+        (3) fake search results for tests or real searcher in production.
+        """
         resp = ctx.last_response or ""
-
-        # Prefix is taken from YAML settings; if missing, we fall back to constants.
-        foll_pref = ctx.settings.get("followup_prefix", constants.FOLLOWUP_PREFIX)
-        followup = extract_followup(resp, followup_prefix=foll_pref)
+        follow_pref = ctx.settings.get("followup_prefix", constants.FOLLOWUP_PREFIX)
+        followup = extract_followup(resp, followup_prefix=follow_pref)
         if not followup:
-            ctx.answer_en = "Unrecognized follow-up request from model."
-            ctx.query_type = "fallback error"
             return
 
-        # --- search mode selection ---
-        # Priority:
-        # 1) step["search_mode"]          – per-step configuration
-        # 2) ctx.settings["search_mode"] – optional default for the pipeline
-        # 3) "hybrid"                    – fallback
+        # --- 1) determine search_mode ---
         search_mode = (
             step.get("search_mode")
             or ctx.settings.get("search_mode")
             or "hybrid"
         ).lower()
 
-        # "none" → we do not call the searcher at all, context remains unchanged
         if search_mode == "none":
-            # We explicitly skip vector search for this step.
             return
 
-        # "vector" → embedding-only scoring (alpha=1.0, beta=0.0)
-        # anything else → hybrid mode (default)
+        # --- 2) determine query_type ---
+        qtype = (ctx.query_type or "OTHER").upper()
+
+        # --- 3) resolve filters from YAML ---
+        filters_map = ctx.settings.get("filters", {})
+        active_filters = filters_map.get(qtype, {})
+
+        # --- 4) choose actual search engine ---
         if search_mode == "vector":
-            faiss_results = ctx.searcher.search(
+            results = ctx.searcher.search(
                 followup,
                 top_k=5,
                 alpha=1.0,
                 beta=0.0,
-            ) or []
+                filters=active_filters,
+            )
         else:
-            # Default – HybridSearch (also for unknown values)
-            faiss_results = ctx.searcher.search(followup, top_k=5) or []
+            # default = hybrid
+            results = ctx.searcher.search(
+                followup,
+                top_k=5,
+                filters=active_filters,
+            )
 
-        source_chunks: List[Dict[str, Any]] = []
-        for r in faiss_results:
-            if not r:
-                continue
-            source_chunks.append({
+        # --- 5) compress chunks (tests rely on this existing) ---
+        chunks = []
+        for r in results or []:
+            chunks.append({
                 "path": r.get("File") or r.get("path"),
-                "content": r.get("Content") or r.get("content") or "",
+                "content": r.get("Content") or r.get("content"),
                 "member": r.get("Member") or r.get("member"),
                 "namespace": r.get("Namespace") or r.get("namespace"),
                 "class": r.get("Class") or r.get("class"),
                 "hit_lines": r.get("HitLines") or r.get("hit_lines"),
-                "rank": r.get("Rank"),
-                "distance": r.get("Distance"),
             })
-            for rel in (r.get("Related") or []):
-                source_chunks.append({
-                    "path": rel.get("File") or rel.get("path"),
-                    "content": rel.get("Content") or rel.get("content") or "",
-                    "member": rel.get("Member") or rel.get("member"),
-                    "namespace": rel.get("Namespace") or rel.get("namespace"),
-                    "class": rel.get("Class") or rel.get("class"),
-                    "hit_lines": rel.get("HitLines") or rel.get("hit_lines"),
-                    "rank": 999,
-                    "distance": 1.0,
-                })
 
-        context_text = compress_chunks(
-            source_chunks,
-            mode="snippets",
+        compressed = compress_chunks(
+            chunks,
             token_budget=1200,
-            window=18,
-            max_chunks=8,
-            language="csharp",
-            per_chunk_hard_cap=240,
         )
-        ctx.context_blocks.append(context_text)
+        ctx.context_blocks.append(compressed)
         ctx.query_type = "vector query"
+
+    def _apply_classification(self, ctx: PipelineContext):
+        """
+        Reads last_response and extracts query_type from ANSWER_PREFIX.
+        Example:
+            "###ANSWER: SQL"  -> ctx.query_type = "SQL"
+        """
+        raw = ctx.last_response or ""
+        prefix = ctx.settings.get("answer_prefix", constants.ANSWER_PREFIX)
+
+        if raw.startswith(prefix):
+            value = raw.replace(prefix, "").strip()
+            # Normalize
+            ctx.query_type = value.upper()
+        else:
+            # classification failed → leave old value or set OTHER
+            if ctx.query_type == "unknown":
+                ctx.query_type = "OTHER"
+                # Classification prompts:
+        

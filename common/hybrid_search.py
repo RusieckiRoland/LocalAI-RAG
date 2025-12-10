@@ -1,6 +1,6 @@
 # File: common/hybrid_search.py
 import re
-from typing import List, Dict, Any
+from typing import Any, Dict, List, Optional
 
 
 class HybridSearch:
@@ -65,7 +65,7 @@ class HybridSearch:
     # Embedding (FAISS) search
     # --------------------------------------------------------------------- #
 
-    def _embedding_search(self, query: str, k: int):
+    def _embedding_search(self, query: str, k: int, filters: Optional[Dict[str, List[str]]] = None):
         """
         Query the vector index and return up to `k` results with metadata.
 
@@ -74,6 +74,7 @@ class HybridSearch:
             "Rank", "File", "Id", "Content", "Distance", "Related": [...]
         }
         """
+        # 1) Embed query
         emb = self.embed_model.encode([f"query: {query}"], convert_to_numpy=True)
         distances, indices = self.index.search(emb, k)
 
@@ -86,6 +87,7 @@ class HybridSearch:
                 continue
             seen.add(idx)
 
+            # 2) Metadata entry
             meta = self.metadata[idx]
             cid = meta.get("Id")
             if cid is None:
@@ -95,6 +97,14 @@ class HybridSearch:
             if not chunk:
                 continue
 
+            # ---------------------------------------------
+            # 3) NEW: Apply metadata filtering
+            # ---------------------------------------------
+            if filters:
+                if not self._chunk_passes_filters(chunk, filters):
+                    continue
+
+            # 4) Append filtered result
             results.append(
                 {
                     "Rank": len(results) + 1,
@@ -105,8 +115,10 @@ class HybridSearch:
                     "Related": self._get_related(cid),
                 }
             )
-        return results
 
+        return results
+   
+   
     # --------------------------------------------------------------------- #
     # Keyword search (lightweight, no extra index)
     # --------------------------------------------------------------------- #
@@ -203,3 +215,74 @@ class HybridSearch:
             # r["Engine"] = "faiss+rtr"  # optional for diagnostics
 
         return out
+    
+
+    def _chunk_passes_filters(self, chunk, filters):
+        """
+        Returns True if FAISS/BM25 chunk satisfies metadata filters.
+        Example filters:
+            { "data_type": ["sql"], "file_type": ["storedproc"] }
+        """
+        if not filters:
+            return True
+
+        for key, allowed_values in filters.items():
+            if not allowed_values:
+                continue
+
+            # Normalize both sides
+            allowed = set(a.lower() for a in allowed_values)
+
+            # Try different key casings
+            val = (
+                chunk.get(key)
+                or chunk.get(key.lower())
+                or chunk.get(key.upper())
+            )
+
+            if val is None:
+                return False
+
+            # Normalize chunk value(s)
+            if isinstance(val, list):
+                vals = [v.lower() for v in val]
+            else:
+                vals = [val.lower()]
+
+            # Check intersection
+            if not any(v in allowed for v in vals):
+                return False
+
+        return True
+
+    def _chunk_passes_filters(self, chunk: Dict[str, Any], filters: Dict[str, List[str]]) -> bool:
+        """
+        Returns True if chunk metadata satisfies filters.
+        Filters example:
+            {"data_type": ["sql"], "file_type": ["proc"]}
+        """
+        for key, allowed_values in filters.items():
+            if not allowed_values:
+                continue
+
+            allowed = {v.lower() for v in allowed_values}
+
+            # try three casings
+            value = (
+                chunk.get(key)
+                or chunk.get(key.lower())
+                or chunk.get(key.upper())
+            )
+
+            if value is None:
+                return False
+
+            if isinstance(value, list):
+                vals = [str(v).lower() for v in value]
+            else:
+                vals = [str(value).lower()]
+
+            if not any(val in allowed for val in vals):
+                return False
+
+        return True

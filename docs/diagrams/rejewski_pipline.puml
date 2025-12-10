@@ -1,0 +1,66 @@
+@startuml
+title Dynamic Pipeline – Full RAG Flow with User & Follow-up Classifiers
+
+start
+
+:'detect_language()';
+
+if (User language != EN?) then (yes)
+  :'translate_in() → model_input_en';
+else (no)
+  :'model_input_en = user_query';
+endif
+
+:'call_model(classifier_user)';
+
+if (###ANSWER: SQL/CSHARP/MIXED/OTHER?) then (classified)
+  :'ctx.query_type ← user classification';
+else
+  :'ctx.query_type ← OTHER';
+endif
+
+:'call_model(initial user question)';
+
+if (response starts with ###ANSWER:) then (direct answer)
+  :'finalize()';
+  stop
+elseif (response starts with ###FOLLOWUP:) then (needs context)
+  :'followup_text ← extract_followup()';
+else (other)
+  :'heuristic_answer → finalize()';
+  stop
+endif
+
+
+repeat
+
+  '=== FOLLOW-UP CLASSIFICATION ===';
+  :'call_model(classifier_followup)';
+
+  if (###ANSWER: SQL/CSHARP/MIXED/OTHER?) then (classified)
+      :'ctx.query_type ← followup classification';
+  else
+      :'ctx.query_type ← OTHER';
+  endif
+
+  '=== FAISS FETCH WITH FILTERS ===';
+  :'filters ← YAML.settings.filters[ctx.query_type]';
+  :'faiss_results ← searcher.search(followup_text, filters)';
+  :'ctx.context_blocks += compress_chunks(faiss_results)';
+
+  '=== MODEL RE-RUN WITH NEW CONTEXT ===';
+  :'call_model(original question + context)';
+
+  if (response starts with ###ANSWER:) then (final answer)
+      :'finalize()';
+      stop
+  elseif (response starts with ###FOLLOWUP:) then (continue loop)
+      :'followup_text ← extract_followup()';
+  else (other)
+      :'heuristic_answer → finalize()';
+      stop
+  endif
+
+repeat while (response starts with ###FOLLOWUP:)
+
+@enduml
