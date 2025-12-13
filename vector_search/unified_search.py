@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Sequence
 
+import faiss
 import numpy as np
 
 from .models import VectorSearchRequest, VectorSearchFilters
@@ -133,7 +134,9 @@ def search_unified(
     if not isinstance(emb, np.ndarray):
         emb = np.array(emb, dtype="float32")
     if emb.ndim == 1:
-        emb = emb.reshape(1, -1)
+      emb = emb.reshape(1, -1)       
+    faiss.normalize_L2(emb)
+
 
     # --- Wide FAISS shot ---
     raw_k = max(request.top_k * request.oversample_factor, request.top_k)
