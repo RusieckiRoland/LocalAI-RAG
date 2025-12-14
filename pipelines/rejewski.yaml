@@ -1,4 +1,4 @@
-pipeline:
+YAMLpipeline:
   name: marian_rejewski_code_analysis_nopCommerce_develop
 
   # Inheritance (optional):
