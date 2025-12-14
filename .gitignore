@@ -96,6 +96,8 @@ vector_indexes/**
 *.temp
 
 # Never version anything under repositories/
+
 repositories/
 
 rag_dump_*.txt
+
