@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import sys
 from unittest.mock import Mock
+from vector_db.tf_index import build_tf_index
 
 # Avoid optional image deps pulled in by sentence_transformers
 sys.modules["transformers.image_utils"] = Mock()
@@ -355,6 +356,9 @@ def build_unified_index(index_id: str | None = None) -> None:
 
     texts = [d["text"] for d in all_docs]
     metadata = [d["meta"] for d in all_docs]
+
+    build_tf_index(texts, index_dir)
+    print(f"✅ TF/BM25 index artifacts saved under: {index_dir}")
 
     print(f"\n✅ Total documents to index: {len(texts)}")
 
