@@ -4,7 +4,7 @@ import re
 import uuid
 from typing import Any, Dict, List
 
-from common.hybrid_search import HybridSearch
+from common.semantic_keyword_rerank_search import SemanticKeywordRerankSearch
 from common.utils import extract_followup, parse_bool
 import torch
 from flask import Flask, request, jsonify
@@ -132,7 +132,7 @@ embed_model = SentenceTransformer(EMBED_MODEL_PATH).to(device)
 markdown_translator = MarkdownTranslator(MODEL_TRANSLATION_EN_PL)
 translator_pl_en = Translator(model_name="Helsinki-NLP/opus-mt-pl-en")
 logger = InteractionLogger.instance()
-searcher = HybridSearch(
+searcher = SemanticKeywordRerankSearch(
     index=index,
     metadata=metadata,
     chunks=chunks,

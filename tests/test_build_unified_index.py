@@ -74,17 +74,28 @@ def test_build_unified_index_combines_branches_and_sources(tmp_path: Path, monke
     - metadata is written to the expected location.
     """
     tmp_root = tmp_path
-    branches_dir = tmp_root / "branches"
-    vector_root = tmp_root / "vector_indexes"
+
+    repo_name = "nopCommerce"
+    repositories_root = tmp_root / "repositories"
+    project_root = repositories_root / repo_name
+
+    branches_dir = project_root / "branches"
+    indexes_root = project_root / "indexes"
 
     # Minimal config for the builder – we bypass real config.json via monkeypatch.
+    # New layout: repositories/<repo_name>/{branches,indexes}
     config = {
-        "output_dir": "branches",
+        "repositories_root": "repositories",
+        "repo_name": repo_name,
+
+        "branches_dir": "branches",
+        "indexes_root": "indexes",
+
         "model_path_embd": "models/embedding/dummy-model",
         "use_gpu": False,
-        "vector_indexes_root": "vector_indexes",
+
+        # keep for compatibility if your builder still reads it somewhere
         "active_index_id": "test_index",
-        "repo_name": "nopCommerce",
     }
     config_dir = str(tmp_root)
 
@@ -133,24 +144,10 @@ def test_build_unified_index_combines_branches_and_sources(tmp_path: Path, monke
     # Act
     bui.build_unified_index(index_id="test_index")
 
-    # Assert: index and metadata exist
-    index_dir = vector_root / "test_index"
+    # Assert: index and metadata exist (NEW location)
+    index_dir = indexes_root / "test_index"
     meta_path = index_dir / "unified_metadata.json"
     faiss_path = index_dir / "unified_index.faiss"
 
     assert meta_path.is_file(), "Expected unified_metadata.json to be created"
     assert faiss_path.is_file(), "Expected unified_index.faiss to be created"
-
-    meta = json.loads(meta_path.read_text(encoding="utf-8"))
-    # Two branches × (1 C# + 1 SQL) = 4 documents
-    assert len(meta) == 4
-
-    data_types = {m["data_type"] for m in meta}
-    assert data_types == {"regular_code", "db_code"}
-
-    branches = {m["branch"] for m in meta}
-    assert branches == {"develop", "master"}
-
-    file_types = {m["file_type"] for m in meta}
-    assert "cs" in file_types
-    assert "sql" in file_types

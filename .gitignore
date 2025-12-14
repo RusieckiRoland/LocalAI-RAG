@@ -72,3 +72,28 @@ out_proc_rag/
 
 .coverage
 .coverage.*
+
+# --- Unified index artifacts (FAISS + TF/BM25) ---
+**/unified_index.faiss
+**/unified_metadata.json
+**/manifest.json
+
+# TF/BM25 (no pickle) index files
+**/tf_*.npy
+**/tf_*.json
+
+# New repo layout outputs
+repositories/**/indexes/
+repositories/**/indexes/**
+
+# Legacy layout outputs (if still present)
+vector_indexes/
+vector_indexes/**
+
+# Temp files produced by the editor/scripts
+*.py.temp
+*.json.temp
+*.temp
+
+# Never version anything under repositories/
+repositories/

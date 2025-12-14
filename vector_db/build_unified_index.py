@@ -1,36 +1,31 @@
+# File: vector_db/build_unified_index.py
+
 """
 ===============================================
-🔹 Unified Vector Index Builder (C# + SQL + multi-branch)
+🔹 Unified Index Builder (FAISS + TF/BM25-ready) (C# + SQL + multi-branch)
 ===============================================
 
-Purpose:
-- Build ONE unified FAISS index ("unified_index.faiss") plus metadata
-  ("unified_metadata.json") from one or more branch archives (ZIPs).
-- Combine both regular code (C#) and DB code (SQL) into a single index.
+Repo layout (required):
+repositories/
+  <projectName>/
+    branches/   # source ZIPs + extracted branch folders
+    indexes/    # output indexes (FAISS + TF + metadata + manifest)
 
-Usage (example):
-- python build_unified_index.py
+What it builds (inside indexes/<IndexId>/):
+- unified_index.faiss
+- unified_metadata.json
+- TF/BM25-ready artifacts (no pickle):
+  tf_vocab.json, tf_offsets.npy, tf_doc_ids.npy, tf_tfs.npy, tf_df.npy, tf_doc_len.npy, tf_index_meta.json
+- manifest.json (exact ZIPs used + sha256)
 
-It will:
-1) Load config.json (same as build_vector_index.py).
-2) Look for branch ZIPs under `output_dir` from config (e.g. ./branches).
-3) Let you select one or more archives (comma-separated).
-4) Extract each archive into branches/<zipname>/.
-5) Collect C# and SQL documents, tagging them with:
-   - data_type: "regular_code" or "db_code"
-   - file_type: "cs" or "sql" (later you can extend with ef_migration / inline_sql)
-   - repo: "nopCommerce" (for now; can be made configurable)
-   - branch: <zipname without .zip>
-6) Build a unified FAISS index and save it under:
-   vector_indexes/<index_id>/unified_index.faiss
-   vector_indexes/<index_id>/unified_metadata.json
+IndexId:
+- YYYY-MM-DD__<friendly_slug>  e.g. 2025-12-22__stable+dev
 """
 
 from __future__ import annotations
 
 import sys
 from unittest.mock import Mock
-from vector_db.tf_index import build_tf_index
 
 # Avoid optional image deps pulled in by sentence_transformers
 sys.modules["transformers.image_utils"] = Mock()
@@ -39,7 +34,9 @@ sys.modules["transformers.image_transforms"] = Mock()
 import os
 import json
 import time
-import zipfile
+import re
+import hashlib
+from datetime import datetime
 from typing import Any, Dict, List
 
 import faiss
@@ -60,6 +57,48 @@ from vector_db.build_sql_index import (
     split_into_chunks,
     clean_text as clean_sql_text,
 )
+
+# TF index (BM25-ready, no pickle)
+from vector_db.tf_index import build_tf_index
+
+
+# ======================================
+# 🔹 Path helpers
+# ======================================
+
+_SLUG_ALLOWED = re.compile(r"[^a-z0-9+\-_]+")
+
+
+def _join_under(base_dir: str, maybe_rel: str) -> str:
+    """If maybe_rel is absolute -> return it, otherwise join under base_dir."""
+    if not maybe_rel:
+        return base_dir
+    return maybe_rel if os.path.isabs(maybe_rel) else os.path.join(base_dir, maybe_rel)
+
+
+def slugify_friendly_name(name: str) -> str:
+    """
+    Convert a friendly name into a filesystem-friendly slug.
+    Keeps: a-z, 0-9, '+', '-', '_'
+    Converts spaces and separators to '+' and collapses duplicates.
+    """
+    s = (name or "").strip().lower()
+    if not s:
+        return "index"
+
+    s = re.sub(r"[\s/\\|,;:]+", "+", s)
+    s = _SLUG_ALLOWED.sub("", s)
+    s = re.sub(r"\++", "+", s).strip("+")
+    return s or "index"
+
+
+def sha256_of_file(path: str) -> str:
+    """Compute SHA256 of a file in a streaming way."""
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1024 * 1024), b""):
+            h.update(chunk)
+    return h.hexdigest()
 
 
 # ======================================
@@ -122,27 +161,7 @@ def choose_archives(zip_files_abs: List[str]) -> List[str]:
 # ======================================
 
 def collect_cs_documents(branch_root: str, repo_name: str, branch_name: str) -> List[Dict[str, Any]]:
-    """
-    Collect C# (regular code) documents for unified indexing.
-
-    Each returned item has the shape:
-      {
-        "text": <string>,
-        "meta": {
-          "id": <stable id>,
-          "data_type": "regular_code",
-          "file_type": "cs",
-          "source_file": ...,
-          "chunk_part": 0,
-          "chunk_total": 1,
-          "class": ...,
-          "member": ...,
-          "repo": repo_name,
-          "branch": branch_name,
-          ...
-        }
-      }
-    """
+    """Collect C# (regular code) documents for unified indexing."""
     try:
         chunk_file_path = find_chunks_json(branch_root)
     except FileNotFoundError:
@@ -163,11 +182,9 @@ def collect_cs_documents(branch_root: str, repo_name: str, branch_name: str) -> 
         member_name = entry.get("Member")
         entry_id = entry.get("Id")
 
-        # Stable-ish id: prefer existing Id, otherwise fallback
         if entry_id:
             doc_id = str(entry_id)
         else:
-            # Fallback: use file + member
             doc_id = f"cs:{file_path}:{class_name}:{member_name}"
 
         meta: Dict[str, Any] = {
@@ -190,29 +207,7 @@ def collect_cs_documents(branch_root: str, repo_name: str, branch_name: str) -> 
 
 
 def collect_sql_documents(branch_root: str, repo_name: str, branch_name: str) -> List[Dict[str, Any]]:
-    """
-    Collect SQL (db_code) documents for unified indexing.
-
-    Each returned item has the shape:
-      {
-        "text": <string>,
-        "meta": {
-          "id": "<db_key>:part=<n>",
-          "data_type": "db_code",
-          "file_type": "sql",
-          "source_file": ...,
-          "chunk_part": <int>,
-          "chunk_total": <int>,
-          "kind": ...,
-          "schema": ...,
-          "name": ...,
-          "db_key": ...,
-          "repo": repo_name,
-          "branch": branch_name,
-          ...
-        }
-      }
-    """
+    """Collect SQL (db_code) documents for unified indexing."""
     try:
         bodies_path, _out_dir, edges_csv_path = find_sql_bodies_jsonl(branch_root)
     except FileNotFoundError:
@@ -249,21 +244,17 @@ def collect_sql_documents(branch_root: str, repo_name: str, branch_name: str) ->
             body = clean_sql_text(body)
 
             if not key:
-                # Skip malformed records that have no key
                 continue
 
             header = make_header(kind, schema, name, file_path, key)
             full_text = f"{header}\n---\n{body}".strip()
 
             chunks = split_into_chunks(full_text, max_chars=4000)
-            chunk_total = len(chunks)
-
             for chunk_text, part, parts in chunks:
-                # parts should be equal to chunk_total, but we trust split_into_chunks
                 meta: Dict[str, Any] = {
                     "id": f"{key}:part={part}",
                     "data_type": "db_code",
-                    "file_type": "sql",  # may evolve to ef_migration / inline_sql in the future
+                    "file_type": "sql",
                     "source_file": file_path,
                     "chunk_part": part,
                     "chunk_total": parts,
@@ -282,44 +273,36 @@ def collect_sql_documents(branch_root: str, repo_name: str, branch_name: str) ->
 
 
 # ======================================
-# 🔹 Unified FAISS builder
+# 🔹 Unified FAISS + TF builder
 # ======================================
 
 def build_unified_index(index_id: str | None = None) -> None:
     """
-    Build a unified FAISS index for one or more branches.
+    Build unified FAISS index + TF (BM25-ready) index for one or more branches.
 
-    - Reads config.json via build_vector_index.load_config.
-    - Uses config["output_dir"] as branches directory (same as build_vector_index).
-    - Uses config["vector_indexes_root"] (if present) or 'vector_indexes' as root for FAISS artifacts.
-    - Uses config["active_index_id"] as default index_id if not provided.
+    Target layout:
+      repositories/<repo_name>/branches
+      repositories/<repo_name>/indexes/<IndexId>
     """
     script_dir = os.path.dirname(os.path.abspath(__file__))
     config, config_dir = load_config(script_dir)
 
-    # Where branch ZIPs live (default: ./branches relative to config.json)
-    branches_dir = resolve_path(config.get("output_dir", "branches"), config_dir)
+    repo_name = config.get("repo_name", "project")
+
+    # repositories root (relative to config.json)
+    repositories_root = resolve_path(config.get("repositories_root", "repositories"), config_dir)
+    project_root = os.path.join(repositories_root, repo_name)
+
+    branches_dir = _join_under(project_root, config.get("branches_dir", "branches"))
+    indexes_root = _join_under(project_root, config.get("indexes_root", "indexes"))
+
     os.makedirs(branches_dir, exist_ok=True)
+    os.makedirs(indexes_root, exist_ok=True)
 
-    # Where FAISS indexes live
-    vector_root = resolve_path(config.get("vector_indexes_root", "vector_indexes"), config_dir)
-    os.makedirs(vector_root, exist_ok=True)
-
-    # Logical name of this index (used as folder name under vector_root)
-    if index_id is None:
-        index_id = config.get("active_index_id", "nop_main_index")
-
-    index_dir = os.path.join(vector_root, index_id)
-    os.makedirs(index_dir, exist_ok=True)
-
-    # Repository label (for now assume nopCommerce; can be made configurable later)
-    repo_name = config.get("repo_name", "nopCommerce")
-
-    print(f"\n📁 Branches dir:    {branches_dir}")
-    print(f"📁 Vector root:     {vector_root}")
-    print(f"📁 Index directory: {index_dir}")
+    print(f"\n📁 Project root:    {project_root}")
+    print(f"📁 Branches dir:    {branches_dir}")
+    print(f"📁 Indexes root:    {indexes_root}")
     print(f"🏷️  Repo name:       {repo_name}")
-    print(f"🏷️  Index ID:        {index_id}")
 
     # 1) Choose archives
     zip_files = list_archives(branches_dir)
@@ -332,7 +315,26 @@ def build_unified_index(index_id: str | None = None) -> None:
     for z in chosen_zips:
         print(f"   - {os.path.basename(z)}")
 
-    # 2) Collect documents from all selected branches
+    # 2) Determine IndexId + FriendlyName
+    friendly_default = "+".join(os.path.splitext(os.path.basename(z))[0] for z in chosen_zips)
+    if index_id is None:
+        friendly = input(f"\nFriendlyName for this index (Enter = {friendly_default}): ").strip()
+        if not friendly:
+            friendly = friendly_default
+
+        date_str = datetime.now().strftime("%Y-%m-%d")
+        slug = slugify_friendly_name(friendly)
+        index_id = f"{date_str}__{slug}"
+    else:
+        friendly = index_id
+
+    index_dir = os.path.join(indexes_root, index_id)
+    os.makedirs(index_dir, exist_ok=True)
+
+    print(f"🏷️  Index ID:        {index_id}")
+    print(f"📁 Index directory: {index_dir}")
+
+    # 3) Collect documents from all selected branches
     all_docs: List[Dict[str, Any]] = []
 
     for zip_path in chosen_zips:
@@ -343,7 +345,6 @@ def build_unified_index(index_id: str | None = None) -> None:
         branch_root = extract_to_named_root(zip_path, branches_dir)
         print(f"✅ Using branch_root: {branch_root}")
 
-        # Collect C# and SQL docs for this branch
         cs_docs = collect_cs_documents(branch_root, repo_name=repo_name, branch_name=branch_name)
         sql_docs = collect_sql_documents(branch_root, repo_name=repo_name, branch_name=branch_name)
 
@@ -357,16 +358,17 @@ def build_unified_index(index_id: str | None = None) -> None:
     texts = [d["text"] for d in all_docs]
     metadata = [d["meta"] for d in all_docs]
 
-    build_tf_index(texts, index_dir)
-    print(f"✅ TF/BM25 index artifacts saved under: {index_dir}")
-
     print(f"\n✅ Total documents to index: {len(texts)}")
 
-    # 3) Build embeddings
+    # 4) TF index (BM25-ready, no pickle)
+    print("\n🏗️  Building TF index (BM25-ready, no pickle)…")
+    build_tf_index(texts, index_dir)
+    print("✅ TF index artifacts saved.")
+
+    # 5) FAISS embeddings
     model_path = resolve_path(config["model_path_embd"], config_dir)
     print(f"\n🔧 Embedding model: {model_path}")
 
-    # Device selection
     os.environ["CUDA_VISIBLE_DEVICES"] = "0"
     device = torch.device("cuda" if torch.cuda.is_available() and config.get("use_gpu", True) else "cpu")
     print(f"✅ Using device: {device}")
@@ -375,7 +377,7 @@ def build_unified_index(index_id: str | None = None) -> None:
 
     embedding_model = SentenceTransformer(model_path).to(device)
 
-    print(f"\n🏗️  Generating embeddings for unified index…")
+    print("\n🏗️  Generating embeddings for unified FAISS index…")
     vectors: List[np.ndarray] = []
     batch_size = 512
     step = 1000
@@ -391,13 +393,12 @@ def build_unified_index(index_id: str | None = None) -> None:
     faiss.normalize_L2(vectors_np)
     dimension = vectors_np.shape[1]
 
-    # 4) Build FAISS index
     index = faiss.IndexFlatIP(dimension)
     if gpu_available:
         index = faiss.index_cpu_to_gpu(res, 0, index)
     index.add(vectors_np)
 
-    # 5) Save FAISS and metadata
+    # 6) Save FAISS and metadata
     faiss_path = os.path.join(index_dir, "unified_index.faiss")
     meta_path = os.path.join(index_dir, "unified_metadata.json")
 
@@ -407,13 +408,53 @@ def build_unified_index(index_id: str | None = None) -> None:
     with open(meta_path, "w", encoding="utf-8") as f:
         json.dump(metadata, f, indent=2, ensure_ascii=False)
 
+    # 7) Manifest (exact ZIPs + sha256)
+    manifest_path = os.path.join(index_dir, "manifest.json")
+    branches_manifest: List[Dict[str, Any]] = []
+    for z in chosen_zips:
+        branches_manifest.append(
+            {
+                "zip_file": os.path.basename(z),
+                "zip_sha256": sha256_of_file(z),
+                "zip_size_bytes": int(os.path.getsize(z)),
+                "zip_mtime_utc": datetime.utcfromtimestamp(os.path.getmtime(z)).isoformat(timespec="seconds") + "Z",
+                "branch_name": os.path.splitext(os.path.basename(z))[0],
+            }
+        )
+
+    manifest = {
+        "format": "unified_index_manifest_v1",
+        "index_id": index_id,
+        "friendly_name": friendly,
+        "repo_name": repo_name,
+        "created_at_utc": datetime.utcnow().isoformat(timespec="seconds") + "Z",
+        "branches": branches_manifest,
+        "artifacts": {
+            "faiss_index": "unified_index.faiss",
+            "metadata": "unified_metadata.json",
+            "tf_index": [
+                "tf_vocab.json",
+                "tf_offsets.npy",
+                "tf_doc_ids.npy",
+                "tf_tfs.npy",
+                "tf_df.npy",
+                "tf_doc_len.npy",
+                "tf_index_meta.json",
+            ],
+        },
+    }
+
+    with open(manifest_path, "w", encoding="utf-8") as f:
+        json.dump(manifest, f, indent=2, ensure_ascii=False)
+
     print(f"\n✅ Unified FAISS index saved to: {faiss_path}")
-    print(f"✅ Unified metadata saved to:   {meta_path}\n")
+    print(f"✅ Unified metadata saved to:   {meta_path}")
+    print(f"✅ Manifest saved to:           {manifest_path}\n")
 
 
 def main() -> None:
-    # Optional: allow overriding index_id via CLI, e.g.:
-    #   python build_unified_index.py nop_main_index
+    # Optional: allow overriding IndexId via CLI
+    # python -m vector_db.build_unified_index 2025-12-22__stable+dev
     index_id = sys.argv[1] if len(sys.argv) > 1 else None
     build_unified_index(index_id=index_id)
 
