@@ -1,411 +1,440 @@
-# RAG-for-Code Pipeline Design (FAISS + Graph)
+# RAG-for-Code Pipeline Design (FAISS + Graph + Router + History + Inheritance)
 
-This document describes the **conceptual pipeline** for answering developer questions like:
+This document defines a **clear, implementable** pipeline for answering developer questions against a real codebase (e.g., .NET + SQL), using:
 
-> “How are invoices implemented in the system?”
+- **FAISS semantic retrieval** (vector search),
+- **BM25 keyword retrieval** (inverted index),
+- **SemanticRerank** (FAISS widen + lightweight keyword rerank) *(implemented)*,
+- **HybridSearch** = Semantic + BM25 + **RRF** *(planned; not implemented yet)*,
+- a **dependency graph** produced by *RoslynIndexer* (nodes + edges),
+- a **router/planner** model call that selects retrieval mode,
+- **conversation history** load + summarization,
+- **token budgeting** + summarization when limits are exceeded,
+- **YAML pipeline inheritance** to avoid copy-paste.
 
-The goal is to **combine FAISS-based retrieval with a code/database graph (RoslynIndexer)** in a controlled way:
-
-- FAISS is used to **find entry points** and to fetch **concrete text** for known nodes.
-- The **graph** is used to **walk dependencies** and reconstruct how a feature is actually implemented.
-
-Implementation details (YAML, Python, prompt wiring) are intentionally omitted here.  
-This is a **behavior / logic spec** for the pipeline.
-
----
-
-## 0. Inputs and Assumptions
-
-For each user request we assume:
-
-- `UserQuestion` – the raw question from the user.
-- `IsEnglish` – a boolean flag:
-  - `True`  → `UserQuestion` is in English,
-  - `False` → `UserQuestion` is in another language (in our case: Polish).
-
-Additional internal state (not user-facing):
-
-- `UserQuestionEN` – normalized English version of the question.
-- `type` – the **intent** of the question, e.g. `"how_implemented"`, `"where_is"`, `"impact"`, `"bug"`, etc.
-- `domain` – the **technical domain** of the question:
-  - `"code"` – mainly about application code,
-  - `"db"` – mainly about database,
-  - `"mixed"` – both code and database.
-- `concepts` – main concepts/entities (e.g. `["invoice"]`).
-- `synonyms` – optional synonyms/related terms (`["invoice", "invoices", "faktura", "faktury", "billing document"]`).
-- A **code+DB graph** from RoslynIndexer (nodes and edges).
-- A **FAISS/hybrid index** over code/SQL artifacts.
+Core idea: **retrieval finds entry points; the graph explains structure; targeted lookups fetch exact bodies/snippets; summarizers keep everything within budgets.**
 
 ---
 
-## 1. Phase A – Question Normalization
+## 0. Terms and Data Model
 
-**Goal:** Have a single English question to drive the rest of the pipeline.
+### 0.1 User inputs (per request)
+- `UserQuestion` – raw question.
+- `IsEnglish` – boolean:
+  - `True`  → user asked in English,
+  - `False` → user asked in another language (e.g., Polish).
 
-**Step A.1 – Normalize to English**
+### 0.2 Pipeline settings (per pipeline / per repository)
+Minimum required settings:
 
-- If `IsEnglish == True`  
-  → `UserQuestionEN = UserQuestion`.
-- If `IsEnglish == False`  
-  → translate `UserQuestion` to English and store as `UserQuestionEN`.  
-    (Keep the original for final answer translation.)
+- `repository` – repository/project name, e.g. `"nopCommerce"`.
+- `active_index` – which built index to use, e.g. `"2025-12-14_develop"`.
+- `model_language` – model language for prompts (typically `"en"`).
+- `entry_step_id` – **deterministic start step** for the pipeline (see §10).
 
-No language detection is performed – the caller decides via `IsEnglish`.
+Token budgets:
 
----
+- `max_context_tokens` – max tokens for the **evidence context** injected into the ANSWER call
+  (retrieval hits + graph neighborhood + targeted node texts).
+- `max_history_tokens` – max tokens reserved for **conversation history** injected into router/answer prompts.
 
-## 2. Phase B – Understanding the Question
+Loop guard:
 
-**Goal:** Understand what the user is asking, before touching FAISS or the graph.
+- `max_turn_loops` – hard cap for follow-up iterations per user turn (typical: 3–5).
 
-### Step B.1 – Intent classification (`type`)
+Graph expansion defaults:
 
-From `UserQuestionEN` the model determines the **type of question**. Examples:
+- `graph_max_depth` – traversal depth (bounded).
+- `graph_max_nodes` – maximum nodes collected (bounded).
+- `graph_edge_allowlist` – allowed edge types for traversal.
 
-- `"how_implemented"` – “How is feature X implemented?”
-- `"where_is"` – “Where is function X defined?”
-- `"impact"` – “What breaks if we change X?”
-- `"bug"` – “Why does X fail?”  
-  etc.
+Targeted fetch limits:
 
-For example:
+- `node_text_fetch_top_n` – how many node bodies/snippets can be fetched by identity after graph expansion.
 
-> “How are invoices implemented in the system?”
+Retrieval mode availability:
 
-→ `type = "how_implemented"`.
+- `retrieval_modes` – list of modes the server supports (a capability list).
+  Example: `["semantic","bm25","hybrid","semantic_rerank"]`.
 
----
+History policy:
 
-### Step B.2 – Domain classification (`domain`)
-
-From `UserQuestionEN` the model determines the **technical domain**:
-
-- `domain = "code"` – question mainly about source code,
-- `domain = "db"` – question mainly about database schema / SQL,
-- `domain = "mixed"` – both code and database are relevant.
-
-Example:
-
-> “How are invoices implemented in the system?”
-
-→ `domain = "mixed"`  
-(because we expect invoice implementation across tables, entities, services, controllers, etc.).
+- `history_summarization_policy` – recommended: `"incremental_resummarize"` (see §2.2).
 
 ---
 
-### Step B.3 – Concept and synonyms (`concepts`, `synonyms`)
+## 1. Phase A — Question Normalization (Translate In)
 
-The model extracts the **core business/technical concept(s)**:
+**Goal:** downstream prompts operate on a stable English question, without backend language detection.
 
-- `concepts = ["invoice"]`
-- `synonyms` may include localized and related terms, e.g.:
-  - `["invoice", "invoices", "faktura", "faktury", "billing document"]`
+- If `IsEnglish == True` → `UserQuestionEN = UserQuestion`.
+- If `IsEnglish == False` → translate `UserQuestion` to English → `UserQuestionEN`.
+- Keep original user language to translate final output back if needed.
 
-At the end of Phase B we know:
-
-- What the user is asking about (`type`),
-- Which part of the system is involved (`domain`),
-- Which concept(s) to look for (`concepts` and `synonyms`).
-
-Still no FAISS and no graph traversal at this point.
+**Outputs:**
+- `UserQuestionEN`
+- `UserQuestionOriginal` (raw)
 
 ---
 
-## 3. Phase C – Decide if We Need Repository Context
+## 2. Phase B — Conversation History (Load + Summarize)
 
-**Goal:** Decide whether we can answer from general knowledge, or we must inspect the actual code/DB.
+### 2.1 Load history
+Load past conversation turns for this user/session:
+- user question + assistant answer, in chronological order.
 
-### Step C.1 – Can we answer without repository context?
+**Output:** `HistoryRaw` (list of turns)
 
-The model uses:
+### 2.2 Summarize history if needed (query-aware, incremental)
+If `HistoryRaw` exceeds `max_history_tokens` (after formatting for prompt injection):
 
-- `UserQuestionEN`,
-- `type`, `domain`, `concepts`,
-- and the conversation history
+- produce a `HistorySummary` that fits `max_history_tokens`,
+- summary must be **conditioned on `UserQuestionEN`** (keep what matters for this question).
 
-to decide:
+#### Rolling summary rule (must)
+Once history exceeds the limit and is summarized the first time:
 
-- If the question is **generic** (e.g. “What is an invoice in accounting?”),  
-  then an answer can be produced from general knowledge.
-- If the question is clearly about this **specific system**  
-  (e.g. “How are invoices implemented in the system?”),  
-  then we **cannot** answer reliably without repository context.
+1. Persist `HistorySummary` (and a pointer/version).
+2. In subsequent turns:
+   - inject `HistorySummary` + **only the newest raw turns since the summary**.
+3. If the injected history exceeds the budget again:
+   - **re-summarize** `HistorySummary + NewTurns` into a new `HistorySummary`.
+   - persist the updated summary and advance the pointer.
 
-For system-specific implementation questions (our main case):
+This guarantees history stays bounded and avoids repeatedly summarizing the entire raw log.
 
-- We **must** consult the code/DB,
-- So we move to planning retrieval.
-
----
-
-## 4. Phase D – Retrieval Plan (Before Any FAISS Call)
-
-**Goal:** Plan the retrieval strategy in terms of **what to search** and **how to use the graph**, before searching.
-
-Given `type = "how_implemented"` and `domain`:
-
-- If `domain = "code"`:
-  - Plan:
-    1. Find **entry points in code** for the given concept.
-    2. From these entry points, walk the **code graph** (services, controllers, DbContexts, methods, etc.).
-- If `domain = "db"`:
-  - Plan:
-    1. Find **entry points in DB** (tables, FKs, procedures).
-    2. From these entry points, walk the **DB graph** (tables, FKs, migrations, procedures, etc.).
-- If `domain = "mixed"` (our main scenario):
-  - Plan:
-    1. Find **code entry points** (entities, DbSets, services, controllers related to the concept).
-    2. Find **DB entry points** (tables, FKs, procedures related to the concept).
-    3. From these entry points, walk the combined **code+DB graph** to build a **local subgraph** (“the world of invoices”).
-    4. Answer using that subgraph.
-
-This is still planning – **no FAISS and no graph calls yet**.
+**Outputs:**
+- `HistoryForPrompt` – either:
+  - `HistorySummary (+ new raw turns)` or
+  - `HistoryRaw` if it fits.
 
 ---
 
-## 5. Phase E – FAISS as Entry-Point Finder
+## 3. Phase C — Router / Planner (Model Call)
 
-**Goal:** Use FAISS **only** to find good entry points in code and DB, not to endlessly search.
+**Goal:** decide whether to skip retrieval (DIRECT) or do retrieval, and if retrieval: **which mode** and what query to run.
 
-### Step E.1 – Build internal FAISS queries
+### 3.1 Router output protocol (must)
+Router returns **exactly one line** with exactly one prefix:
 
-Based on `UserQuestionEN`, `domain`, `concepts`, and `synonyms`, we construct internal (non-user-facing) queries.
+- `[SEMANTIC:] <better semantic query>`
+- `[SEMANTIC_RERANK:] <better query (optionally with keyword hints)>`
+- `[BM25:] <keywords or keyword-style query>`
+- `[HYBRID:] <better hybrid query>`
+- `[DIRECT:] <empty or direct question>`
 
-If the plan includes code:
+### 3.2 Meaning of modes
+- `DIRECT` → answer from general knowledge (skip repo retrieval).
+- `SEMANTIC` → FAISS semantic retrieval (implemented).
+- `SEMANTIC_RERANK` → FAISS widen + keyword rerank (implemented).
+- `BM25` → keyword retrieval via BM25 artifacts (supported when artifacts exist).
+- `HYBRID` → **HybridSearch** = Semantic + BM25 + RRF (planned, not implemented yet).
 
-- `CodeEntryQuery` (example):
-
-  > "Where in the C# code is the *invoice* feature implemented?  
-  > Look for controllers, services, DbContexts and entities related to invoices  
-  > (invoice, invoices, faktura, faktury, billing document)."
-
-If the plan includes DB:
-
-- `DbEntryQuery` (example):
-
-  > "In the database schema, where is the concept *invoice* implemented?  
-  > Look for tables, foreign keys and stored procedures related to invoices  
-  > (invoice, invoices, faktura, faktury, billing document)."
-
-We may compute one or both, depending on `domain`.
+**Output:**
+- `RetrievalPlan` = `{ mode, query_or_keywords }`
 
 ---
 
-### Step E.2 – First FAISS search (code / db)
+## 4. Phase D — Execute Retrieval (Fetch More Context)
 
-We now perform **FAISS searches only for entry points**:
+**Goal:** retrieve candidate evidence and produce graph entry points.
 
-- If the plan includes code:
-  - Send `CodeEntryQuery` to the **code index**.
-  - Collect candidate chunks (classes, methods, DbSets, controllers).
-- If the plan includes DB:
-  - Send `DbEntryQuery` to the **SQL/DB index**.
-  - Collect candidate chunks (tables, FK definitions, procedures, migrations, etc.).
+### 4.1 SEMANTIC (implemented)
+- Run FAISS vector search using router query.
+- Return top-N chunks (with stable identifiers).
 
-From the retrieved chunks we extract **candidate graph nodes**, for example:
+### 4.2 SEMANTIC_RERANK (implemented)
+This is **not HybridSearch**. It is semantic retrieval with local reranking:
 
-- Code:
-  - `csharp:MyApp.Invoice|ENTITY`
-  - `csharp:MyApp.Data.AppDbContext|DBCONTEXT (DbSet<Invoice>)`
-  - `csharp:MyApp.InvoiceService|SERVICE`
-  - `csharp:MyApp.InvoiceController|CONTROLLER`
-- DB:
-  - `dbo.Invoice|TABLE`
-  - `dbo.InvoiceLine|TABLE`
-  - `dbo.Invoice_Create|PROC`
-  - `dbo.Invoice.CustomerId FK` → `FK_Invoice_Customer|FOREIGN_KEY`
+1. Run FAISS with a widened pool (example policy):
+   - `widen = max(50, top_k * 3)` (exact formula is an implementation detail).
+2. Compute keyword score on candidates (no extra index).
+3. Blend scores (example):
+   - `final = alpha * semantic_score + beta * keyword_score_norm`
+4. Sort by `final`, trim to `top_k`.
 
-These candidates are potential **entry points** in the graph.
+### 4.3 BM25 (supported when artifacts exist)
+- Run BM25 retrieval against the repository index.
 
----
+**If BM25 artifacts are missing**:
+- either fail fast with a clear error, **or**
+- fall back to `SEMANTIC` (policy decision; must be deterministic and logged).
 
-### Step E.3 – Evaluate the quality of entry points
+### 4.4 HYBRID (planned; not implemented yet)
+**HybridSearch = Semantic + BM25 fused by RRF (Reciprocal Rank Fusion)**
 
-**This is the decision point:**
+1. Run Semantic (FAISS) → ranked list `S`.
+2. Run BM25 → ranked list `B`.
+3. Fuse with RRF:
+   - each doc gets a combined score based on rank positions in `S` and `B`.
+4. Return fused top-N.
 
-> “Do we have good entry points?  
-> If yes → move to graph.  
-> If no → reformulate and query FAISS again.  
-> If still no → tell the user we can’t find the feature.”
-
-Criteria for **good** entry points (examples):
-
-- Names and types are clearly related to the concept:
-  - `Invoice`, `InvoiceLine`, `Billing`, `Faktura`, etc.
-- We have appropriate **node kinds**:
-  - For DB: TABLE, FOREIGN_KEY, PROC, MIGRATION.
-  - For code: ENTITY, DBSET, SERVICE, CONTROLLER, METHOD.
-- Entries are not dominated by:
-  - logs,
-  - test-only code,
-  - synthetic samples.
-
-If the candidates are weak, we allow **one or two iterations** of:
-
-- Ask the model to reformulate a more precise internal query, then
-- Re-run FAISS for entry points, then
-- Re-evaluate.
-
-If, after this limited number of attempts, we **still** do not find acceptable entry points:
-
-- We do **not** go to the graph.
-- We inform the user honestly that we cannot find a clear implementation trace for the concept in this repository (instead of hallucinating).
-
-If the candidates are acceptable:
-
-- We **stop using FAISS as global “finder”**,
-- We fix the list of entry-point nodes,
-- We move on to graph traversal.
+**Output (all modes):**
+- `RetrievedChunks` – list of retrieved evidence items.
+- `EntryCandidates` – normalized identifiers extracted from hits (chunk ids, node keys, file paths, etc.).
 
 ---
 
-## 6. Phase F – Graph Traversal as the Main Navigation
+## 5. Phase E — Graph Expansion (When to “Pull the Dependency Tree”)
 
-**Goal:** Once we have entry points, we use the graph to understand the implementation, not more FAISS loops.
+**Answer:** **immediately after retrieval**, before assembling the final context for the answer model.
 
-From now on, **the graph (RoslynIndexer output) is the main source of structure**.
-
-### Step F.1 – Initialize entry nodes in the graph
-
-We map the accepted candidates from Phase E to actual graph nodes, e.g.:
-
+### 5.1 Convert retrieval hits → graph entry nodes
+Map `EntryCandidates` to graph node keys (examples):
 - `dbo.Invoice|TABLE`
-- `dbo.InvoiceLine|TABLE`
-- `csharp:MyApp.Invoice|ENTITY`
-- `csharp:MyApp.Data.AppDbContext|DBCONTEXT`
-- `csharp:MyApp.InvoiceService|SERVICE`
-- `csharp:MyApp.InvoiceController|CONTROLLER`
+- `dbo.Invoice_Create|PROC`
+- `csharp:MyApp.InvoiceService|TYPE`
+- `csharp:MyApp.InvoiceController.SomeAction|METHOD`
 
-These form the **starting set** for graph traversal.
+**Output:** `EntryNodes`
 
----
+### 5.2 Walk the graph (bounded)
+Run bounded traversal around `EntryNodes`:
 
-### Step F.2 – Graph walk: build a local subgraph for the concept
+- depth ≤ `graph_max_depth`
+- nodes ≤ `graph_max_nodes`
+- edges restricted to `graph_edge_allowlist`
 
-We perform a **controlled graph walk** from each entry node, with depth and node-type limits.
+**Output:** `GraphNeighborhood` (subgraph relevant to the question)
 
-Examples:
+### 5.3 Targeted text fetch (recommended)
+Fetch concrete bodies/snippets for the most relevant nodes:
 
-- Database side:
-  - `TABLE` → outgoing and incoming `FOREIGN_KEY` edges → related `TABLE`s.
-  - `TABLE` → `MIGRATION` nodes that created or altered it.
-  - `TABLE` → `PROC` nodes that read/write this table.
-- Code side:
-  - `ENTITY`/`DBSET` → `DBCONTEXT`.
-  - `SERVICE`/`REPOSITORY` → `METHOD` nodes operating on `ENTITY/TABLE`.
-  - `CONTROLLER` → `ACTION` → `SERVICE`/`REPOSITORY`.
-- Inline SQL:
-  - `METHOD` → inline SQL usage → `TABLE`/`FOREIGN_KEY`.
+- stored procedure bodies
+- method bodies
+- migration summaries
+- key DDL fragments (or summaries)
 
-The traversal is bounded (e.g. a few hops, restricted node types) to avoid exploding the graph.
+This is a **lookup by identity** (node key → body/snippet), not global searching again.
 
-The result is a **subgraph** that represents the “world” of the concept (e.g. invoices): which tables, relations, entities, contexts, services, controllers, and procedures are connected.
+**Output:** `NodeTexts`
 
 ---
 
-### Step F.3 – Using FAISS again, but locally (optional)
+## 6. Phase F — Context Assembly + Token Budgeting
 
-After we know **which nodes** are relevant, we may still need **text**:
+### 6.1 Compose the evidence context (ContextPack)
+Typical inputs to the ANSWER model call:
 
-- procedure bodies,
-- method implementations,
-- migration details, etc.
+- `UserQuestionEN`
+- `HistoryForPrompt` (summary + recent turns)
+- `RetrievedChunks`
+- `GraphNeighborhood` (structured + compact)
+- `NodeTexts` (targeted snippets/bodies)
 
-At this stage we use FAISS (or other storage) **only in a targeted way**:
+**Note:** keep identifiers stable (node keys, file paths, object names).
 
-- “give me the text body of node X”,
-- “give me the snippet of file F, lines L–R, where node X is defined”.
+### 6.2 Check context budget for evidence
+If evidence context exceeds `max_context_tokens`:
 
-This is **not** another global search for “invoice”; it is a **lookup by identity** of known nodes from the graph.
+- summarize `RetrievedChunks + GraphNeighborhood + NodeTexts`
+- summary must be **query-aware** (conditioned on `UserQuestionEN`)
+- preserve stable identifiers (do not lose node keys)
 
-The subgraph + selected texts are combined into a **compact context** for the final answer.
+This summarization is itself a **model call** with a dedicated prompt.
 
----
-
-## 7. Phase G – Answer Generation
-
-**Goal:** Use the subgraph and supporting text to answer the original question.
-
-The model receives:
-
-- `UserQuestionEN`,
-- A structured representation of the subgraph (nodes and relationships),
-- A small set of text snippets (bodies of relevant methods/procedures/migrations, etc.).
-
-The answer should:
-
-1. Explain how the concept is implemented **in the database**:
-   - key tables,
-   - foreign keys,
-   - important procedures/migrations.
-2. Explain how the concept is implemented **in the code**:
-   - entities,
-   - DbContexts,
-   - services/repositories,
-   - controllers/actions.
-3. Describe the **flow**:
-   - from incoming request (controller),
-   - through services and DbContexts,
-   - to tables and back (including important FKs and dependent tables).
-
-If `IsEnglish == False`:
-
-- The final answer is translated back to the original language before returning to the user.
+**Output:**
+- `ComposedContextForAnswer` (raw or summarized)
 
 ---
 
-## 8. Phase H – Looping and Stopping Conditions
+## 7. Phase G — Specialist Answer (Model Call) + Follow-up Loop
 
-**Key rules for looping:**
+### 7.1 Answer output protocol (must)
+Answer call returns one of:
 
-1. **FAISS global search is limited to the entry-point phase (Phase E).**
-   - We allow at most a small number of attempts:
-     - initial entry queries,
-     - maybe 1–2 reformulation attempts.
-   - If we still don’t find good entry points:
-     - we stop and inform the user that the concept is not clearly present in the code/DB.
+- `[Answer:] ...` – final answer in English
+- `[Requesting data on:] ...` – a follow-up request to retrieve more evidence
 
-2. **Once we accept entry points and move to graph traversal (Phase F), the graph is the main navigation tool.**
-   - We do not start new global FAISS searches from scratch.
-   - We walk the graph around known nodes to understand the implementation.
+### 7.2 Looping rule (must)
+If output starts with `[Requesting data on:]`:
 
-3. **FAISS is allowed again only for targeted text retrieval (Phase F.3).**
-   - This is not concept-search; it is “bring me the body for known node X”.
+1. increment `turn_loop_counter`
+2. if `turn_loop_counter > max_turn_loops`:
+   - stop looping and finalize with a safe explanation (no hallucinations)
+3. else:
+   - run retrieval again (Phase D)
+   - expand graph again (Phase E)
+   - re-check budgets (Phase F)
+   - call answer again (Phase G)
 
-4. **Final answer is generated once we have:**
-   - a stable subgraph for the concept, and
-   - enough text snippets to illustrate the implementation.
-
-If, at any point during graph traversal or answer generation, the model detects that **critical pieces are missing** (e.g. no DB side found, or the concept appears only in partial test code), it should:
-
-- explicitly mention these gaps in the answer,
-- rather than invent missing parts.
+**Output:**
+- `FinalAnswerEN` or a safe finalization
 
 ---
 
-## 9. Summary
+## 8. Phase H — Translate Out + Persist Turn
 
-- **FAISS** is used:
-  - to find **entry points** (code/DB nodes related to the concept),
-  - and later to fetch **text for known nodes**.
-- The **graph** is used:
-  - to follow **relationships and data flow** between these nodes,
-  - to build a **local subgraph** that reflects how the feature is actually implemented.
+### 8.1 Translate out
+If `IsEnglish == False`, translate `FinalAnswerEN` back to user language.
 
-The pipeline is structured in clear phases:
+### 8.2 Persist history
+Persist the completed turn:
+- user question (raw + EN version)
+- assistant answer (EN + translated if needed)
 
-1. Normalize the question to English (using the `IsEnglish` flag).
-2. Understand intent (`type`), domain (`domain`), and concepts (`concepts`, `synonyms`).
-3. Decide whether repository context is required.
-4. Plan retrieval strategy (code, DB, mixed).
-5. Use FAISS **once or twice** to find good entry points; if that fails, stop.
-6. Use the graph to walk dependencies and build a subgraph for the concept.
-7. Use FAISS only for targeted node-text retrieval.
-8. Generate a structured answer for the user, with optional translation back to the original language.
+Persist summary state:
+- if `HistorySummary` exists, keep pointer/version and "new turns since summary" counters.
 
-This design ensures that:
+---
 
-- The model does **not** endlessly loop on FAISS,
-- The **graph** is the primary tool for understanding implementation,
-- Repository-specific answers are grounded in actual code and database structure,
-- And limitations (missing entry points, incomplete coverage) are visible and communicated.
+## 9. Retrieval Modes Summary (Current vs Planned)
+
+Implemented:
+- **SEMANTIC** → FAISS only
+- **SEMANTIC_RERANK** → FAISS widen + keyword rerank
+
+Supported (when artifacts exist):
+- **BM25** → BM25 inverted index retrieval
+
+Planned (not implemented yet):
+- **HYBRID** → **HybridSearch** = Semantic + BM25 + RRF
+
+No retrieval:
+- **DIRECT** → general knowledge answer
+
+---
+
+## 10. YAML Execution Model (Deterministic Pipeline)
+
+### 10.1 Step graph (recommended contract)
+Each step is a node in a directed execution graph:
+
+- `id` (unique)
+- `action`
+- deterministic transition:
+  - either `next: <step_id>` **or**
+  - conditional transitions (e.g. `on_ok`, `on_over_limit`, `on_semantic`, ...)
+
+**Rule:**
+- every step must deterministically choose the next step based on its outputs,
+- only the entry selection is defined globally via `settings.entry_step_id`.
+
+### 10.2 Required generic actions (by responsibility)
+- `translate_in_if_needed`
+- `load_conversation_history`
+- `check_context_budget` (budget gate)
+- `call_model` (router, summarizers, answer)
+- `handle_prefix` (router prefixes, answer/follow-up prefixes)
+- `fetch_more_context` (per retrieval mode)
+- `expand_dependency_tree` (graph traversal)
+- `fetch_node_texts` (targeted lookup by identity)
+- `loop_guard` (enforce `max_turn_loops`)
+- `persist_turn_and_finalize`
+- `finalize` (translate out + UI formatting)
+
+---
+
+## 11. YAML Inheritance (“extends”) — Exact Rules
+
+Inheritance is used to avoid duplicating a pipeline when only a few settings change (e.g., different repository/index).
+
+### 11.1 Syntax
+```yaml
+pipeline:
+  name: rejewski_code_analysis_nopCommerce_develop
+  extends: rejewski_code_analysis_base
+  settings:
+    repository: "nopCommerce"
+    active_index: "2025-12-14_develop"
+```
+
+### 11.2 Merge algorithm (must, simple and deterministic)
+
+Given a `child` pipeline and a `parent` pipeline (resolved from `extends`):
+
+#### A) `settings` merge
+- perform a **deep merge** (dictionary merge):
+  - if a key exists only in parent → keep parent value
+  - if a key exists in child → child **overrides** parent
+  - nested dictionaries are merged recursively
+
+#### B) `steps` merge (your rule)
+Steps are merged **by `id`**:
+
+- If child defines a step with a **new `id`** → it is **added**.
+- If child defines a step with an `id` that already exists in parent → it **overrides** the parent step (replacement).
+
+**Ordering:**
+- YAML list order is only for readability, not execution.
+- Execution is determined by `next`/branches, starting at `entry_step_id`.
+
+#### C) `entry_step_id`
+- execution starts from `settings.entry_step_id` after inheritance merge.
+
+### 11.3 Multiple inheritance levels
+- A pipeline may extend another pipeline that itself extends a base pipeline.
+- Resolution order must be deterministic: resolve from root parent → … → child, applying merges in sequence.
+
+### 11.4 Validation (must)
+After merge:
+- `entry_step_id` must exist and point to a defined step
+- every referenced `next`/branch step id must exist
+- (recommended) detect unreachable steps and report warnings/errors
+
+---
+
+## 12. Practical rules (“don’t search forever”)
+
+1. Use retrieval to find **entry points**.
+2. Pull the dependency tree via the graph **right after retrieval**.
+3. Use targeted lookups to fetch missing bodies/snippets.
+4. If entry points remain weak after 1–2 attempts, stop and be explicit (no hallucinations).
+5. Always enforce `max_turn_loops`.
+
+---
+
+## 13. Implementation checklist (what must exist in code)
+
+To implement this spec cleanly, the runtime needs:
+
+- Pipeline loader:
+  - parse YAML
+  - resolve `extends`
+  - merge settings + steps (rules above)
+  - validate determinism (entry step, transitions)
+
+- Execution engine:
+  - pipeline state storage (question, history, plan, context, counters)
+  - step dispatcher (action → function)
+  - transition resolver (next/branch)
+  - loop counter + guard
+
+- History store:
+  - append turns
+  - fetch turns by session/user id
+  - store and reuse `HistorySummary` + pointer/version
+  - incremental re-summarize when needed
+
+- Retrieval providers:
+  - FAISS semantic
+  - BM25 keyword
+  - SemanticRerank (implemented)
+  - HybridSearch (planned)
+
+- Graph provider:
+  - load RoslynIndexer artifacts
+  - expand bounded neighborhood
+  - map chunk hits to node keys
+  - targeted body/snippet lookup by identity
+
+- Summarizers:
+  - history summarizer prompt (query-aware)
+  - evidence/context summarizer prompt (query-aware, identifier-preserving)
+
+---
+
+## Appendix A — Reference prefixes
+
+Router prefixes:
+- `[SEMANTIC:]`
+- `[SEMANTIC_RERANK:]`
+- `[BM25:]`
+- `[HYBRID:]`
+- `[DIRECT:]`
+
+Answer prefixes:
+- `[Answer:]`
+- `[Requesting data on:]`
+
+These must be parsed strictly and treated as protocol markers, not user-visible content.

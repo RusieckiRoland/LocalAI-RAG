@@ -97,3 +97,5 @@ vector_indexes/**
 
 # Never version anything under repositories/
 repositories/
+
+rag_dump_*.txt
