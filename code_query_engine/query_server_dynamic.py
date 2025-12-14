@@ -9,7 +9,7 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 from sentence_transformers import SentenceTransformer
 
-from common.hybrid_search import HybridSearch
+from common.semantic_keyword_rerank_search import SemanticKeywordRerankSearch
 from common.utils import parse_bool
 from common.search_engine import index, metadata, chunks, dependencies
 from common.markdown_translator_en_pl import MarkdownTranslator
@@ -146,7 +146,7 @@ markdown_translator = MarkdownTranslator(MODEL_TRANSLATION_EN_PL)
 translator_pl_en = Translator(model_name="Helsinki-NLP/opus-mt-pl-en")
 logger = InteractionLogger.instance()
 
-searcher = HybridSearch(
+searcher = SemanticKeywordRerankSearch(
     index=index,
     metadata=metadata,
     chunks=chunks,

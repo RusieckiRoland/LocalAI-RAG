@@ -3,7 +3,7 @@ import re
 from typing import Any, Dict, List, Optional
 
 
-class HybridSearch:
+class SemanticKeywordRerankSearch:
     def __init__(
         self,
         *,

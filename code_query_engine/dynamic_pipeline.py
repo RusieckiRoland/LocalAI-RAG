@@ -3,7 +3,7 @@ from typing import Any, Dict, List, Optional
 
 import yaml  # pip install pyyaml
 
-from common.hybrid_search import HybridSearch
+from common.semantic_keyword_rerank_search import SemanticKeywordRerankSearch
 from common.utils import extract_followup
 from common.markdown_translator_en_pl import MarkdownTranslator
 from common.translator_pl_en import Translator
@@ -26,7 +26,7 @@ class PipelineContext:
         *,
         translate_chat: bool,
         main_model: Model,
-        searcher: HybridSearch,
+        searcher: SemanticKeywordRerankSearch,
         markdown_translator: MarkdownTranslator,
         translator_pl_en: Translator,
         history_manager: HistoryManager,
@@ -63,7 +63,7 @@ class DynamicPipelineRunner:
         self,
         pipelines_dir: str,
         main_model: Model,
-        searcher: HybridSearch,
+        searcher: SemanticKeywordRerankSearch,
         markdown_translator: MarkdownTranslator,
         translator_pl_en: Translator,
         logger: InteractionLogger,

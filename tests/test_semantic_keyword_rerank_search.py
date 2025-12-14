@@ -1,9 +1,8 @@
-# File: tests/test_hybrid_search.py
 import pytest
 import numpy as np
 from unittest.mock import MagicMock
 
-from common.hybrid_search import HybridSearch
+from common.semantic_keyword_rerank_search import SemanticKeywordRerankSearch
 
 
 @pytest.fixture
@@ -59,9 +58,9 @@ def sample_dependencies():
 
 
 @pytest.fixture
-def hybrid_search(mock_faiss_index, mock_embed_model, sample_metadata, sample_chunks, sample_dependencies):
+def search_engine(mock_faiss_index, mock_embed_model, sample_metadata, sample_chunks, sample_dependencies):
     """Fully mocked HybridSearch – no disk, no GPU."""
-    return HybridSearch(
+    return SemanticKeywordRerankSearch(
         index=mock_faiss_index,
         metadata=sample_metadata,
         chunks=sample_chunks,
@@ -75,9 +74,9 @@ def hybrid_search(mock_faiss_index, mock_embed_model, sample_metadata, sample_ch
 # --------------------------------------------------------------------------- #
 
 @pytest.mark.unit
-def test_embedding_search_returns_top_k_results(hybrid_search):
+def test_embedding_search_returns_top_k_results(search_engine):
     """Top-k results from vector similarity."""
-    results = hybrid_search._embedding_search(query="add numbers", k=1)
+    results = search_engine._embedding_search(query="add numbers", k=1)
     assert len(results) == 1
     assert results[0]["Rank"] == 1
     assert results[0]["File"] == "src/Calculator.cs"
@@ -85,9 +84,9 @@ def test_embedding_search_returns_top_k_results(hybrid_search):
 
 
 @pytest.mark.unit
-def test_embedding_search_includes_dependency_chunks(hybrid_search):
+def test_embedding_search_includes_dependency_chunks(search_engine):
     """Related chunks from dependency graph are attached."""
-    results = hybrid_search._embedding_search(query="calc", k=1)
+    results = search_engine._embedding_search(query="calc", k=1)
     related = results[0]["Related"]
     assert len(related) == 1
     assert related[0]["File"] == "dbo/usp_GetReport.sql"
@@ -99,52 +98,52 @@ def test_embedding_search_includes_dependency_chunks(hybrid_search):
 # --------------------------------------------------------------------------- #
 
 @pytest.mark.unit
-def test_keyword_search_empty_query_returns_nothing(hybrid_search):
+def test_keyword_search_empty_query_returns_nothing(search_engine):
     """Empty query yields no results."""
-    assert hybrid_search._keyword_search("", top_k=5) == []
+    assert search_engine._keyword_search("", top_k=5) == []
 
 
 @pytest.mark.unit
-def test_keyword_search_requires_all_tokens(hybrid_search):
+def test_keyword_search_requires_all_tokens(search_engine):
     """All tokens must appear in chunk."""
-    results = hybrid_search._keyword_search("SELECT Year", top_k=5)
+    results = search_engine._keyword_search("SELECT Year", top_k=5)
     assert len(results) == 1
     assert results[0]["File"] == "dbo/usp_GetReport.sql"
 
 
 @pytest.mark.unit
-def test_keyword_search_ranks_by_frequency(hybrid_search):
+def test_keyword_search_ranks_by_frequency(search_engine):
     """Higher token count = higher rank."""
-    hybrid_search.chunks[0]["Text"] = "SELECT SELECT SELECT"
-    results = hybrid_search._keyword_search("SELECT", top_k=2)
-    assert results[0]["File"] == hybrid_search.chunks[0]["File"]
+    search_engine.chunks[0]["Text"] = "SELECT SELECT SELECT"
+    results = search_engine._keyword_search("SELECT", top_k=2)
+    assert results[0]["File"] == search_engine.chunks[0]["File"]
 
 
 # --------------------------------------------------------------------------- #
-# Hybrid search fusion
+# Rerank search fusion
 # --------------------------------------------------------------------------- #
 
 @pytest.mark.unit
-def test_search_combines_embedding_and_keyword_scores(hybrid_search, mocker):
-    """Hybrid score merges semantic and keyword signals."""
-    hybrid_search.index.search.return_value = (
+def test_search_combines_embedding_and_keyword_scores(search_engine, mocker):
+    """Reranked score merges semantic and keyword signals."""
+    search_engine.index.search.return_value = (
         np.array([[0.1, 0.9]], dtype=np.float32),
         np.array([[0, 1]], dtype=np.int64),
     )
-    results = hybrid_search.search("Add SELECT", top_k=2, widen=10)
+    results = search_engine.search("Add SELECT", top_k=2, widen=10)
     assert len(results) == 2
     assert results[0]["File"] == "src/Calculator.cs"
     assert results[1]["File"] == "dbo/usp_GetReport.sql"
 
 
 @pytest.mark.unit
-def test_search_respects_alpha_beta_weighting(hybrid_search, mocker):
+def test_search_respects_alpha_beta_weighting(search_engine, mocker):
     """Alpha/beta control embedding vs keyword influence."""
-    hybrid_search.index.search.return_value = (
+    search_engine.index.search.return_value = (
         np.array([[0.0, 0.99]], dtype=np.float32),
         np.array([[0, 1]], dtype=np.int64),
     )
     # Pure embedding
-    assert hybrid_search.search("irrelevant", top_k=1, alpha=1.0, beta=0.0)[0]["File"] == "src/Calculator.cs"
+    assert search_engine.search("irrelevant", top_k=1, alpha=1.0, beta=0.0)[0]["File"] == "src/Calculator.cs"
     # Pure keyword
-    assert hybrid_search.search("SELECT", top_k=1, alpha=0.0, beta=1.0)[0]["File"] == "dbo/usp_GetReport.sql"
+    assert search_engine.search("SELECT", top_k=1, alpha=0.0, beta=1.0)[0]["File"] == "dbo/usp_GetReport.sql"
