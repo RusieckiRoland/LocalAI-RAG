@@ -372,7 +372,7 @@ function selectConsultant(name) {
 
 async function fetchBranch() {
   try {
-    const res = await fetch("http://localhost:5000/dynamic/branch");
+    const res = await fetch("http://localhost:5000/branch");
     if (!res.ok) throw new Error(`Błąd ${res.status}: ${await res.text()}`);
     const json = await res.json();
     document.querySelector("#branchInfo span").textContent = json.branch || "";
@@ -457,7 +457,7 @@ async function handleSubmit(e) {
   const body = { query: translatedQuery, consultant: selectedConsultant, translateChat: translate };
 
   try {
-    const res = await fetch("http://localhost:5000/dynamic/search", {
+    const res = await fetch("http://localhost:5000/search", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
