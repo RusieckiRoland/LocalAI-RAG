@@ -58,14 +58,12 @@ YAMLpipeline:
     loader = PipelineLoader(pipelines_root=str(pipelines_dir))
     pipeline = loader.load_from_path(str(child_yaml))
 
-    # settings deep-merge
     assert pipeline.settings["entry_step_id"] == "a"
     assert pipeline.settings["max_history_tokens"] == 250
     assert pipeline.settings["nested"]["x"] == 1
     assert pipeline.settings["nested"]["y"] == 999
     assert pipeline.settings["nested"]["z"] == 3
 
-    # steps merge by id: 'a' overridden, 'b' kept, 'c' appended (deterministic order)
     ids = [s.id for s in pipeline.steps]
     assert ids == ["a", "b", "c"]
     assert pipeline.steps_by_id()["a"].raw.get("next") == "c"

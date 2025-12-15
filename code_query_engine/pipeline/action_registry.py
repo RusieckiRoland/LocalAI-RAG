@@ -1,21 +1,7 @@
 # code_query_engine/pipeline/action_registry.py
 from __future__ import annotations
 
-from dataclasses import dataclass
 from typing import Dict
-
-from .actions.call_model import CallModelAction
-from .actions.handle_prefix import HandlePrefixAction
-from .actions.translate_in_if_needed import TranslateInIfNeededAction
-from .actions.load_conversation_history import LoadConversationHistoryAction
-from .actions.check_context_budget import CheckContextBudgetAction
-from .actions.fetch_more_context import FetchMoreContextAction
-from .actions.expand_dependency_tree import ExpandDependencyTreeAction
-from .actions.fetch_node_texts import FetchNodeTextsAction
-from .actions.loop_guard import LoopGuardAction
-from .actions.finalize_heuristic import FinalizeHeuristicAction
-from .actions.persist_turn_and_finalize import PersistTurnAndFinalizeAction
-from .actions.finalize import FinalizeAction
 
 
 class ActionRegistry:
@@ -40,8 +26,23 @@ class ActionRegistry:
 def build_default_action_registry() -> ActionRegistry:
     """
     Builder that wires all built-in actions.
-    This keeps the mapping in ONE place (clean + testable).
+    IMPORTANT: lazy imports here avoid circular imports:
+      engine -> action_registry -> actions -> engine
     """
+    # Lazy imports (MUST be inside the function)
+    from .actions.call_model import CallModelAction
+    from .actions.handle_prefix import HandlePrefixAction
+    from .actions.translate_in_if_needed import TranslateInIfNeededAction
+    from .actions.load_conversation_history import LoadConversationHistoryAction
+    from .actions.check_context_budget import CheckContextBudgetAction
+    from .actions.fetch_more_context import FetchMoreContextAction
+    from .actions.expand_dependency_tree import ExpandDependencyTreeAction
+    from .actions.fetch_node_texts import FetchNodeTextsAction
+    from .actions.loop_guard import LoopGuardAction
+    from .actions.finalize_heuristic import FinalizeHeuristicAction
+    from .actions.persist_turn_and_finalize import PersistTurnAndFinalizeAction
+    from .actions.finalize import FinalizeAction
+
     r = ActionRegistry()
 
     r.register("translate_in_if_needed", TranslateInIfNeededAction())
