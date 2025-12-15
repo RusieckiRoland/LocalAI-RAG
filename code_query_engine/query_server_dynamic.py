@@ -240,7 +240,7 @@ def dynamic_search() -> Any:
         }
     )
 
-
+@app.route("/branch", methods=["GET"])
 @app.route("/dynamic/branch", methods=["GET"])
 def dynamic_get_branch() -> Any:
     """Return configured branch name from config.json (dynamic server)."""
