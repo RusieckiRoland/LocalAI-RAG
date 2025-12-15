@@ -174,6 +174,7 @@ user_contexts: dict[str, list[str]] = {}
 # ==================
 
 @app.route("/dynamic/search", methods=["POST", "OPTIONS"])
+@app.route("/search", methods=["POST", "OPTIONS"])  # legacy alias -> YAML pipeline
 def dynamic_search() -> Any:
     """Search endpoint using YAML-driven dynamic pipeline."""
     if request.method == "OPTIONS":
