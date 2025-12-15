@@ -1,0 +1,147 @@
+# File: pipelines/base/marian_rejewski_code_analysis_base.yaml
+YAMLpipeline:
+  name: marian_rejewski_code_analysis_base
+
+  settings:
+    # Deterministic entry point
+    entry_step_id: maybe_translate_in
+
+    model_language: en
+
+    # Defaults (must be overridden in child pipeline)
+    repository: ""
+    active_index: ""
+
+    # Loop guard
+    max_turn_loops: 4
+
+    # Token budgets
+    max_context_tokens: 5000
+    max_history_tokens: 800
+
+    # Rolling summary policy
+    history_summarization_policy: "incremental_resummarize"
+
+    # Graph expansion defaults
+    graph_max_depth: 2
+    graph_max_nodes: 120
+    graph_edge_allowlist:
+      - "ReadsFrom"
+      - "WritesTo"
+      - "Calls"
+      - "Executes"
+      - "FK"
+      - "On"
+      - "SynonymFor"
+      - "ReferencedBy(C#)"
+
+    # How many node texts/snippets we can fetch by identity after expansion
+    node_text_fetch_top_n: 12
+
+    # Retrieval modes supported by the system
+    retrieval_modes:
+      - semantic
+      - bm25
+      - hybrid
+      - semantic_rerank
+
+  steps:
+    - id: maybe_translate_in
+      action: translate_in_if_needed
+      next: load_history
+
+    - id: load_history
+      action: load_conversation_history
+      next: check_history_budget
+
+    - id: check_history_budget
+      action: check_context_budget
+      input: history_for_prompt
+      max_tokens_from_settings: "max_history_tokens"
+      on_over_limit: call_model_summarize_history
+      on_ok: call_model_router
+
+    - id: call_model_summarize_history
+      action: call_model
+      prompt_key: "rejewski_history_summarizer_v1"
+      next: call_model_router
+
+    - id: call_model_router
+      action: call_model
+      prompt_key: "rejewski_router_v1"
+      next: handle_router_prefix
+
+    - id: handle_router_prefix
+      action: handle_prefix
+      semantic_prefix: "[SEMANTIC:]"
+      bm25_prefix: "[BM25:]"
+      hybrid_prefix: "[HYBRID:]"
+      semantic_rerank_prefix: "[SEMANTIC_RERANK:]"
+      direct_prefix: "[DIRECT:]"
+      on_semantic: fetch_more_context
+      on_bm25: fetch_more_context
+      on_hybrid: fetch_more_context
+      on_semantic_rerank: fetch_more_context
+      on_direct: call_model_answer
+      on_other: call_model_answer
+
+    - id: fetch_more_context
+      action: fetch_more_context
+      next: expand_dependency_tree
+
+    - id: expand_dependency_tree
+      action: expand_dependency_tree
+      repository_from_settings: true
+      active_index_from_settings: true
+      max_depth_from_settings: "graph_max_depth"
+      max_nodes_from_settings: "graph_max_nodes"
+      edge_allowlist_from_settings: "graph_edge_allowlist"
+      next: fetch_node_texts
+
+    - id: fetch_node_texts
+      action: fetch_node_texts
+      top_n_from_settings: "node_text_fetch_top_n"
+      next: check_context_budget
+
+    - id: check_context_budget
+      action: check_context_budget
+      input: composed_context_for_prompt
+      max_tokens_from_settings: "max_context_tokens"
+      on_over_limit: call_model_summarize_context
+      on_ok: call_model_answer
+
+    - id: call_model_summarize_context
+      action: call_model
+      prompt_key: "rejewski_summarizer_v1"
+      next: call_model_answer
+
+    - id: call_model_answer
+      action: call_model
+      prompt_key: "rejewski_answer_v1"
+      next: handle_answer_prefix
+
+    - id: handle_answer_prefix
+      action: handle_prefix
+      answer_prefix: "[Answer:]"
+      followup_prefix: "[Requesting data on:]"
+      on_answer: persist_turn_and_finalize
+      on_followup: loop_guard
+      on_other: finalize_heuristic
+
+    - id: loop_guard
+      action: loop_guard
+      max_turn_loops_from_settings: "max_turn_loops"
+      on_allow: fetch_more_context
+      on_deny: finalize_heuristic
+
+    - id: finalize_heuristic
+      action: finalize_heuristic
+      next: persist_turn_and_finalize
+
+    - id: persist_turn_and_finalize
+      action: persist_turn_and_finalize
+      next: finalize
+
+    - id: finalize
+      action: finalize
+      end: true
