@@ -19,7 +19,7 @@ def _match_prefix(text: str, prefix: str) -> Optional[str]:
 
 class HandlePrefixAction:
     def execute(self, step: StepDef, state: PipelineState, runtime: PipelineRuntime) -> Optional[str]:
-        response = state.last_model_response or ""
+        response = (state.last_model_response or "").strip().strip("\"'")
         raw = step.raw
 
         # Collect configured prefixes: <kind>_prefix and transitions: on_<kind>
