@@ -4,17 +4,15 @@ import re
 import uuid
 from typing import Any
 
-import torch
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-from sentence_transformers import SentenceTransformer
 
-from common.semantic_keyword_rerank_search import SemanticKeywordRerankSearch
 from common.utils import parse_bool
-from common.search_engine import index, metadata, chunks, dependencies
+from vector_db.unified_index_loader import load_unified_search
+from vector_search.unified_search import UnifiedSearchAdapter
+
 from common.markdown_translator_en_pl import MarkdownTranslator
 from common.translator_pl_en import Translator
-from history.history_manager import HistoryManager
 from history.mock_redis import InMemoryMockRedis
 from integrations.plant_uml.plantuml_check import add_plant_link
 from code_query_engine.model import Model
@@ -31,21 +29,18 @@ import constants
 os.environ["LLAMA_SET_ROWS"] = "1"
 script_dir = os.path.dirname(os.path.abspath(__file__))
 
-# Configuration
+# Configuration (config.json is one level above /code_query_engine)
 config_path = os.path.join(script_dir, "..", "config.json")
 with open(config_path, encoding="utf-8") as f:
     cfg = json.load(f)
 
 base_dir = os.path.abspath(os.path.join(script_dir, ".."))
 MODEL_PATH = os.path.join(base_dir, cfg["model_path_analysis"])
-EMBED_MODEL_PATH = os.path.join(base_dir, cfg["model_path_embd"])
 MODEL_TRANSLATION_EN_PL = os.path.join(base_dir, cfg["model_translation_en_pl"])
 
 branch_name = (cfg.get("branch") or "").strip()
 output_dir = cfg["output_dir"]
 branch_output_dir = os.path.join(output_dir, branch_name) if branch_name else output_dir
-
-METADATA_PATH = os.path.join(base_dir, branch_output_dir, "metadata.json")
 
 # Flask app (dynamic pipeline server)
 app = Flask(__name__)
@@ -53,18 +48,19 @@ app = Flask(__name__)
 # --- SECURITY ---
 secret_key = os.getenv("APP_SECRET_KEY")
 if not secret_key:
-    raise RuntimeError(
-        "Missing APP_SECRET_KEY environment variable. "
-        "For security reasons, the secret key must be provided via environment."
-    )
-app.secret_key = secret_key
+    # Server can run without it (dev), but warn loudly.
+    print("[query_server_dynamic] Warning: APP_SECRET_KEY is not set.")
+else:
+    app.secret_key = secret_key
+
+API_TOKEN = os.getenv("API_TOKEN")
 
 
-def _parse_env_list(var_name: str):
-    raw = os.getenv(var_name)
+def _parse_env_list(name: str) -> list[str]:
+    raw = (os.getenv(name) or "").strip()
     if not raw:
-        return None
-    return [item.strip() for item in raw.split(",") if item.strip()]
+        return []
+    return [x.strip() for x in raw.split(",") if x.strip()]
 
 
 ALLOWED_ORIGINS = _parse_env_list("ALLOWED_ORIGINS") or [
@@ -72,6 +68,7 @@ ALLOWED_ORIGINS = _parse_env_list("ALLOWED_ORIGINS") or [
     "http://127.0.0.1:8080",
     "null",
 ]
+
 CORS(
     app,
     supports_credentials=True,
@@ -80,7 +77,9 @@ CORS(
     allow_headers=["Content-Type", "X-Session-ID", "X-Auth-Token", "Authorization"],
 )
 
-API_TOKEN = os.getenv("API_TOKEN")
+# Limits (optional)
+MAX_QUERY_LEN = int(os.getenv("APP_MAX_QUERY_LEN", "8000"))
+MAX_FIELD_LEN = int(os.getenv("APP_MAX_FIELD_LEN", "128"))
 
 
 def _is_authorized(req) -> bool:
@@ -98,31 +97,30 @@ def _is_authorized(req) -> bool:
     return False
 
 
-# Input validation defaults
-MAX_QUERY_LEN = int(os.getenv("APP_MAX_QUERY_LEN", "8000"))
-MAX_FIELD_LEN = int(os.getenv("APP_MAX_FIELD_LEN", "128"))
-
-_CONTROL_CHARS_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f]")
+_SAFE_SLUG_RE = re.compile(r"^[A-Za-z0-9_.-]{1,128}$")
+_CONTROL_CHARS_RE = re.compile(r"[\x00-\x08\x0B\x0C\x0E-\x1F]")
 
 
 def _has_disallowed_control_chars(s: str) -> bool:
-    """Return True if string contains dangerous control chars."""
-    return bool(_CONTROL_CHARS_RE.search(s))
+    return bool(_CONTROL_CHARS_RE.search(s or ""))
 
 
-_SAFE_SLUG_RE = re.compile(r"^[\w\-.]{1,128}$", re.UNICODE)
-
-
-def _sanitize_or_default(text: str, default: str, max_len: int = MAX_FIELD_LEN) -> str:
-    """Sanitize simple slug-like values (consultant, branch, etc.)."""
-    text = (text or "").strip()
-    if not text or len(text) > max_len or not _SAFE_SLUG_RE.match(text):
+def _sanitize_or_default(value: str, default: str) -> str:
+    v = (value or "").strip()
+    if not v:
         return default
-    return text
+    if len(v) > MAX_FIELD_LEN:
+        return default
+    if _SAFE_SLUG_RE.match(v):
+        return v
+    return default
 
 
-def _valid_session_id(value: str) -> str:
-    """Validate session id or generate a new UUID."""
+def _valid_session_id(value: str | None) -> str:
+    """
+    If client does not send X-Session-ID, we generate one.
+    IMPORTANT: client must persist and resend it, otherwise history will reset.
+    """
     v = (value or "").strip()
     if _SAFE_SLUG_RE.match(v):
         return v
@@ -137,22 +135,15 @@ def _valid_session_id(value: str) -> str:
 #  MODELS / RAG
 # ==============
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
 mock_redis = InMemoryMockRedis()
 main_model = Model(MODEL_PATH)
-embed_model = SentenceTransformer(EMBED_MODEL_PATH).to(device)
 markdown_translator = MarkdownTranslator(MODEL_TRANSLATION_EN_PL)
 translator_pl_en = Translator(model_name="Helsinki-NLP/opus-mt-pl-en")
 logger = InteractionLogger.instance()
 
-searcher = SemanticKeywordRerankSearch(
-    index=index,
-    metadata=metadata,
-    chunks=chunks,
-    dependencies=dependencies,
-    embed_model=embed_model,
-)
+# Unified index loader (FAISS + metadata)
+unified_search = load_unified_search()
+searcher = UnifiedSearchAdapter(unified_search)
 
 # Dynamic pipeline runner based on YAML
 pipelines_dir = os.path.join(base_dir, "pipelines")
@@ -166,17 +157,17 @@ dynamic_runner = DynamicPipelineRunner(
 )
 
 # Session memory (future use)
-user_contexts: dict[str, list[str]] = {}
+user_contexts: dict[str, list[dict[str, Any]]] = {}
 
 
 # ==================
-#   API ENDPOINTS
+#  ENDPOINTS
 # ==================
 
+@app.route("/search", methods=["POST", "OPTIONS"])
 @app.route("/dynamic/search", methods=["POST", "OPTIONS"])
-@app.route("/search", methods=["POST", "OPTIONS"])  # legacy alias -> YAML pipeline
 def dynamic_search() -> Any:
-    """Search endpoint using YAML-driven dynamic pipeline."""
+    """Main RAG endpoint (canonical: /search). /dynamic/search is an alias."""
     if request.method == "OPTIONS":
         return ("", 204)
 
@@ -184,8 +175,8 @@ def dynamic_search() -> Any:
         return jsonify({"error": "Unauthorized"}), 401
 
     body = request.get_json(silent=True) or {}
-
     original_query = body.get("query")
+
     if original_query is None:
         return jsonify({"error": "Query cannot be empty."}), 400
     if not isinstance(original_query, str):
@@ -219,35 +210,37 @@ def dynamic_search() -> Any:
             mock_redis=mock_redis,
         )
     except FileNotFoundError as fnf:
-        return jsonify(
-            {"error": "Pipeline not found for consultant.", "details": str(fnf)}
-        ), 400
+        return jsonify({"error": "Pipeline not found for consultant.", "details": str(fnf)}), 400
     except Exception as ex:
-        return jsonify(
-            {"error": "Internal error during search.", "details": str(ex)}
-        ), 500
+        return jsonify({"error": "Internal error during search.", "details": str(ex)}), 500
 
-    if consultant == constants.UML_CONSULTANT:
+    # NOTE: pipeline already decides translation behavior for most flows;
+    # keep this only if your pipeline returns EN answers when translateChat=true.
+    if translate_chat and consultant != constants.UML_CONSULTANT and isinstance(result, str) and result:
+        result = markdown_translator.translate_markdown(result)
+
+    if consultant == constants.UML_CONSULTANT and isinstance(result, str):
         result = add_plant_link(result, consultant)
 
     return jsonify(
         {
             "results": result,
-            "session_id": session_id,
             "translated": model_input_en,
             "query_type": query_type,
+            "session_id": session_id,
             "steps_used": steps_used,
         }
     )
 
+
 @app.route("/branch", methods=["GET"])
 @app.route("/dynamic/branch", methods=["GET"])
 def dynamic_get_branch() -> Any:
-    """Return configured branch name from config.json (dynamic server)."""
+    """Return configured branch name from config.json (canonical: /branch)."""
     return jsonify({"branch": cfg.get("branch", "")})
 
 
 if __name__ == "__main__":
     host = os.getenv("APP_HOST", "0.0.0.0")
-    port = int(os.getenv("APP_PORT", "5001"))  
+    port = int(os.getenv("APP_PORT", "5001"))
     app.run(host=host, port=port)

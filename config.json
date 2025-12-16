@@ -9,8 +9,8 @@
   "plantuml_server" : "http://localhost:8080",
   "branch":"develop",
   
-  "vector_indexes_root": "vector_indexes",
-  "active_index_id": "nop_main_index",
+  "vector_indexes_root": "repositories/nopCommerce/indexes",
+  "active_index_id": "2025-12-14__develop",
   "repo_name": "nopCommerce"
 }
 
