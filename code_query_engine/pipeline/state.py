@@ -7,7 +7,7 @@ from typing import Any, Dict, List, Optional, Set
 
 @dataclass
 class PipelineState:
-    # Request identity
+    # Request identity (EXPECTED BY TESTS)
     user_query: str
     session_id: str
     consultant: str
@@ -25,6 +25,10 @@ class PipelineState:
     router_raw: Optional[str] = None
     retrieval_mode: Optional[str] = None
     retrieval_query: Optional[str] = None
+
+    # NEW (safe extensions for routing/filters; won't break existing tests)
+    retrieval_scope: Optional[str] = None  # CS | SQL | ANY
+    retrieval_filters: Dict[str, Any] = field(default_factory=dict)  # soft filters (e.g. data_type)
 
     # Retrieval / evidence
     context_blocks: List[str] = field(default_factory=list)  # evidence blocks appended
