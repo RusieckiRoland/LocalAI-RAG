@@ -3,9 +3,7 @@ YAMLpipeline:
   name: marian_rejewski_code_analysis_base
 
   settings:
-    # Deterministic entry point
     entry_step_id: maybe_translate_in
-
     model_language: en
 
     # Defaults (must be overridden in child pipeline)
@@ -63,12 +61,12 @@ YAMLpipeline:
 
     - id: call_model_summarize_history
       action: call_model
-      prompt_key: "rejewski_history_summarizer_v1"
+      prompt_key: "rejewski/history_summarizer_v1"
       next: call_model_router
 
     - id: call_model_router
       action: call_model
-      prompt_key: "rejewski_router_v1"
+      prompt_key: "rejewski/router_v1"
       next: handle_router_prefix
 
     - id: handle_router_prefix
@@ -112,12 +110,12 @@ YAMLpipeline:
 
     - id: call_model_summarize_context
       action: call_model
-      prompt_key: "rejewski_summarizer_v1"
+      prompt_key: "rejewski/context_summarizer_v1"
       next: call_model_answer
 
     - id: call_model_answer
       action: call_model
-      prompt_key: "rejewski_answer_v1"
+      prompt_key: "rejewski/answer_v1"
       next: handle_answer_prefix
 
     - id: handle_answer_prefix

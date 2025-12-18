@@ -1,0 +1,12 @@
+# File: pipelines/rejewski_assesment.yaml
+YAMLpipeline:
+  name: marian_rejewski_code_analysis_nopCommerce_develop_assesment
+
+  extends: ./base/marian_rejewski_code_analysis_assesment_base.yaml
+
+  settings:
+    repository: "nopCommerce"
+    active_index: "2025-12-14_develop"
+
+    entry_step_id: maybe_translate_in
+    model_language: en

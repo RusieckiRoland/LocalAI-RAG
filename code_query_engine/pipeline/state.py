@@ -14,52 +14,63 @@ class PipelineState:
     branch: str
     translate_chat: bool
 
-    # Language / normalization
+    # Translation
     user_question_en: Optional[str] = None
 
-    # History
+    # History (from HistoryManager)
     history_blocks: List[str] = field(default_factory=list)
     history_summary: Optional[str] = None
 
-    # Router decision
+    # Retrieved evidence (from vector/graph search)
+    context_blocks: List[str] = field(default_factory=list)
+
+    # Router / retrieval fields
     router_raw: Optional[str] = None
-    retrieval_mode: Optional[str] = None
+    retrieval_mode: Optional[str] = None  # semantic / bm25 / hybrid / semantic_rerank
+    retrieval_scope: Optional[str] = None  # CS / SQL / ANY
     retrieval_query: Optional[str] = None
+    retrieval_filters: Dict[str, Any] = field(default_factory=dict)
 
-    # NEW (safe extensions for routing/filters; won't break existing tests)
-    retrieval_scope: Optional[str] = None  # CS | SQL | ANY
-    retrieval_filters: Dict[str, Any] = field(default_factory=dict)  # soft filters (e.g. data_type)
-
-    # Retrieval / evidence
-    context_blocks: List[str] = field(default_factory=list)  # evidence blocks appended
-    used_followups: Set[str] = field(default_factory=set)
-
-    # Follow-up loop
-    turn_loop_counter: int = 0
-    followup_query: Optional[str] = None
-
-    # Model I/O
-    last_model_response: Optional[str] = None
-
-    # Final answer
+    # Answer + followup (simple pipeline)
     answer_en: Optional[str] = None
     answer_pl: Optional[str] = None
     final_answer: Optional[str] = None
+    followup_query: Optional[str] = None
+    query_type: Optional[str] = None
 
-    # Logging / diagnostics
-    query_type: str = "unknown"
+    # Assessment pipeline: draft answer (kept OUTSIDE history/evidence on purpose)
+    draft_answer_en: Optional[str] = None
+
+    # Loop guard helpers
+    used_followups: Set[str] = field(default_factory=set)
+    turn_loop_counter: int = 0
+
+    # Debug / telemetry
     steps_used: int = 0
     next_codellama_prompt: Optional[str] = None
     budget_debug: Dict[str, Any] = field(default_factory=dict)
 
+    # Raw last output from model (whatever the last call produced)
+    last_model_response: Optional[str] = None
+
     def model_input_en_or_fallback(self) -> str:
-        return self.user_question_en or self.user_query
+        return (self.user_question_en or self.user_query or "").strip()
 
     def history_for_prompt(self) -> str:
         blocks = list(self.history_blocks)
-        if self.history_summary:
-            blocks = [f"[HistorySummary]\n{self.history_summary}"] + blocks
+        if self.history_summary and self.history_summary.strip():
+            blocks = [f"[HistorySummary]\n{self.history_summary.strip()}"] + blocks
         return "\n---\n".join([b for b in blocks if (b or "").strip()])
 
     def composed_context_for_prompt(self) -> str:
         return "\n---\n".join([b for b in self.context_blocks if (b or "").strip()])
+
+    def answer_context_for_prompt(self) -> str:
+        history = self.history_for_prompt().strip() or "(none)"
+        evidence = self.composed_context_for_prompt().strip() or "(none)"
+        return f"### History:\n{history}\n\n### Evidence:\n{evidence}"
+
+    def assessor_context_for_prompt(self) -> str:
+        base = self.answer_context_for_prompt()
+        draft = (self.draft_answer_en or "").strip() or "(none)"
+        return f"{base}\n\n### DraftAnswer:\n{draft}"

@@ -10,11 +10,13 @@ from ..engine import PipelineRuntime
 
 class PersistTurnAndFinalizeAction:
     def execute(self, step: StepDef, state: PipelineState, runtime: PipelineRuntime) -> Optional[str]:
-        # Log the interaction (same shape as current InteractionLogger)
+        # In the assessment pipeline, the last model response may be the assessor routing line.
+        codellama_response = state.draft_answer_en or state.last_model_response or ""
+
         runtime.logger.log_interaction(
             original_question=state.user_query,
             model_input_en=state.model_input_en_or_fallback(),
-            codellama_response=state.last_model_response or "",
+            codellama_response=codellama_response,
             followup_query=state.followup_query,
             query_type=state.query_type,
             final_answer=state.answer_en,

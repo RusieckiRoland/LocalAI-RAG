@@ -13,6 +13,12 @@ class FinalizeHeuristicAction:
         if state.answer_en:
             return None
 
+        # Assessment pipeline fallback: if we have a draft answer, accept it.
+        if state.draft_answer_en and state.draft_answer_en.strip():
+            state.answer_en = state.draft_answer_en.strip()
+            state.query_type = "draft accepted (heuristic)"
+            return None
+
         resp = (state.last_model_response or "").strip()
         if resp.startswith(runtime.constants.ANSWER_PREFIX):
             state.answer_en = resp.replace(runtime.constants.ANSWER_PREFIX, "").strip()
