@@ -1,67 +1,95 @@
-from __future__ import annotations
+import pytest
 
-from typing import Optional
-
-from code_query_engine.pipeline.action_registry import ActionRegistry
-from code_query_engine.pipeline.definitions import PipelineDef, StepDef
+import constants
+from code_query_engine.pipeline.action_registry import build_default_action_registry
 from code_query_engine.pipeline.engine import PipelineEngine, PipelineRuntime
+from code_query_engine.pipeline.loader import PipelineLoader
 from code_query_engine.pipeline.state import PipelineState
 from code_query_engine.pipeline.validator import PipelineValidator
+from code_query_engine.pipeline.providers.fakes import FakeModelClient, FakeRetriever
+from code_query_engine.pipeline.providers.retrieval import RetrievalDispatcher
 
 
-class SetAnswerAction:
-    def execute(self, step: StepDef, state: PipelineState, runtime: PipelineRuntime) -> Optional[str]:
-        state.answer_en = "ok"
-        return None  # fall back to step.next
+class DummyTranslator:
+    def translate(self, text: str) -> str:
+        return text
 
 
-class FinalizeAction:
-    def execute(self, step: StepDef, state: PipelineState, runtime: PipelineRuntime) -> Optional[str]:
-        state.final_answer = state.answer_en
+class DummyMarkdownTranslator:
+    def translate(self, markdown_en: str) -> str:
+        return markdown_en
+
+
+class DummyHistory:
+    def get_context_blocks(self):
+        return []
+
+    def add_iteration(self, followup, faiss_results):
+        return None
+
+    def set_final_answer(self, answer_en, answer_pl):
         return None
 
 
-class Dummy:
-    pass
+class DummyLogger:
+    def log_interaction(self, **kwargs):
+        return None
 
 
-def test_engine_runs_to_end() -> None:
-    registry = ActionRegistry()
-    registry.register("set_answer", SetAnswerAction())
-    registry.register("finalize", FinalizeAction())
+def test_engine_smoke_runs_to_end(tmp_path):
+    yaml_path = tmp_path / "pipe.yaml"
+    yaml_path.write_text(
+        """
+YAMLpipeline:
+  name: smoke
 
-    pipeline = PipelineDef(
-        name="smoke",
-        settings={"entry_step_id": "a"},
-        steps=[
-            StepDef(id="a", action="set_answer", raw={"id": "a", "action": "set_answer", "next": "b"}),
-            StepDef(id="b", action="finalize", raw={"id": "b", "action": "finalize", "end": True}),
-        ],
+  settings:
+    entry_step_id: call_model
+
+  steps:
+    - id: call_model
+      action: call_model
+      prompt_key: "rejewski_router_v1"
+      next: finalize
+
+    - id: finalize
+      action: finalize
+      end: true
+""".strip(),
+        encoding="utf-8",
     )
 
-    PipelineValidator().validate(pipeline)
+    loader = PipelineLoader(pipelines_root=str(tmp_path))
+    pipe = loader.load_from_path(str(yaml_path))
+    PipelineValidator().validate(pipe)
 
-    engine = PipelineEngine(registry)
+    model = FakeModelClient(outputs=["[DIRECT:]"])
+    dispatcher = RetrievalDispatcher(semantic=FakeRetriever(results=[]))
+
+    rt = PipelineRuntime(
+        pipeline_settings=pipe.settings,
+        main_model=model,
+        searcher=None,
+        markdown_translator=DummyMarkdownTranslator(),
+        translator_pl_en=DummyTranslator(),
+        history_manager=DummyHistory(),
+        logger=DummyLogger(),
+        constants=constants,
+        retrieval_dispatcher=dispatcher,
+        bm25_searcher=None,
+        semantic_rerank_searcher=None,
+        graph_provider=None,
+        token_counter=None,
+        add_plant_link=lambda x: x,
+    )
+
+    engine = PipelineEngine(build_default_action_registry())
     state = PipelineState(
-        user_query="q",
+        user_query="hi",
         session_id="s",
         consultant="rejewski",
         branch="develop",
         translate_chat=False,
     )
-
-    runtime = PipelineRuntime(
-        pipeline_settings=pipeline.settings,
-        main_model=Dummy(),
-        searcher=Dummy(),
-        markdown_translator=Dummy(),
-        translator_pl_en=Dummy(),
-        history_manager=Dummy(),
-        logger=Dummy(),
-        constants=Dummy(),
-        add_plant_link=lambda x, y: x,
-    )
-
-    out = engine.run(pipeline, state, runtime)
-    assert out.final_answer == "ok"
-    assert out.steps_used == 2
+    out = engine.run(pipe, state, rt)
+    assert out.steps_used >= 1

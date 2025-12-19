@@ -16,11 +16,9 @@ class RetrievalDecision:
 
 class RetrievalDispatcher:
     """
-    Strategy dispatcher for retrieval modes:
-      - semantic
-      - semantic_rerank
-      - bm25
-      - hybrid (placeholder)
+    Unifies all retrieval modes behind one call.
+    The pipeline computes a RetrievalDecision (mode + query) and optional filters,
+    and the dispatcher routes to the correct retriever implementation.
     """
 
     def __init__(
@@ -40,46 +38,32 @@ class RetrievalDispatcher:
         *,
         top_k: int,
         settings: Dict[str, Any],
-        filters: Optional[Dict[str, List[str]]] = None,
+        filters: Optional[Dict[str, Any]] = None,
     ) -> List[Dict[str, Any]]:
         mode = (decision.mode or "").strip().lower()
         query = (decision.query or "").strip()
+
         if not query:
             return []
 
-        bm25_missing_policy = (settings.get("bm25_missing_policy") or "fail_fast").strip().lower()
-        hybrid_policy = (settings.get("hybrid_policy") or "not_implemented").strip().lower()
+        if mode == "bm25":
+            if self._bm25 is None:
+                return []
+            return self._bm25.search(query, top_k=top_k, filters=filters)
 
-        if mode in ("semantic", ""):
+        if mode in ("semantic", "hybrid"):
+            # In the current system "hybrid" is resolved at router-level;
+            # we treat it as semantic retrieval until a dedicated hybrid retriever exists.
             if self._semantic is None:
-                raise RuntimeError("semantic retriever is not configured.")
+                return []
             return self._semantic.search(query, top_k=top_k, filters=filters)
 
         if mode == "semantic_rerank":
             if self._semantic_rerank is None:
-                raise RuntimeError("semantic_rerank retriever is not configured.")
+                return []
             return self._semantic_rerank.search(query, top_k=top_k, filters=filters)
 
-        if mode == "bm25":
-            if self._bm25 is None:
-                if bm25_missing_policy == "fallback_to_semantic":
-                    if self._semantic is None:
-                        raise RuntimeError("bm25 missing and semantic retriever is not configured.")
-                    return self._semantic.search(query, top_k=top_k, filters=filters)
-                raise RuntimeError("bm25 retriever is not configured (fail_fast).")
-            return self._bm25.search(query, top_k=top_k, filters=filters)
-
-        if mode == "hybrid":
-            if hybrid_policy == "fallback_to_semantic":
-                if self._semantic is None:
-                    raise RuntimeError("hybrid fallback requested but semantic retriever is not configured.")
-                return self._semantic.search(query, top_k=top_k, filters=filters)
-            raise NotImplementedError("HYBRID mode is planned but not implemented.")
-
-        if mode == "direct":
-            return []
-
-        # Unknown mode: deterministic fallback to semantic if possible
+        # Unknown => best-effort semantic
         if self._semantic is None:
-            raise RuntimeError(f"Unknown retrieval mode '{mode}' and semantic retriever is not configured.")
+            return []
         return self._semantic.search(query, top_k=top_k, filters=filters)

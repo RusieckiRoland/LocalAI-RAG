@@ -1,4 +1,3 @@
-# code_query_engine/dynamic_pipeline.py
 from __future__ import annotations
 
 import os
@@ -17,38 +16,63 @@ from .pipeline.action_registry import build_default_action_registry
 
 class DynamicPipelineRunner:
     """
-    Thin wrapper:
-      load -> validate -> engine.run(state)
+    Backward-compatible wrapper used by the public endpoint and tests.
+
+    Contract expected by tests:
+    - __init__(pipelines_dir=..., main_model=..., searcher=..., markdown_translator=..., translator_pl_en=..., logger=...)
+    - run(..., mock_redis=...) returns:
+        (final_answer, query_type, steps_used, model_input_en)
+    - module-level symbol HistoryManager must exist for monkeypatching.
     """
 
     def __init__(
         self,
         *,
-        pipelines_dir: str,
-        main_model: Any,
-        searcher: Any,
-        markdown_translator: Any,
-        translator_pl_en: Any,
-        logger: Any,
+        # Backward-compatible argument name (used in tests)
+        pipelines_dir: Optional[str] = None,
+        # New alias (optional)
+        pipelines_root: Optional[str] = None,
+        # Backward-compatible model/searcher arg names
+        main_model: Any = None,
+        searcher: Any = None,
+        # Translators/logging
+        markdown_translator: Any = None,
+        translator_pl_en: Any = None,
+        logger: Any = None,
+        # Optional extras (kept for compatibility with newer runtime wiring)
+        bm25_searcher: Any = None,
+        semantic_rerank_searcher: Any = None,
+        graph_provider: Any = None,
+        token_counter: Any = None,
     ) -> None:
-        self.pipelines_dir = pipelines_dir
+        root = pipelines_root or pipelines_dir
+        if not root:
+            raise TypeError("DynamicPipelineRunner requires 'pipelines_dir' or 'pipelines_root'")
+
+        self.pipelines_dir = os.fspath(root)
+
         self.main_model = main_model
         self.searcher = searcher
+        self.bm25_searcher = bm25_searcher
+        self.semantic_rerank_searcher = semantic_rerank_searcher
+        self.graph_provider = graph_provider
+        self.token_counter = token_counter
+
         self.markdown_translator = markdown_translator
         self.translator_pl_en = translator_pl_en
         self.logger = logger
 
-        self._loader = PipelineLoader(pipelines_root=pipelines_dir)
+        self._loader = PipelineLoader(pipelines_root=self.pipelines_dir)
         self._validator = PipelineValidator()
-        self._engine = PipelineEngine(registry=build_default_action_registry())
+        self._engine = PipelineEngine(build_default_action_registry())
 
     def run(
         self,
+        *,
         user_query: str,
         session_id: str,
         consultant: str,
         branch: str,
-        *,
         translate_chat: bool,
         mock_redis: Any,
     ):
@@ -57,6 +81,7 @@ class DynamicPipelineRunner:
         pipeline = self._loader.load_by_name(pipeline_name)
         self._validator.validate(pipeline)
 
+        # IMPORTANT: must be module-level HistoryManager (tests monkeypatch it)
         history_manager = HistoryManager(mock_redis, session_id)
 
         # Keep the same history behavior as current servers
@@ -64,6 +89,7 @@ class DynamicPipelineRunner:
             model_input_en_for_history = self.translator_pl_en.translate(user_query)
         else:
             model_input_en_for_history = user_query
+
         history_manager.start_user_query(model_input_en_for_history, user_query)
 
         state = PipelineState(
@@ -84,9 +110,19 @@ class DynamicPipelineRunner:
             logger=self.logger,
             constants=constants,
             add_plant_link=add_plant_link,
+            bm25_searcher=self.bm25_searcher,
+            semantic_rerank_searcher=self.semantic_rerank_searcher,
+            graph_provider=self.graph_provider,
+            token_counter=self.token_counter,
         )
 
         self._engine.run(pipeline, state, runtime)
 
-        final_answer = state.final_answer or state.answer_pl or state.answer_en or "Error: No valid response generated."
+        final_answer = (
+            state.final_answer
+            or state.answer_pl
+            or state.answer_en
+            or "Error: No valid response generated."
+        )
+
         return final_answer, state.query_type, state.steps_used, state.model_input_en_or_fallback()
