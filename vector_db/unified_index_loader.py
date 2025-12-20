@@ -26,7 +26,7 @@ from typing import Tuple, List, Dict, Any
 import faiss
 from sentence_transformers import SentenceTransformer
 
-from build_vector_index import load_config, resolve_path
+from vector_db.build_vector_index import load_config, resolve_path
 from vector_search.unified_search import UnifiedSearch
 from vector_search.models import VectorSearchRequest, VectorSearchFilters  # noqa: F401
 

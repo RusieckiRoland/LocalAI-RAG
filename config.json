@@ -4,11 +4,24 @@
   "model_path_analysis": "models/code_analysis/codeLlama_13b_Instruct/codellama-13b-instruct.Q8_0.gguf",
   "model_translation_en_pl":"models/translation/en_pl/Helsinki_NLPopus_mt_en_pl",
   "model_translation_pl_en":"models/translation/pl_en/Helsinki_NLPopus_mt_pl_en",
+
   "log_path":"log/ai_interaction.log",
+
+  "logging": {
+    "dir": "log",
+    "level": "INFO",
+    "interactions_level": "TRACE",
+    "when": "midnight",
+    "interval": 1,
+    "backup_count": 14,
+    "also_stdout": false,
+    "app_file": "app.log",
+    "interactions_file": "ai_interactions.jsonl"
+  },
+
   "use_gpu": true,
   "plantuml_server" : "http://localhost:8080",
   "branch":"develop",
-  
   "vector_indexes_root": "repositories/nopCommerce/indexes",
   "active_index_id": "2025-12-14__develop",
   "repo_name": "nopCommerce"

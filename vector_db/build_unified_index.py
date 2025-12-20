@@ -46,7 +46,7 @@ from tqdm import tqdm
 from sentence_transformers import SentenceTransformer
 
 # Reuse helpers for config / paths from the existing builder
-from build_vector_index import load_config, resolve_path, human_size, extract_to_named_root
+from vector_db.build_vector_index import load_config, resolve_path, human_size, extract_to_named_root
 
 # Reuse helpers for reading C# and SQL artifacts
 from vector_db.build_cs_index import find_chunks_json, clean_text as clean_cs_text

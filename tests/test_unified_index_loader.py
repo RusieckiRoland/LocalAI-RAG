@@ -55,10 +55,10 @@ def test_load_unified_search_builds_searcher_from_config_and_disk(tmp_path: Path
 
     index_dir.mkdir(parents=True, exist_ok=True)
 
-    # Prepare metadata: two documents to match DummyIndex.ntotal = 2
+    # Create minimal metadata list on disk
     metadata = [
-        {"id": "doc-1", "data_type": "regular_code"},
-        {"id": "doc-2", "data_type": "db_code"},
+        {"Id": "doc0", "File": "A.cs", "Content": "hello"},
+        {"Id": "doc1", "File": "B.sql", "Content": "select 1"},
     ]
     meta_path = index_dir / "unified_metadata.json"
     meta_path.write_text(json.dumps(metadata), encoding="utf-8")
@@ -112,3 +112,94 @@ def test_load_unified_search_builds_searcher_from_config_and_disk(tmp_path: Path
     assert isinstance(searcher._embed_model, FakeModel)
     # Model path should come from config via model_path_embd
     assert searcher._embed_model.model_path.endswith("models/embedding/dummy-model")
+
+
+def test_load_unified_search_raises_when_faiss_missing(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """
+    If unified_index.faiss is missing, loader should fail fast with FileNotFoundError.
+    """
+    config_dir = str(tmp_path)
+    vector_root = tmp_path / "vector_indexes"
+    index_id = "test_index_missing_faiss"
+    index_dir = vector_root / index_id
+    index_dir.mkdir(parents=True, exist_ok=True)
+
+    # Create metadata (exists)
+    metadata = [{"Id": "doc0", "File": "A.cs", "Content": "hello"}]
+    (index_dir / "unified_metadata.json").write_text(json.dumps(metadata), encoding="utf-8")
+
+    # DO NOT create unified_index.faiss
+
+    config = {
+        "vector_indexes_root": "vector_indexes",
+        "active_index_id": index_id,
+        "model_path_embd": "models/embedding/dummy-model",
+    }
+
+    def fake_load_config(script_dir: str):
+        return config, config_dir
+
+    monkeypatch.setattr(uil, "load_config", fake_load_config)
+
+    def fake_resolve_path(path: str, base_dir: str) -> str:
+        return str(Path(base_dir) / path)
+
+    monkeypatch.setattr(uil, "resolve_path", fake_resolve_path)
+
+    # SentenceTransformer not needed (we should fail before model load),
+    # but patching it keeps the test stable if the implementation changes.
+    monkeypatch.setattr(uil, "SentenceTransformer", FakeModel)
+
+    with pytest.raises(FileNotFoundError) as ex:
+        uil.load_unified_search()
+
+    assert "unified_index.faiss" in str(ex.value)
+
+
+def test_load_unified_search_raises_when_faiss_size_mismatch(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """
+    If FAISS index ntotal != len(unified_metadata.json), loader should raise ValueError.
+    This invariant is critical because row_id must align 1:1 with metadata rows.
+    """
+    config_dir = str(tmp_path)
+    vector_root = tmp_path / "vector_indexes"
+    index_id = "test_index_mismatch"
+    index_dir = vector_root / index_id
+    index_dir.mkdir(parents=True, exist_ok=True)
+
+    metadata = [
+        {"Id": "doc0", "File": "A.cs", "Content": "hello"},
+        {"Id": "doc1", "File": "B.sql", "Content": "select 1"},
+    ]
+    (index_dir / "unified_metadata.json").write_text(json.dumps(metadata), encoding="utf-8")
+
+    # FAISS file must exist
+    (index_dir / "unified_index.faiss").write_bytes(b"")
+
+    config = {
+        "vector_indexes_root": "vector_indexes",
+        "active_index_id": index_id,
+        "model_path_embd": "models/embedding/dummy-model",
+    }
+
+    def fake_load_config(script_dir: str):
+        return config, config_dir
+
+    monkeypatch.setattr(uil, "load_config", fake_load_config)
+
+    def fake_resolve_path(path: str, base_dir: str) -> str:
+        return str(Path(base_dir) / path)
+
+    monkeypatch.setattr(uil, "resolve_path", fake_resolve_path)
+
+    # FAISS index returns ntotal != metadata length => should raise
+    monkeypatch.setattr(uil.faiss, "read_index", lambda _: DummyIndex(ntotal=len(metadata) + 1))
+
+    # SentenceTransformer should not be invoked if mismatch is detected early,
+    # but patching keeps it deterministic.
+    monkeypatch.setattr(uil, "SentenceTransformer", FakeModel)
+
+    with pytest.raises(ValueError) as ex:
+        uil.load_unified_search()
+
+    assert "does not match metadata length" in str(ex.value)

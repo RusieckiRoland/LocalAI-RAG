@@ -16,7 +16,7 @@ from common.translator_pl_en import Translator
 from history.mock_redis import InMemoryMockRedis
 from integrations.plant_uml.plantuml_check import add_plant_link
 from code_query_engine.model import Model
-from code_query_engine.log_utils import InteractionLogger
+from common.logging_setup import configure_logging, InteractionLogger
 from code_query_engine.dynamic_pipeline import DynamicPipelineRunner
 import constants
 
@@ -33,7 +33,7 @@ script_dir = os.path.dirname(os.path.abspath(__file__))
 config_path = os.path.join(script_dir, "..", "config.json")
 with open(config_path, encoding="utf-8") as f:
     cfg = json.load(f)
-
+configure_logging(cfg)
 base_dir = os.path.abspath(os.path.join(script_dir, ".."))
 MODEL_PATH = os.path.join(base_dir, cfg["model_path_analysis"])
 MODEL_TRANSLATION_EN_PL = os.path.join(base_dir, cfg["model_translation_en_pl"])
@@ -139,7 +139,7 @@ mock_redis = InMemoryMockRedis()
 main_model = Model(MODEL_PATH)
 markdown_translator = MarkdownTranslator(MODEL_TRANSLATION_EN_PL)
 translator_pl_en = Translator(model_name="Helsinki-NLP/opus-mt-pl-en")
-logger = InteractionLogger.instance()
+logger = InteractionLogger()
 
 # Unified index loader (FAISS + metadata)
 unified_search = load_unified_search()
