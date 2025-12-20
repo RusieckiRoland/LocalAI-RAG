@@ -1,0 +1,53 @@
+YAMLpipeline:
+  name: e2e_smoke
+
+  settings:
+    test: true
+    entry_step_id: translate_in
+    top_k: 3
+
+  steps:
+    - id: translate_in
+      action: translate_in_if_needed
+      next: load_history
+
+    - id: load_history
+      action: load_conversation_history
+      next: call_router
+
+    - id: call_router
+      action: call_model
+      prompt_key: "e2e/router_v1"
+      next: handle_router
+
+    - id: handle_router
+      action: handle_prefix
+      bm25_prefix: "[BM25:]"
+      semantic_prefix: "[SEMANTIC:]"
+      hybrid_prefix: "[HYBRID:]"
+      semantic_rerank_prefix: "[SEMANTIC_RERANK:]"
+      direct_prefix: "[DIRECT:]"
+      on_direct: call_answer
+      on_other: finalize
+      next: finalize
+
+    - id: call_answer
+      action: call_model
+      prompt_key: "e2e/answer_v1"
+      next: handle_answer
+
+    - id: handle_answer
+      action: handle_prefix
+      answer_prefix: "[Answer:]"
+      followup_prefix: "[Requesting data on:]"
+      on_answer: persist
+      on_other: finalize
+      next: finalize
+
+    - id: persist
+      action: persist_turn_and_finalize
+      next: finalize
+
+    - id: finalize
+      action: finalize
+      end: true

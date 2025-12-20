@@ -24,23 +24,40 @@ class InteractionLogger:
         self.log_file.parent.mkdir(parents=True, exist_ok=True)
 
         self.logger: Logger = logging.getLogger(logger_name)
-        # IMPORTANT: configure exactly once (avoid duplicate handlers)
-        if not self.logger.handlers:
-            self._configure_logger()
+        self.logger.propagate = False
+        self._ensure_handlers()
 
-    def _configure_logger(self) -> None:
+    def _ensure_handlers(self) -> None:
         self.logger.setLevel(logging.INFO)
 
         fmt = logging.Formatter("%(message)s")
 
-        fh = logging.FileHandler(self.log_file, encoding="utf-8")
-        fh.setFormatter(fmt)
-        self.logger.addHandler(fh)
+        # File handler: ensure we have a handler for THIS log_file.
+        wanted_path = str(self.log_file.resolve())
+        has_file_handler = False
+        for h in list(self.logger.handlers):
+            base = getattr(h, "baseFilename", None)
+            if base and os.path.abspath(str(base)) == wanted_path:
+                has_file_handler = True
+                if h.formatter is None:
+                    h.setFormatter(fmt)
+                break
 
+        if not has_file_handler:
+            fh = logging.FileHandler(self.log_file, encoding="utf-8")
+            fh.setFormatter(fmt)
+            self.logger.addHandler(fh)
+
+        # Optional stdout duplication (CI convenience) - avoid duplicates.
         if os.getenv("AI_LOG_STDOUT", "0").lower() in ("1", "true", "yes"):
-            sh = logging.StreamHandler()
-            sh.setFormatter(fmt)
-            self.logger.addHandler(sh)
+            has_stream = any(
+                isinstance(h, logging.StreamHandler) and not isinstance(h, logging.FileHandler)
+                for h in self.logger.handlers
+            )
+            if not has_stream:
+                sh = logging.StreamHandler()
+                sh.setFormatter(fmt)
+                self.logger.addHandler(sh)
 
     def log_interaction(
         self,
@@ -61,36 +78,30 @@ class InteractionLogger:
         lines.append(f"Timestamp: {ts}")
         if next_codellama_prompt:
             lines.append(f"Prompt: {next_codellama_prompt}")
-
         lines.append("")
         lines.append("Original question")
         lines.append(original_question or "")
-
         lines.append("")
         lines.append("Translated (EN)")
         lines.append(model_input_en or "")
-
         lines.append("")
         lines.append("CodeLlama replied")
         lines.append(codellama_response or "")
-
         lines.append("")
         lines.append(f"Query type: {query_type or ''}")
-        if followup_query:
-            lines.append(f"Followup query: {followup_query}")
-
         lines.append("")
         lines.append("Final answer")
         lines.append(final_answer or "")
-
+        lines.append("")
+        lines.append("Context blocks")
         if context_blocks:
-            lines.append("")
-            lines.append("Context blocks")
             for i, block in enumerate(context_blocks, start=1):
                 lines.append(f"[Context {i}]")
-                lines.append(block or "")
-
-        # Also add a compact JSON line to make future parsing easy
+                lines.append(block)
+        else:
+            lines.append("(none)")
+        lines.append("")
+        lines.append("JSON")
         payload = {
             "ts": ts,
             "prompt": next_codellama_prompt,
@@ -102,8 +113,5 @@ class InteractionLogger:
             "final_answer": final_answer,
             "context_blocks_count": len(context_blocks or []),
         }
-        lines.append("")
-        lines.append("JSON")
         lines.append(json.dumps(payload, ensure_ascii=False))
-
         self.logger.info("\n".join(lines))

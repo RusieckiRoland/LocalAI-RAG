@@ -44,6 +44,8 @@ class DynamicPipelineRunner:
         semantic_rerank_searcher: Any = None,
         graph_provider: Any = None,
         token_counter: Any = None,
+        # Safety switch: allow running pipelines with settings.test=true
+        allow_test_pipelines: bool = False,
     ) -> None:
         root = pipelines_root or pipelines_dir
         if not root:
@@ -57,6 +59,7 @@ class DynamicPipelineRunner:
         self.semantic_rerank_searcher = semantic_rerank_searcher
         self.graph_provider = graph_provider
         self.token_counter = token_counter
+        self.allow_test_pipelines = bool(allow_test_pipelines)
 
         self.markdown_translator = markdown_translator
         self.translator_pl_en = translator_pl_en
@@ -80,6 +83,14 @@ class DynamicPipelineRunner:
         pipeline_name = consultant
         pipeline = self._loader.load_by_name(pipeline_name)
         self._validator.validate(pipeline)
+
+        # Guard: a pipeline marked as settings.test=true must NOT run in production.
+        # Tests can opt-in by creating the runner with allow_test_pipelines=True.
+        is_test_pipeline = bool((pipeline.settings or {}).get("test"))
+        if is_test_pipeline and not self.allow_test_pipelines:
+            raise PermissionError(
+                "Refusing to run a test pipeline (settings.test=true) without allow_test_pipelines=True."
+            )
 
         # IMPORTANT: must be module-level HistoryManager (tests monkeypatch it)
         history_manager = HistoryManager(mock_redis, session_id)
