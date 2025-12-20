@@ -74,6 +74,7 @@ class DynamicPipelineRunner:
         *,
         user_query: str,
         session_id: str,
+        user_id: Optional[str] = None,
         consultant: str,
         branch: str,
         translate_chat: bool,
@@ -93,7 +94,7 @@ class DynamicPipelineRunner:
             )
 
         # IMPORTANT: must be module-level HistoryManager (tests monkeypatch it)
-        history_manager = HistoryManager(mock_redis, session_id)
+        history_manager = HistoryManager(mock_redis, session_id, user_id=user_id)
 
         # Keep the same history behavior as current servers
         if translate_chat:
@@ -101,7 +102,7 @@ class DynamicPipelineRunner:
         else:
             model_input_en_for_history = user_query
 
-        history_manager.start_user_query(model_input_en_for_history, user_query)
+        history_manager.start_user_query(model_input_en_for_history, user_query, user_id=user_id)
 
         state = PipelineState(
             user_query=user_query,

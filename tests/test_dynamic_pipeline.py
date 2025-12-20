@@ -23,7 +23,6 @@ class SetAnswerAction:
 
 class Dummy:
     def __getattr__(self, name: str) -> Any:
-        # allow any attribute access in tests
         return lambda *args, **kwargs: None
 
 
@@ -37,21 +36,26 @@ class StubLoader:
 
 class StubValidator:
     def validate(self, pipeline: PipelineDef) -> None:
-        # keep it simple in this wrapper test
         return
 
 
 class DummyHistoryManager:
-    def __init__(self, redis: Any, session_id: str) -> None:
+    def __init__(self, redis: Any, session_id: str, user_id: Optional[str] = None) -> None:
         self.redis = redis
         self.session_id = session_id
+        self.user_id = user_id
 
-    def start_user_query(self, model_input_en: str, original_pl: str) -> None:
+    def start_user_query(self, model_input_en: str, original_pl: str, user_id: Optional[str] = None) -> None:
         return
+
+    def set_final_answer(self, en: str, pl: Optional[str] = None) -> None:
+        return
+
+    def get_context_blocks(self) -> list[str]:
+        return []
 
 
 def test_dynamic_pipeline_runner_runs_via_engine(monkeypatch: pytest.MonkeyPatch) -> None:
-    # Patch HistoryManager used inside DynamicPipelineRunner
     import code_query_engine.dynamic_pipeline as dp
 
     monkeypatch.setattr(dp, "HistoryManager", DummyHistoryManager)
@@ -76,7 +80,6 @@ def test_dynamic_pipeline_runner_runs_via_engine(monkeypatch: pytest.MonkeyPatch
         logger=Dummy(),
     )
 
-    # Override internals so the test is deterministic and does not depend on YAML files
     runner._loader = StubLoader(pipeline=pipeline)
     runner._validator = StubValidator()
     runner._engine = PipelineEngine(registry=registry)
@@ -84,6 +87,7 @@ def test_dynamic_pipeline_runner_runs_via_engine(monkeypatch: pytest.MonkeyPatch
     answer, query_type, steps_used, model_input_en = runner.run(
         user_query="q",
         session_id="s",
+        user_id=None,
         consultant="rejewski",
         branch="develop",
         translate_chat=False,

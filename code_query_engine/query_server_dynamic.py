@@ -1,80 +1,48 @@
 import os
-import json
 import re
 import uuid
-from typing import Any
+from typing import Any, Dict, Optional, Tuple
 
-from flask import Flask, request, jsonify
+from flask import Flask, jsonify, request
 from flask_cors import CORS
+from dotenv import load_dotenv
 
-from common.utils import parse_bool
-from vector_db.unified_index_loader import load_unified_search
-from vector_search.unified_search import UnifiedSearchAdapter
-
-from common.markdown_translator_en_pl import MarkdownTranslator
-from common.translator_pl_en import Translator
 from history.mock_redis import InMemoryMockRedis
-from integrations.plant_uml.plantuml_check import add_plant_link
-from code_query_engine.model import Model
-from common.logging_setup import configure_logging, InteractionLogger
-from code_query_engine.dynamic_pipeline import DynamicPipelineRunner
-import constants
+from history.redis_backend import RedisBackend
+
+from .dynamic_pipeline import DynamicPipelineRunner
 
 
-# ======================
-#  CONFIG / ENV SETUP
-# ======================
+# Load .env if present
+load_dotenv()
 
-# Runtime knobs
-os.environ["LLAMA_SET_ROWS"] = "1"
-script_dir = os.path.dirname(os.path.abspath(__file__))
+API_TOKEN = os.getenv("API_TOKEN", "").strip()
 
-# Configuration (config.json is one level above /code_query_engine)
-config_path = os.path.join(script_dir, "..", "config.json")
-with open(config_path, encoding="utf-8") as f:
-    cfg = json.load(f)
-configure_logging(cfg)
-base_dir = os.path.abspath(os.path.join(script_dir, ".."))
-MODEL_PATH = os.path.join(base_dir, cfg["model_path_analysis"])
-MODEL_TRANSLATION_EN_PL = os.path.join(base_dir, cfg["model_translation_en_pl"])
+# If set to "true", use Redis history backend; otherwise use in-memory mock
+USE_REDIS = os.getenv("APP_USE_REDIS", "false").strip().lower() == "true"
 
-branch_name = (cfg.get("branch") or "").strip()
-output_dir = cfg["output_dir"]
-branch_output_dir = os.path.join(output_dir, branch_name) if branch_name else output_dir
+REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
+REDIS_PORT = int(os.getenv("REDIS_PORT", "6379"))
 
-# Flask app (dynamic pipeline server)
-app = Flask(__name__)
-
-# --- SECURITY ---
-secret_key = os.getenv("APP_SECRET_KEY")
-if not secret_key:
-    # Server can run without it (dev), but warn loudly.
-    print("[query_server_dynamic] Warning: APP_SECRET_KEY is not set.")
-else:
-    app.secret_key = secret_key
-
-API_TOKEN = os.getenv("API_TOKEN")
-
-
-def _parse_env_list(name: str) -> list[str]:
-    raw = (os.getenv(name) or "").strip()
-    if not raw:
-        return []
-    return [x.strip() for x in raw.split(",") if x.strip()]
-
-
-ALLOWED_ORIGINS = _parse_env_list("ALLOWED_ORIGINS") or [
+ALLOWED_ORIGINS = [
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
     "http://localhost:8080",
     "http://127.0.0.1:8080",
     "null",
 ]
 
+app = Flask(__name__)
+
+# CORS (session id header + optional user id header)
 CORS(
     app,
     supports_credentials=True,
     resources={r"/*": {"origins": ALLOWED_ORIGINS}},
     methods=["GET", "POST", "OPTIONS"],
-    allow_headers=["Content-Type", "X-Session-ID", "X-Auth-Token", "Authorization"],
+    allow_headers=["Content-Type", "X-Session-ID", "X-User-ID", "X-Auth-Token", "Authorization"],
 )
 
 # Limits (optional)
@@ -85,35 +53,15 @@ MAX_FIELD_LEN = int(os.getenv("APP_MAX_FIELD_LEN", "128"))
 def _is_authorized(req) -> bool:
     """Basic token-based authorization check."""
     if not API_TOKEN:
-        return True
-    header_token = req.headers.get("X-Auth-Token")
-    if header_token and header_token == API_TOKEN:
-        return True
-    auth = req.headers.get("Authorization", "")
+        return True  # token disabled
+    auth = (req.headers.get("Authorization") or "").strip()
+    token = (req.headers.get("X-Auth-Token") or "").strip()
     if auth.startswith("Bearer "):
-        bearer = auth[len("Bearer "):].strip()
-        if bearer == API_TOKEN:
-            return True
-    return False
+        auth = auth[len("Bearer ") :].strip()
+    return (auth == API_TOKEN) or (token == API_TOKEN)
 
 
-_SAFE_SLUG_RE = re.compile(r"^[A-Za-z0-9_.-]{1,128}$")
-_CONTROL_CHARS_RE = re.compile(r"[\x00-\x08\x0B\x0C\x0E-\x1F]")
-
-
-def _has_disallowed_control_chars(s: str) -> bool:
-    return bool(_CONTROL_CHARS_RE.search(s or ""))
-
-
-def _sanitize_or_default(value: str, default: str) -> str:
-    v = (value or "").strip()
-    if not v:
-        return default
-    if len(v) > MAX_FIELD_LEN:
-        return default
-    if _SAFE_SLUG_RE.match(v):
-        return v
-    return default
+_SAFE_SLUG_RE = re.compile(r"^[a-zA-Z0-9_\-]{1,128}$")
 
 
 def _valid_session_id(value: str | None) -> str:
@@ -131,116 +79,114 @@ def _valid_session_id(value: str | None) -> str:
         return str(uuid.uuid4())
 
 
-# ==============
-#  MODELS / RAG
-# ==============
-
-mock_redis = InMemoryMockRedis()
-main_model = Model(MODEL_PATH)
-markdown_translator = MarkdownTranslator(MODEL_TRANSLATION_EN_PL)
-translator_pl_en = Translator(model_name="Helsinki-NLP/opus-mt-pl-en")
-logger = InteractionLogger()
-
-# Unified index loader (FAISS + metadata)
-unified_search = load_unified_search()
-searcher = UnifiedSearchAdapter(unified_search)
-
-# Dynamic pipeline runner based on YAML
-pipelines_dir = os.path.join(base_dir, "pipelines")
-dynamic_runner = DynamicPipelineRunner(
-    pipelines_dir=pipelines_dir,
-    main_model=main_model,
-    searcher=searcher,
-    markdown_translator=markdown_translator,
-    translator_pl_en=translator_pl_en,
-    logger=logger,
-)
-
-# Session memory (future use)
-user_contexts: dict[str, list[dict[str, Any]]] = {}
+def _valid_user_id(value: str | None) -> str | None:
+    """Validate optional X-User-ID. Returns None if missing/invalid."""
+    v = (value or "").strip()
+    if not v:
+        return None
+    if _SAFE_SLUG_RE.match(v):
+        return v
+    try:
+        uuid.UUID(v)
+        return v
+    except Exception:
+        return None
 
 
-# ==================
-#  ENDPOINTS
-# ==================
+def _get_bool_field(payload: Dict[str, Any], key: str, default: bool = False) -> bool:
+    v = payload.get(key, default)
+    return bool(v)
 
-@app.route("/search", methods=["POST", "OPTIONS"])
-@app.route("/dynamic/search", methods=["POST", "OPTIONS"])
-def dynamic_search() -> Any:
-    """Main RAG endpoint (canonical: /search). /dynamic/search is an alias."""
+
+def _get_str_field(payload: Dict[str, Any], key: str, default: str = "") -> str:
+    v = payload.get(key, default)
+    if v is None:
+        return default
+    s = str(v)
+    if len(s) > MAX_QUERY_LEN and key == "query":
+        return s[:MAX_QUERY_LEN]
+    if len(s) > MAX_FIELD_LEN and key != "query":
+        return s[:MAX_FIELD_LEN]
+    return s
+
+
+def _build_runner() -> DynamicPipelineRunner:
+    pipelines_root = os.getenv("PIPELINES_ROOT", "pipelines")
+    return DynamicPipelineRunner(
+        pipelines_root=pipelines_root,
+        main_model=None,   # wired by runtime config in real deployment
+        searcher=None,     # wired by runtime config in real deployment
+        markdown_translator=None,
+        translator_pl_en=None,
+        logger=None,
+        allow_test_pipelines=False,
+    )
+
+
+def _build_history_backend():
+    if USE_REDIS:
+        return RedisBackend(host=REDIS_HOST, port=REDIS_PORT)
+    return InMemoryMockRedis()
+
+
+runner = _build_runner()
+mock_redis = _build_history_backend()
+
+# Optional local per-session cache (kept as-is)
+user_contexts: Dict[str, list[str]] = {}
+
+
+@app.route("/health", methods=["GET"])
+def health():
+    return jsonify({"status": "ok", "use_redis": USE_REDIS})
+
+
+@app.route("/query", methods=["POST", "OPTIONS"])
+def query():
     if request.method == "OPTIONS":
         return ("", 204)
 
     if not _is_authorized(request):
         return jsonify({"error": "Unauthorized"}), 401
 
-    body = request.get_json(silent=True) or {}
-    original_query = body.get("query")
+    payload = request.get_json(silent=True) or {}
 
-    if original_query is None:
-        return jsonify({"error": "Query cannot be empty."}), 400
-    if not isinstance(original_query, str):
-        return jsonify({"error": "Query must be a string."}), 400
+    original_query = _get_str_field(payload, "query", "")
+    consultant = _get_str_field(payload, "consultant", "rejewski")
+    branch = _get_str_field(payload, "branch", "develop")
+    translate_chat = _get_bool_field(payload, "translate_chat", False)
 
-    original_query = original_query.strip()
-    if len(original_query) == 0:
-        return jsonify({"error": "Query cannot be empty."}), 400
-    if len(original_query) > MAX_QUERY_LEN:
-        return jsonify({"error": f"Query too long (>{MAX_QUERY_LEN})."}), 400
-    if _has_disallowed_control_chars(original_query):
-        return jsonify({"error": "Query contains disallowed control characters."}), 400
-
-    consultant_raw = body.get("consultant") or ""
-    branch_raw = body.get("branch") or "stable"
-    translate_chat = parse_bool(body.get("translateChat"), default=False)
-
-    consultant = _sanitize_or_default(consultant_raw.strip(), default="general")
-    branch = _sanitize_or_default(branch_raw.strip(), default="stable")
+    if not original_query.strip():
+        return jsonify({"error": "Empty query"}), 400
 
     session_id = _valid_session_id(request.headers.get("X-Session-ID"))
+    user_id = _valid_user_id(request.headers.get("X-User-ID"))
     user_contexts.setdefault(session_id, [])
 
     try:
-        result, query_type, steps_used, model_input_en = dynamic_runner.run(
+        result, query_type, steps_used, model_input_en = runner.run(
             original_query,
             session_id=session_id,
+            user_id=user_id,
             consultant=consultant,
             branch=branch,
             translate_chat=translate_chat,
             mock_redis=mock_redis,
         )
-    except FileNotFoundError as fnf:
-        return jsonify({"error": "Pipeline not found for consultant.", "details": str(fnf)}), 400
+    except FileNotFoundError as ex:
+        return jsonify({"error": str(ex)}), 404
+    except PermissionError as ex:
+        return jsonify({"error": str(ex)}), 403
     except Exception as ex:
-        return jsonify({"error": "Internal error during search.", "details": str(ex)}), 500
-
-    # NOTE: pipeline already decides translation behavior for most flows;
-    # keep this only if your pipeline returns EN answers when translateChat=true.
-    if translate_chat and consultant != constants.UML_CONSULTANT and isinstance(result, str) and result:
-        result = markdown_translator.translate_markdown(result)
-
-    if consultant == constants.UML_CONSULTANT and isinstance(result, str):
-        result = add_plant_link(result, consultant)
+        return jsonify({"error": f"Server error: {ex}"}), 500
 
     return jsonify(
         {
-            "results": result,
-            "translated": model_input_en,
-            "query_type": query_type,
             "session_id": session_id,
+            "user_id": user_id,
+            "query_type": query_type,
             "steps_used": steps_used,
+            "model_input_en": model_input_en,
+            "result": result,
         }
     )
-
-
-@app.route("/branch", methods=["GET"])
-@app.route("/dynamic/branch", methods=["GET"])
-def dynamic_get_branch() -> Any:
-    """Return configured branch name from config.json (canonical: /branch)."""
-    return jsonify({"branch": cfg.get("branch", "")})
-
-
-if __name__ == "__main__":
-    host = os.getenv("APP_HOST", "0.0.0.0")
-    port = int(os.getenv("APP_PORT", "5001"))
-    app.run(host=host, port=port)
