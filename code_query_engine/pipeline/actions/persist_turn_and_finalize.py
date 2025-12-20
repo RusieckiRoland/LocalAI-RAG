@@ -24,7 +24,7 @@ class PersistTurnAndFinalizeAction:
             next_codellama_prompt=state.next_codellama_prompt,
         )
 
-        # Persist final answer in history
+        # Persist final answer in history (best-effort)
         try:
             runtime.history_manager.set_final_answer(state.answer_en or "", state.answer_pl)
         except Exception:

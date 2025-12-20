@@ -1,4 +1,3 @@
-# common/logging_setup.py
 from __future__ import annotations
 
 import gzip
@@ -7,241 +6,158 @@ import logging
 import os
 import shutil
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from logging.handlers import TimedRotatingFileHandler
 from pathlib import Path
-from typing import Any, Dict, Optional, Sequence
+from typing import Any, Dict, List, Optional
+
+TRACE_LEVEL = 5
+logging.addLevelName(TRACE_LEVEL, "TRACE")
 
 
-TRACE_LEVEL_NUM = 5
+def _trace(self: logging.Logger, msg: str, *args: Any, **kwargs: Any) -> None:
+    if self.isEnabledFor(TRACE_LEVEL):
+        self._log(TRACE_LEVEL, msg, args, **kwargs)
 
 
-def _add_trace_level() -> None:
-    """
-    Add TRACE level to Python logging (below DEBUG).
-    This is a common server-side pattern when you need ultra-verbose logs.
-    """
-    if hasattr(logging, "TRACE"):
+logging.Logger.trace = _trace  # type: ignore[attr-defined]
+
+
+def _is_truthy(value: Optional[str]) -> bool:
+    if value is None:
+        return False
+    return value.strip().lower() in ("1", "true", "yes", "y", "on")
+
+
+def _utc_ts() -> str:
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _zip_rotated_log(path: Path) -> None:
+    # Zip only plain rotated files, do not re-zip .gz
+    if not path.exists() or path.suffix == ".gz":
         return
-
-    logging.addLevelName(TRACE_LEVEL_NUM, "TRACE")
-    setattr(logging, "TRACE", TRACE_LEVEL_NUM)
-
-    def trace(self: logging.Logger, msg: str, *args: Any, **kwargs: Any) -> None:
-        if self.isEnabledFor(TRACE_LEVEL_NUM):
-            self._log(TRACE_LEVEL_NUM, msg, args, **kwargs)
-
-    setattr(logging.Logger, "trace", trace)
-
-
-class _JsonFormatter(logging.Formatter):
-    """
-    Minimal JSON formatter for structured logs.
-
-    Note:
-    - We keep it simple and deterministic.
-    - Message stays in "message".
-    - Extra fields can be passed via "extra={...}".
-    """
-
-    def format(self, record: logging.LogRecord) -> str:
-        payload: Dict[str, Any] = {
-            "ts": self.formatTime(record, datefmt="%Y-%m-%dT%H:%M:%S"),
-            "level": record.levelname,
-            "logger": record.name,
-            "message": record.getMessage(),
-        }
-
-        # Common extras (if present)
-        for k in (
-            "event",
-            "session_id",
-            "consultant",
-            "branch",
-            "turn",
-        ):
-            if hasattr(record, k):
-                payload[k] = getattr(record, k)
-
-        if record.exc_info:
-            payload["exc_info"] = self.formatException(record.exc_info)
-
-        return json.dumps(payload, ensure_ascii=False)
-
-
-def _gzip_rotator(source: str, dest: str) -> None:
-    """
-    Compress rotated log into gzip.
-    """
-    with open(source, "rb") as f_in, gzip.open(dest, "wb") as f_out:
-        shutil.copyfileobj(f_in, f_out)
-    try:
-        os.remove(source)
-    except Exception:
-        pass
-
-
-def _gzip_namer(name: str) -> str:
-    return f"{name}.gz"
-
-
-def _ensure_dir(p: Path) -> None:
-    p.mkdir(parents=True, exist_ok=True)
-
-
-def _parse_level(level: str, default: int) -> int:
-    v = (level or "").strip().upper()
-    if not v:
-        return default
-    return getattr(logging, v, default)
-
-
-def _project_root_from_here() -> Path:
-    # <repo_root>/common/logging_setup.py
-    return Path(__file__).resolve().parent.parent
+    gz_path = path.with_suffix(path.suffix + ".gz")
+    with path.open("rb") as src, gzip.open(gz_path, "wb") as dst:
+        shutil.copyfileobj(src, dst)
+    path.unlink(missing_ok=True)
 
 
 @dataclass(frozen=True)
 class LoggingConfig:
-    log_dir: Path
+    log_dir: Path = Path("log")
     app_log_name: str = "app.log"
+
+    # JSONL, one record per interaction
     interactions_log_name: str = "ai_interactions.jsonl"
 
+    # Human-readable continuous log
+    interaction_text_log_name: str = "ai_interaction.log"
+
+    # Default levels
+    app_level: str = "INFO"
+    interactions_level: str = "TRACE"
+
     # Rotation
-    when: str = "midnight"  # daily
-    interval: int = 1
-    backup_count: int = 14  # keep 14 days
-    utc: bool = False
-
-    # Levels
-    app_level: int = logging.INFO
-    interactions_level: int = TRACE_LEVEL_NUM
-
-    # Optional console duplication
-    also_stdout: bool = False
+    when: str = "midnight"
+    backup_count: int = 14
 
 
-def load_logging_config_from_cfg(cfg: Dict[str, Any], project_root: Optional[Path] = None) -> LoggingConfig:
-    """
-    Supports:
-    - new: cfg["logging"] object
-    - legacy: cfg["log_path"] (we will derive directory from it)
-    """
-    project_root = project_root or _project_root_from_here()
+def configure_logging(cfg: LoggingConfig) -> None:
+    cfg.log_dir.mkdir(parents=True, exist_ok=True)
 
-    logging_cfg = cfg.get("logging") or {}
-    if not isinstance(logging_cfg, dict):
-        logging_cfg = {}
-
-    # Legacy support: "log_path": "log/ai_interaction.log"
-    legacy_log_path = cfg.get("log_path")
-    if isinstance(legacy_log_path, str) and legacy_log_path.strip():
-        legacy_dir = (project_root / legacy_log_path).parent
-    else:
-        legacy_dir = project_root / "log"
-
-    log_dir = project_root / (logging_cfg.get("dir") or legacy_dir)
-    _ensure_dir(log_dir)
-
-    app_level = _parse_level(str(logging_cfg.get("level") or ""), logging.INFO)
-    interactions_level = _parse_level(str(logging_cfg.get("interactions_level") or "TRACE"), TRACE_LEVEL_NUM)
-
-    also_stdout = str(os.getenv("AI_LOG_STDOUT") or "").strip().lower() in ("1", "true", "yes")
-    if "also_stdout" in logging_cfg:
-        also_stdout = bool(logging_cfg.get("also_stdout"))
-
-    return LoggingConfig(
-        log_dir=log_dir,
-        app_log_name=str(logging_cfg.get("app_file") or "app.log"),
-        interactions_log_name=str(logging_cfg.get("interactions_file") or "ai_interactions.jsonl"),
-        when=str(logging_cfg.get("when") or "midnight"),
-        interval=int(logging_cfg.get("interval") or 1),
-        backup_count=int(logging_cfg.get("backup_count") or 14),
-        utc=bool(logging_cfg.get("utc") or False),
-        app_level=app_level,
-        interactions_level=interactions_level,
-        also_stdout=also_stdout,
-    )
-
-
-def configure_logging(cfg: Dict[str, Any], *, project_root: Optional[Path] = None) -> LoggingConfig:
-    """
-    Configure:
-    - root logger -> app.log (human readable)
-    - localai.interactions -> ai_interactions.jsonl (JSONL)
-    """
-    _add_trace_level()
-
-    config = load_logging_config_from_cfg(cfg, project_root=project_root)
-
-    # --- Root logger (application logs) ---
     root = logging.getLogger()
-    root.setLevel(min(config.app_level, config.interactions_level, logging.DEBUG))
+    root.setLevel(getattr(logging, cfg.app_level.upper(), logging.INFO))
 
-    # Avoid double-handlers if configure_logging() called multiple times (tests, reload, etc.)
-    if getattr(root, "_localai_configured", False):
-        return config
-
-    # Human readable formatter for app.log
-    app_fmt = logging.Formatter("%(asctime)s [%(levelname)s] %(name)s - %(message)s")
-
-    app_path = config.log_dir / config.app_log_name
+    # Root handler (app.log)
     app_handler = TimedRotatingFileHandler(
-        filename=str(app_path),
-        when=config.when,
-        interval=config.interval,
-        backupCount=config.backup_count,
-        utc=config.utc,
+        filename=str(cfg.log_dir / cfg.app_log_name),
+        when=cfg.when,
+        backupCount=cfg.backup_count,
         encoding="utf-8",
-        delay=True,
+        utc=True,
     )
-    app_handler.setLevel(config.app_level)
-    app_handler.setFormatter(app_fmt)
-    app_handler.rotator = _gzip_rotator
-    app_handler.namer = _gzip_namer
-
+    app_handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s"))
+    app_handler.namer = lambda name: name  # keep original naming
+    app_handler.rotator = lambda source, dest: shutil.move(source, dest)
     root.addHandler(app_handler)
 
-    if config.also_stdout:
-        console = logging.StreamHandler()
-        console.setLevel(config.app_level)
-        console.setFormatter(app_fmt)
-        root.addHandler(console)
+    # After rotation, zip old logs (best-effort)
+    # (We can't hook directly into handler rotation without subclassing; keep it simple:
+    # you can call _zip_rotated_log from maintenance script if needed.)
 
-    # --- Interactions logger (JSONL) ---
+    # Interactions logger (JSONL)
     interactions_logger = logging.getLogger("localai.interactions")
-    interactions_logger.setLevel(config.interactions_level)
-    interactions_logger.propagate = False  # do not duplicate into app.log by default
+    interactions_logger.setLevel(getattr(logging, cfg.interactions_level.upper(), TRACE_LEVEL))
+    interactions_logger.propagate = False
 
-    interactions_path = config.log_dir / config.interactions_log_name
     interactions_handler = TimedRotatingFileHandler(
-        filename=str(interactions_path),
-        when=config.when,
-        interval=config.interval,
-        backupCount=config.backup_count,
-        utc=config.utc,
+        filename=str(cfg.log_dir / cfg.interactions_log_name),
+        when=cfg.when,
+        backupCount=cfg.backup_count,
         encoding="utf-8",
-        delay=True,
+        utc=True,
     )
-    interactions_handler.setLevel(config.interactions_level)
-    interactions_handler.setFormatter(_JsonFormatter())
-    interactions_handler.rotator = _gzip_rotator
-    interactions_handler.namer = _gzip_namer
-
+    interactions_handler.setFormatter(logging.Formatter("%(message)s"))
     interactions_logger.addHandler(interactions_handler)
-
-    setattr(root, "_localai_configured", True)
-    return config
 
 
 class InteractionLogger:
     """
-    Drop-in implementation compatible with your pipeline's IInteractionLogger port.
-    Writes a single JSON line per call into log/ai_interactions.jsonl (rotated + gzipped).
+    Single entry point used by runtime.
+    - JSONL (structured) is controlled by AI_INTERACTION_CAPTURE
+    - Human-readable text is controlled by AI_INTERACTION_HUMAN_LOG
+    - Language is controlled by AI_INTERACTION_LANG + AI_INTERACTION_LOCALE_DIR
     """
 
-    def __init__(self) -> None:
-        _add_trace_level()
-        self._logger = logging.getLogger("localai.interactions")
+    def __init__(self, *, cfg: Optional[LoggingConfig] = None) -> None:
+        self._cfg = cfg or LoggingConfig()
+        self._cfg.log_dir.mkdir(parents=True, exist_ok=True)
+
+        self._capture_enabled = _is_truthy(os.getenv("AI_INTERACTION_CAPTURE"))
+        self._human_enabled = _is_truthy(os.getenv("AI_INTERACTION_HUMAN_LOG"))
+
+        self._lang = (os.getenv("AI_INTERACTION_LANG") or "en").strip().lower()
+        self._locale_dir = Path(os.getenv("AI_INTERACTION_LOCALE_DIR") or "locales/ai_interaction")
+
+        self._translations: Dict[str, str] = {}
+        if self._lang != "en":
+            loc_file = self._locale_dir / f"{self._lang}.json"
+            if loc_file.exists():
+                try:
+                    self._translations = json.loads(loc_file.read_text(encoding="utf-8"))
+                except Exception:
+                    logging.getLogger("localai").warning(
+                        "Failed to read locale file for AI interaction log: %s (fallback to English)",
+                        str(loc_file),
+                    )
+                    self._translations = {}
+            else:
+                logging.getLogger("localai").warning(
+                    "Locale file for AI interaction log not found: %s (fallback to English)",
+                    str(loc_file),
+                )
+
+        # Human log file handler (continuous)
+        self._human_logger = logging.getLogger("localai.ai_interaction_text")
+        self._human_logger.setLevel(logging.INFO)
+        self._human_logger.propagate = False
+
+        if self._human_enabled:
+            text_path = self._cfg.log_dir / self._cfg.interaction_text_log_name
+            if not any(getattr(h, "_ai_interaction_text", False) for h in self._human_logger.handlers):
+                text_path.parent.mkdir(parents=True, exist_ok=True)
+                text_path.touch(exist_ok=True)
+                h = logging.FileHandler(str(text_path), encoding="utf-8")
+                h.setFormatter(logging.Formatter("%(message)s"))
+                setattr(h, "_ai_interaction_text", True)
+                self._human_logger.addHandler(h)
+
+        self._interactions_logger = logging.getLogger("localai.interactions")
+        self._app_logger = logging.getLogger("localai")
+
+    def _t(self, key: str) -> str:
+        return self._translations.get(key, key)
 
     def log_interaction(
         self,
@@ -250,22 +166,92 @@ class InteractionLogger:
         model_input_en: str,
         codellama_response: str,
         followup_query: Optional[str],
-        query_type: Optional[str],
-        final_answer: Optional[str],
-        context_blocks: Sequence[str],
-        next_codellama_prompt: Optional[str],
+        query_type: str,
+        final_answer: str,
+        context_blocks: List[str],
+        next_codellama_prompt: str,
+        metadata: Optional[Dict[str, Any]] = None,
     ) -> None:
-        payload: Dict[str, Any] = {
-            "original_question": original_question,
-            "model_input_en": model_input_en,
-            "codellama_response": codellama_response,
-            "followup_query": followup_query,
-            "query_type": query_type,
-            "final_answer": final_answer,
-            "context_blocks": list(context_blocks),
-            "next_codellama_prompt": next_codellama_prompt,
-        }
+        metadata = metadata or {}
 
-        # We store payload as JSON inside the "message" field of JSONL formatter.
-        # This keeps the formatter deterministic and avoids leaking huge extras into LogRecord.
-        self._logger.log(TRACE_LEVEL_NUM, json.dumps(payload, ensure_ascii=False), extra={"event": "interaction"})
+        # 1) JSONL (structured) — only if enabled by flag
+        if self._capture_enabled:
+            payload: Dict[str, Any] = {
+                "ts": _utc_ts(),
+                "prompt": next_codellama_prompt,
+                "original_question": original_question,
+                "model_input_en": model_input_en,
+                "codellama_response": codellama_response,
+                "followup_query": followup_query,
+                "query_type": query_type,
+                "final_answer": final_answer,
+                "context_blocks_count": len(context_blocks),
+                "metadata": metadata,
+            }
+            self._interactions_logger.trace(json.dumps(payload, ensure_ascii=False))  # type: ignore[attr-defined]
+
+            # Normal log “pointer” (as agreed)
+            self._app_logger.info(
+                "AI interaction captured (details in %s)",
+                str(self._cfg.log_dir / self._cfg.interactions_log_name),
+            )
+
+        # 2) Human-readable text — only if enabled by flag
+        if self._human_enabled:
+            lines: List[str] = []
+            lines.append("=" * 80)
+            lines.append(f"{self._t('Timestamp')}: {_utc_ts()}")
+            lines.append(f"{self._t('Prompt')}: {next_codellama_prompt}")
+            lines.append("")
+            lines.append(self._t("Original question"))
+            lines.append(original_question)
+            lines.append("")
+            lines.append(self._t("Translated (EN)"))
+            lines.append(model_input_en)
+            lines.append("")
+            lines.append(self._t("CodeLlama replied"))
+            lines.append(codellama_response)
+            lines.append("")
+            if followup_query:
+                lines.append(self._t("Follow-up query"))
+                lines.append(followup_query)
+                lines.append("")
+            lines.append(f"{self._t('Query type')}: {query_type}")
+            lines.append("")
+            lines.append(self._t("Final answer"))
+            lines.append(final_answer)
+            lines.append("")
+            lines.append(self._t("Context blocks"))
+            for i, block in enumerate(context_blocks, start=1):
+                lines.append(f"[{self._t('Context')} {i}]")
+                lines.append(block)
+            if metadata:
+                lines.append("")
+                lines.append(self._t("Metadata"))
+                lines.append(json.dumps(metadata, ensure_ascii=False, indent=2))
+            lines.append("")
+            lines.append(self._t("JSON"))
+            lines.append(
+                json.dumps(
+                    {
+                        "ts": _utc_ts(),
+                        "prompt": next_codellama_prompt,
+                        "original_question": original_question,
+                        "model_input_en": model_input_en,
+                        "codellama_response": codellama_response,
+                        "followup_query": followup_query,
+                        "query_type": query_type,
+                        "final_answer": final_answer,
+                        "context_blocks_count": len(context_blocks),
+                        "metadata": metadata,
+                    },
+                    ensure_ascii=False,
+                )
+            )
+            self._human_logger.info("\n".join(lines))
+
+            # Normal log “pointer” to the human file too (still only if enabled)
+            self._app_logger.info(
+                "AI interaction human log written (details in %s)",
+                str(self._cfg.log_dir / self._cfg.interaction_text_log_name),
+            )

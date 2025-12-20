@@ -1,5 +1,4 @@
-# File: code_query_engine/pipeline/providers/ports.py
-
+# code_query_engine/pipeline/providers/ports.py
 from __future__ import annotations
 
 from typing import Any, Dict, List, Optional, Protocol, Sequence, Tuple
@@ -32,6 +31,7 @@ class IInteractionLogger(Protocol):
         final_answer: Optional[str],
         context_blocks: Sequence[str],
         next_codellama_prompt: Optional[str],
+        metadata: Optional[Dict[str, Any]] = None,
     ) -> None:
         ...
 
