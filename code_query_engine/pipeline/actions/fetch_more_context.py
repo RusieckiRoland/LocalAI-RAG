@@ -1,40 +1,59 @@
-# File: code_query_engine/pipeline/actions/fetch_more_context.py
+# code_query_engine/pipeline/actions/fetch_more_context.py
 
 from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
 
 from ..definitions import StepDef
-from ..state import PipelineState
 from ..engine import PipelineRuntime
 from ..providers.retrieval import RetrievalDecision
+from ..state import PipelineState
 
 
 def _merge_filters(settings: Dict[str, Any], state: PipelineState) -> Dict[str, Any]:
     filters: Dict[str, Any] = {}
     filters.update(state.retrieval_filters or {})
 
-    # Allow pipeline settings defaults to enforce branch/repo scoping if desired.
-    branch = settings.get("branch") or settings.get("active_index") or None
-    if branch and "branch" not in filters:
-        filters["branch"] = branch
+    repo = (state.repository or settings.get("repository") or "").strip()
+    branch = (state.branch or settings.get("branch") or "").strip()
 
-    # Optional: repository
-    repo = settings.get("repository") or None
-    if repo and "repository" not in filters:
+    # Tests expect plain strings here (not lists)
+    if repo:
         filters["repository"] = repo
+    if branch:
+        filters["branch"] = branch
 
     return filters
 
 
+def _normalize_results(results: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    normalized: List[Dict[str, Any]] = []
+    for r in results or []:
+        if not isinstance(r, dict):
+            continue
+        # Accept both styles: {path/content} and {File/Content}
+        path = r.get("path") or r.get("File") or r.get("file") or ""
+        content = r.get("content") or r.get("Content") or r.get("text") or ""
+        start_line = r.get("start_line")
+        end_line = r.get("end_line")
+        normalized.append(
+            {
+                "path": path,
+                "content": content,
+                "start_line": start_line,
+                "end_line": end_line,
+                **{k: v for k, v in r.items() if k not in {"path", "file", "File", "content", "Content", "text"}},
+            }
+        )
+    return normalized
+
+
 class FetchMoreContextAction:
     def execute(self, step: StepDef, state: PipelineState, runtime: PipelineRuntime) -> Optional[str]:
-        raw = step.raw or {}
         settings = runtime.pipeline_settings or {}
 
         mode = (state.retrieval_mode or "semantic").strip().lower()
         query = (state.followup_query or state.retrieval_query or "").strip()
-
         if not query:
             return None
 
@@ -43,23 +62,24 @@ class FetchMoreContextAction:
         top_k = int(settings.get("top_k", 12))
         filters = _merge_filters(settings, state) if settings else dict(state.retrieval_filters or {})
 
-        results = dispatcher.search(
-            RetrievalDecision(mode=mode, query=query),
-            top_k=top_k,
-            settings=settings,
-            filters=filters or None,
-        )
+        decision = RetrievalDecision(mode=mode, query=query)
+        results = dispatcher.search(decision, top_k=top_k, settings=settings, filters=filters)
+        results = _normalize_results(results)
 
-        # Store chunks as strings to keep the rest of pipeline stable.
+        # This step defines the seed set for the graph expansion step.
+        state.retrieval_seed_nodes = []
+
         blocks: List[str] = []
-        for r in results or []:
-            path = r.get("path") or r.get("file") or r.get("File") or ""
-            content = r.get("content") or r.get("text") or r.get("Content") or r.get("text_preview") or ""
+        for r in results:
+            path = (r.get("path") or "").strip()
+            content = (r.get("content") or "").strip()
+            if not content:
+                continue
 
             start = r.get("start_line")
             end = r.get("end_line")
 
-            header = f"File: {path}".strip()
+            header = f"### File: {path}" if path else "### File"
             if start is not None and end is not None:
                 header += f" (lines {start}-{end})"
 
@@ -68,7 +88,6 @@ class FetchMoreContextAction:
         if blocks:
             state.context_blocks.extend(blocks)
 
-        # Make history manager aware of the iteration (if it cares)
         try:
             runtime.history_manager.add_iteration(query, results)
         except Exception:

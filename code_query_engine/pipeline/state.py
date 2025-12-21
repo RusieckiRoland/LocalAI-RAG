@@ -14,18 +14,14 @@ class PipelineState:
     branch: str
     translate_chat: bool
 
-    # Translation
-    user_question_en: Optional[str] = None
+    # Optional identity
+    user_id: Optional[str] = None
+    repository: Optional[str] = None
 
-    # Pipeline execution bookkeeping
-    pipeline_name: Optional[str] = None
-    steps_used: int = 0
-    step_trace: List[str] = field(default_factory=list)
-    budget_debug: Dict[str, Any] = field(default_factory=dict)
-    turn_loop_counter: int = 0
-
-    # Retrieval outputs
+    # Router outputs / parse artifacts
+    router_raw: Optional[str] = None
     retrieval_mode: str = ""
+    retrieval_scope: Optional[str] = None
     retrieval_query: str = ""
     retrieval_filters: Dict[str, Any] = field(default_factory=dict)
     followup_query: Optional[str] = None
@@ -35,24 +31,39 @@ class PipelineState:
     history_blocks: List[str] = field(default_factory=list)
     context_blocks: List[str] = field(default_factory=list)
 
-    # Model outputs        
+    # Model outputs
     next_codellama_prompt: Optional[str] = None
     last_model_response: Optional[str] = None
-    model_input_en: Optional[str] = None
-    router_raw: Optional[str] = None
 
+    # Answer fields expected by multiple actions/engine
     draft_answer_en: Optional[str] = None
+    draft_answer_pl: Optional[str] = None
     answer_en: Optional[str] = None
     answer_pl: Optional[str] = None
+
+    # Translation artifacts
+    user_question_en: Optional[str] = None
+    user_question_pl: Optional[str] = None
+
+    # Diagnostics
+    step_trace: List[str] = field(default_factory=list)
+    steps_used: int = 0
+
+    # Graph-related (kept for planned dependency expansion)
+    retrieval_seed_nodes: List[str] = field(default_factory=list)
+    graph_seed_nodes: List[str] = field(default_factory=list)
+    graph_expanded_nodes: List[str] = field(default_factory=list)
+    graph_edges: List[Dict[str, Any]] = field(default_factory=list)
+    graph_debug: Dict[str, Any] = field(default_factory=dict)
+
+    # Final answer (optional convenience)
     final_answer: Optional[str] = None
 
-    # Optional misc flags/diagnostics
-    flags: Set[str] = field(default_factory=set)
+    # Model input (logged)
+    model_input_en: Optional[str] = None
 
-    # Backward-compat aliases used by some newer code
-    @property
-    def original_question(self) -> str:
-        return self.user_query
+    # Additional: used by some actions/tests
+    seen_chunk_ids: Set[str] = field(default_factory=set)
 
     def history_for_prompt(self) -> str:
         return "\n\n".join([x for x in self.history_blocks if x])
