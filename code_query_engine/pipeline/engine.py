@@ -83,12 +83,21 @@ class PipelineRuntime:
         if self.retrieval_dispatcher is not None:
             return self.retrieval_dispatcher
 
-        # Fallback dispatcher built from individual searchers (may still be None => dispatcher returns [])
+        semantic_rerank = self.semantic_rerank_searcher
+        if semantic_rerank is None and self.searcher is not None:
+            # Default reranker over semantic results (works without extra indexes)
+            try:
+                from common.semantic_rerank_wrapper import SemanticRerankWrapper
+                semantic_rerank = SemanticRerankWrapper(self.searcher)
+            except Exception:
+                semantic_rerank = None
+
         return RetrievalDispatcher(
             semantic=self.searcher,
             bm25=self.bm25_searcher,
-            semantic_rerank=self.semantic_rerank_searcher,
+            semantic_rerank=semantic_rerank,
         )
+
 
 
 class PipelineEngine:

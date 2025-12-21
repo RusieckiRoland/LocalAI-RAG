@@ -53,8 +53,9 @@ class FetchMoreContextAction:
         # Store chunks as strings to keep the rest of pipeline stable.
         blocks: List[str] = []
         for r in results or []:
-            path = r.get("path") or r.get("file") or ""
-            content = r.get("content") or r.get("text") or ""
+            path = r.get("path") or r.get("file") or r.get("File") or ""
+            content = r.get("content") or r.get("text") or r.get("Content") or r.get("text_preview") or ""
+
             start = r.get("start_line")
             end = r.get("end_line")
 
