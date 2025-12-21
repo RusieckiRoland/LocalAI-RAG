@@ -42,7 +42,16 @@ class DynamicPipelineRunner:
         self.searcher = searcher
         self.bm25_searcher = bm25_searcher
         self.semantic_rerank_searcher = semantic_rerank_searcher
+        if graph_provider is None:
+            try:
+                from .pipeline.providers.graph_provider import GraphProvider
+
+                graph_provider = GraphProvider()
+            except Exception:
+                graph_provider = None
+
         self.graph_provider = graph_provider
+
         self.token_counter = token_counter
 
         self.markdown_translator = markdown_translator

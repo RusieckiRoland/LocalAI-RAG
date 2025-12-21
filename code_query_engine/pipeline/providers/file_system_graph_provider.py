@@ -1,5 +1,3 @@
-# File: code_query_engine/pipeline/providers/file_system_graph_provider.py
-
 from __future__ import annotations
 
 import csv
@@ -221,6 +219,37 @@ class FileSystemGraphProvider:
     # IGraphProvider API
     # ------------------------------ #
 
+    def expand_dependency_tree(
+        self,
+        *,
+        seed_nodes: List[str],
+        max_depth: int = 2,
+        max_nodes: int = 200,
+        edge_allowlist: Optional[List[str]] = None,
+        repository: Optional[str] = None,
+        branch: Optional[str] = None,
+        active_index: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Adapter for the pipeline's IGraphProvider contract.
+
+        This provider is bundle-based (repositories/<repo>/branches/<branch>/...).
+        If repository/branch is missing, it returns an empty expansion.
+        """
+        if not repository or not branch:
+            seeds = _dedupe_preserve_order(_strip_part_suffix(s) for s in (seed_nodes or []))
+            return {"seed_nodes": seeds, "nodes": list(seeds), "edges": []}
+
+        return self.expand(
+            repository=str(repository),
+            active_index=str(active_index or branch or ""),
+            branch=str(branch),
+            seed_nodes=seed_nodes or [],
+            max_depth=int(max_depth),
+            max_nodes=int(max_nodes),
+            edge_allowlist=edge_allowlist or [],
+        )
+
     def expand(
         self,
         *,
@@ -282,13 +311,23 @@ class FileSystemGraphProvider:
     def fetch_node_texts(
         self,
         *,
-        repository: str,
-        active_index: str,
-        branch: str,
-        node_ids: Sequence[str],
-        top_n: int,
+        node_ids: List[str],
+        repository: Optional[str] = None,
+        branch: Optional[str] = None,
+        active_index: Optional[str] = None,
+        max_chars: int = 50_000,
+        top_n: int = 50,
     ) -> List[Dict[str, Any]]:
         # active_index kept for scoping consistency; provider is branch-bundle based for now.
+        if not repository or not branch:
+            return [{"node_id": str(nid), "kind": "unknown", "file": "", "text": ""} for nid in (node_ids or [])]
+
+        repository = str(repository)
+        branch = str(branch)
+        active_index = str(active_index or branch or "")
+
+        picked_top_n = int(top_n) if top_n is not None else len(node_ids or [])
+
         chunks = self._load_chunks(repository=repository, branch=branch)
         sql = self._load_sql_bodies(repository=repository, branch=branch)
 
@@ -298,7 +337,7 @@ class FileSystemGraphProvider:
             if v:
                 picked.append(v)
 
-        picked = _dedupe_preserve_order(picked)[: max(0, int(top_n))]
+        picked = _dedupe_preserve_order(picked)[: max(0, picked_top_n)]
 
         out: List[Dict[str, Any]] = []
         for nid in picked:
@@ -338,4 +377,22 @@ class FileSystemGraphProvider:
             # Unknown node id (keep a stub so caller can debug)
             out.append({"node_id": nid, "kind": "unknown", "file": "", "text": ""})
 
-        return out
+        # Enforce a global max_chars budget across returned texts (deterministic, in-order).
+        used = 0
+        trimmed: List[Dict[str, Any]] = []
+        for item in out:
+            if used >= int(max_chars):
+                break
+            if not isinstance(item, dict):
+                continue
+            txt = item.get("text")
+            if not isinstance(txt, str):
+                trimmed.append(item)
+                continue
+            if used + len(txt) > int(max_chars):
+                item = dict(item)
+                item["text"] = txt[: max(0, int(max_chars) - used)]
+            used += len(item.get("text") or "")
+            trimmed.append(item)
+
+        return trimmed

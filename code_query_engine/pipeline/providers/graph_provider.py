@@ -5,33 +5,7 @@ import json
 import os
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Protocol, Set, Tuple
-
-
-class IGraphProvider(Protocol):
-    def expand_dependency_tree(
-        self,
-        *,
-        seed_nodes: List[str],
-        max_depth: int = 2,
-        max_nodes: int = 200,
-        edge_allowlist: Optional[List[str]] = None,
-        repository: Optional[str] = None,
-        branch: Optional[str] = None,
-        active_index: Optional[str] = None,
-    ) -> Dict[str, Any]:
-        ...
-
-    def fetch_node_texts(
-        self,
-        *,
-        node_ids: List[str],
-        repository: Optional[str] = None,
-        branch: Optional[str] = None,
-        active_index: Optional[str] = None,
-        max_chars: int = 50_000,
-    ) -> List[Dict[str, Any]]:
-        ...
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 
 @dataclass(frozen=True)
@@ -129,18 +103,16 @@ class GraphProvider:
     ) -> List[Dict[str, Any]]:
         graph_dir = self._resolve_graph_dir(repository=repository, branch=branch, active_index=active_index)
         if graph_dir is None:
-            return [{"id": nid, "text": ""} for nid in node_ids]
+            return [{"id": str(nid), "text": ""} for nid in node_ids]
 
-        # Heuristic: if graph_dir has nodes.json, use it.
-        # Otherwise return empty texts (text retrieval is index-specific and will be improved later).
         nodes_json = graph_dir / "nodes.json"
         if not nodes_json.exists():
-            return [{"id": nid, "text": ""} for nid in node_ids]
+            return [{"id": str(nid), "text": ""} for nid in node_ids]
 
         try:
             data = json.loads(nodes_json.read_text(encoding="utf-8"))
         except Exception:
-            return [{"id": nid, "text": ""} for nid in node_ids]
+            return [{"id": str(nid), "text": ""} for nid in node_ids]
 
         by_id: Dict[str, str] = {}
         if isinstance(data, dict):
@@ -175,7 +147,13 @@ class GraphProvider:
 
         return out
 
-    def _resolve_graph_dir(self, *, repository: Optional[str], branch: Optional[str], active_index: Optional[str]) -> Optional[Path]:
+    def _resolve_graph_dir(
+        self,
+        *,
+        repository: Optional[str],
+        branch: Optional[str],
+        active_index: Optional[str],
+    ) -> Optional[Path]:
         repo_root = self._repositories_root
 
         env_root = os.getenv("RAG_REPOSITORIES_ROOT")

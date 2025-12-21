@@ -1,11 +1,47 @@
-# code_query_engine/pipeline/providers/ports.py
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, Protocol, Sequence, Tuple
+from typing import Any, Dict, List, Optional, Protocol
+
+
+class IInteractionLogger(Protocol):
+    def log_interaction(
+        self,
+        *,
+        session_id: str,
+        pipeline_name: str,
+        step_id: str,
+        action: str,
+        data: Dict[str, Any],
+    ) -> None:
+        ...
 
 
 class IModelClient(Protocol):
-    def ask(self, *, context: str, question: str, consultant: str) -> str:
+    def ask(
+        self,
+        *,
+        prompt: str,
+        consultant: str,
+        system_prompt: Optional[str] = None,
+        max_tokens: Optional[int] = None,
+        temperature: Optional[float] = None,
+    ) -> str:
+        ...
+
+
+class IRetriever(Protocol):
+    def search(
+        self,
+        query: str,
+        top_k: int,
+        filters: Optional[Dict[str, Any]] = None,
+        **kwargs: Any,
+    ) -> List[Dict[str, Any]]:
+        ...
+
+
+class IMarkdownTranslatorEnPl(Protocol):
+    def translate(self, text: str) -> str:
         ...
 
 
@@ -14,93 +50,46 @@ class ITranslatorPlEn(Protocol):
         ...
 
 
-class IMarkdownTranslatorEnPl(Protocol):
-    def translate(self, markdown_en: str) -> str:
-        ...
-
-
-class IInteractionLogger(Protocol):
-    def log_interaction(
-        self,
-        *,
-        original_question: str,
-        model_input_en: str,
-        codellama_response: str,
-        followup_query: Optional[str],
-        query_type: Optional[str],
-        final_answer: Optional[str],
-        context_blocks: Sequence[str],
-        next_codellama_prompt: Optional[str],
-        metadata: Optional[Dict[str, Any]] = None,
-    ) -> None:
-        ...
-
-
 class IHistoryManager(Protocol):
+    def start_user_query(self, question_en: str, question_pl: Optional[str]) -> None:
+        ...
+
+    def add_iteration(self, query: str, results: List[Dict[str, Any]]) -> None:
+        ...
+
+    def set_final_answer(self, answer_en: str, answer_pl: Optional[str] = None) -> None:
+        ...
+
     def get_context_blocks(self) -> List[str]:
-        ...
-
-    def add_iteration(self, followup: str, faiss_results: Sequence[Dict[str, Any]]) -> None:
-        ...
-
-    def set_final_answer(self, answer_en: str, answer_pl: Optional[str]) -> None:
         ...
 
 
 class ITokenCounter(Protocol):
-    def estimate(self, text: str) -> int:
-        ...
-
-
-class IHistoryStore(Protocol):
-    def load_turns(self) -> List[Dict[str, str]]:
-        ...
-
-    def load_summary_state(self) -> Tuple[str, int]:
-        ...
-
-    def persist_turn(
-        self,
-        *,
-        question_original: str,
-        question_en: str,
-        answer_en: str,
-        answer_pl: str,
-        used_context: str,
-        retrieval_mode: str,
-        retrieval_query: str,
-        metadata: Dict[str, Any],
-    ) -> None:
-        ...
-
-    def persist_summary_state(self, summary_text: str, last_turn_idx: int) -> None:
-        ...
-
-
-class IRetriever(Protocol):
-    def search(self, query: str, *, top_k: int, filters: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
+    def count_tokens(self, text: str) -> int:
         ...
 
 
 class IGraphProvider(Protocol):
-    def expand(
+    def expand_dependency_tree(
         self,
         *,
-        repository: str,
-        active_index: str,
-        seed_nodes: Sequence[str],
-        max_depth: int,
-        max_nodes: int,
-        edge_allowlist: Sequence[str],
+        seed_nodes: List[str],
+        max_depth: int = 2,
+        max_nodes: int = 200,
+        edge_allowlist: Optional[List[str]] = None,
+        repository: Optional[str] = None,
+        branch: Optional[str] = None,
+        active_index: Optional[str] = None,
     ) -> Dict[str, Any]:
         ...
 
     def fetch_node_texts(
         self,
         *,
-        repository: str,
-        active_index: str,
-        node_ids: Sequence[str],
-        top_n: int,
+        node_ids: List[str],
+        repository: Optional[str] = None,
+        branch: Optional[str] = None,
+        active_index: Optional[str] = None,
+        max_chars: int = 50_000,
     ) -> List[Dict[str, Any]]:
         ...

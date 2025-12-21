@@ -87,6 +87,11 @@ class HandlePrefixAction:
 
         matched_kind, payload = _match_prefix(text, prefixes)
 
+        if matched_kind and matched_kind != "other":
+            query_type_map = {"semantic_rerank": "SEMANTIC_RERANK"}
+            state.query_type = query_type_map.get(matched_kind, matched_kind.upper())
+
+
         # Router / assessor retrieval modes
         if matched_kind in ("semantic", "bm25", "hybrid", "semantic_rerank"):
             state.retrieval_mode = matched_kind

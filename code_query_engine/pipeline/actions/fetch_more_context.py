@@ -31,21 +31,50 @@ def _normalize_results(results: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     for r in results or []:
         if not isinstance(r, dict):
             continue
+
         # Accept both styles: {path/content} and {File/Content}
         path = r.get("path") or r.get("File") or r.get("file") or ""
         content = r.get("content") or r.get("Content") or r.get("text") or ""
         start_line = r.get("start_line")
         end_line = r.get("end_line")
+
         normalized.append(
             {
                 "path": path,
                 "content": content,
                 "start_line": start_line,
                 "end_line": end_line,
+                # Keep original fields (e.g., Id) for seed extraction & debugging
                 **{k: v for k, v in r.items() if k not in {"path", "file", "File", "content", "Content", "text"}},
             }
         )
     return normalized
+
+
+def _extract_seed_nodes(results: List[Dict[str, Any]]) -> List[str]:
+    # Deterministic: preserve first occurrence order
+    seen = set()
+    out: List[str] = []
+
+    for r in results or []:
+        if not isinstance(r, dict):
+            continue
+
+        # Common id fields across retrievers
+        nid = r.get("Id") or r.get("id") or r.get("node_id") or r.get("nodeId")
+        if nid is None:
+            continue
+
+        v = str(nid).strip()
+        if not v:
+            continue
+
+        if v in seen:
+            continue
+        seen.add(v)
+        out.append(v)
+
+    return out
 
 
 class FetchMoreContextAction:
@@ -67,7 +96,7 @@ class FetchMoreContextAction:
         results = _normalize_results(results)
 
         # This step defines the seed set for the graph expansion step.
-        state.retrieval_seed_nodes = []
+        state.retrieval_seed_nodes = _extract_seed_nodes(results)
 
         blocks: List[str] = []
         for r in results:
