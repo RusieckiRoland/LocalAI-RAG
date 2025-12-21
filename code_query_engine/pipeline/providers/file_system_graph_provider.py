@@ -7,6 +7,8 @@ from collections import defaultdict, deque
 from dataclasses import dataclass
 from typing import Any, DefaultDict, Deque, Dict, Iterable, List, Optional, Sequence, Set, Tuple
 
+from .ports import IGraphProvider
+
 
 def _dedupe_preserve_order(items: Iterable[str]) -> List[str]:
     seen: Set[str] = set()
@@ -44,7 +46,7 @@ class _BundlePaths:
     sql_edges_csv: str
 
 
-class FileSystemGraphProvider:
+class FileSystemGraphProvider(IGraphProvider):
     """
     Minimal, file-system based graph provider.
 
@@ -190,7 +192,7 @@ class FileSystemGraphProvider:
                                 if not to_id:
                                     continue
                                 adj[frm_id].append(("code_dep", to_id))
-                                # make it undirected by default (useful for "what references this?")
+                                # Make it undirected by default (useful for "what references this?")
                                 adj[to_id].append(("code_dep", frm_id))
             except Exception:
                 pass
@@ -207,7 +209,7 @@ class FileSystemGraphProvider:
                         if not frm or not to:
                             continue
                         adj[frm].append((rel, to))
-                        # include reverse link (helps traversing "used by")
+                        # Include reverse link (helps traversing "used by")
                         adj[to].append((rel, frm))
             except Exception:
                 pass
@@ -216,7 +218,7 @@ class FileSystemGraphProvider:
         return self._adj_cache[key]
 
     # ------------------------------ #
-    # IGraphProvider API
+    # IGraphProvider API (Option A)
     # ------------------------------ #
 
     def expand_dependency_tree(
@@ -230,46 +232,20 @@ class FileSystemGraphProvider:
         branch: Optional[str] = None,
         active_index: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """
-        Adapter for the pipeline's IGraphProvider contract.
-
-        This provider is bundle-based (repositories/<repo>/branches/<branch>/...).
-        If repository/branch is missing, it returns an empty expansion.
-        """
-        if not repository or not branch:
-            seeds = _dedupe_preserve_order(_strip_part_suffix(s) for s in (seed_nodes or []))
-            return {"seed_nodes": seeds, "nodes": list(seeds), "edges": []}
-
-        return self.expand(
-            repository=str(repository),
-            active_index=str(active_index or branch or ""),
-            branch=str(branch),
-            seed_nodes=seed_nodes or [],
-            max_depth=int(max_depth),
-            max_nodes=int(max_nodes),
-            edge_allowlist=edge_allowlist or [],
-        )
-
-    def expand(
-        self,
-        *,
-        repository: str,
-        active_index: str,
-        branch: str,
-        seed_nodes: Sequence[str],
-        max_depth: int,
-        max_nodes: int,
-        edge_allowlist: Sequence[str],
-    ) -> Dict[str, Any]:
         # active_index kept for scoping consistency; provider is branch-bundle based for now.
+        _ = active_index
+
+        repo = (repository or "").strip()
+        br = (branch or "").strip()
+        seeds = _dedupe_preserve_order(_strip_part_suffix(s) for s in (seed_nodes or []))
+
+        if not repo or not br or not seeds:
+            return {"nodes": seeds, "edges": []}
+
         allow = {str(x).strip().lower() for x in (edge_allowlist or []) if str(x).strip()}
         allow_all = (not allow) or ("*" in allow)
 
-        adj = self._build_adjacency(repository=repository, branch=branch)
-
-        seeds = _dedupe_preserve_order(_strip_part_suffix(s) for s in (seed_nodes or []))
-        if not seeds:
-            return {"seed_nodes": [], "nodes": [], "edges": []}
+        adj = self._build_adjacency(repository=repo, branch=br)
 
         visited: Set[str] = set()
         q: Deque[Tuple[str, int]] = deque()
@@ -292,21 +268,20 @@ class FileSystemGraphProvider:
                     continue
 
                 to_norm = _strip_part_suffix(to)
-                edges_out.append({"from": node, "to": to_norm, "relation": rel, "depth": depth + 1})
+                edges_out.append({"from": node, "to": to_norm, "type": rel, "depth": depth + 1})
 
                 if to_norm in visited:
                     continue
+
                 visited.add(to_norm)
                 ordered_nodes.append(to_norm)
+
                 if len(visited) >= max_nodes:
                     break
+
                 q.append((to_norm, depth + 1))
 
-        return {
-            "seed_nodes": seeds,
-            "nodes": ordered_nodes,
-            "edges": edges_out,
-        }
+        return {"nodes": ordered_nodes, "edges": edges_out}
 
     def fetch_node_texts(
         self,
@@ -316,83 +291,56 @@ class FileSystemGraphProvider:
         branch: Optional[str] = None,
         active_index: Optional[str] = None,
         max_chars: int = 50_000,
-        top_n: int = 50,
     ) -> List[Dict[str, Any]]:
         # active_index kept for scoping consistency; provider is branch-bundle based for now.
-        if not repository or not branch:
-            return [{"node_id": str(nid), "kind": "unknown", "file": "", "text": ""} for nid in (node_ids or [])]
+        _ = active_index
 
-        repository = str(repository)
-        branch = str(branch)
-        active_index = str(active_index or branch or "")
+        repo = (repository or "").strip()
+        br = (branch or "").strip()
 
-        picked_top_n = int(top_n) if top_n is not None else len(node_ids or [])
+        picked = _dedupe_preserve_order(_strip_part_suffix(str(n)) for n in (node_ids or []))
+        if not repo or not br or not picked:
+            return [{"id": nid, "text": ""} for nid in picked]
 
-        chunks = self._load_chunks(repository=repository, branch=branch)
-        sql = self._load_sql_bodies(repository=repository, branch=branch)
-
-        picked: List[str] = []
-        for n in node_ids or []:
-            v = _strip_part_suffix(str(n))
-            if v:
-                picked.append(v)
-
-        picked = _dedupe_preserve_order(picked)[: max(0, picked_top_n)]
+        chunks = self._load_chunks(repository=repo, branch=br)
+        sql = self._load_sql_bodies(repository=repo, branch=br)
 
         out: List[Dict[str, Any]] = []
+        used = 0
+
         for nid in picked:
+            t = ""
+
             # C# chunk (by chunk Id)
             if nid in chunks:
                 c = chunks[nid]
-                out.append(
-                    {
-                        "node_id": nid,
-                        "kind": "regular_code",
-                        "file": c.get("File") or "",
-                        "member": c.get("Member") or "",
-                        "text": c.get("Text") or "",
-                    }
-                )
-                continue
-
+                file_path = (c.get("File") or "").strip()
+                body = c.get("Text") or ""
+                if file_path:
+                    t = f"### File: {file_path}\n{body}".strip()
+                else:
+                    t = str(body or "")
             # SQL node (by Key)
-            if nid in sql:
+            elif nid in sql:
                 s = sql[nid]
                 kind = s.get("kind") or s.get("Kind") or "Object"
                 schema = s.get("schema") or s.get("Schema") or "dbo"
                 name = s.get("name") or s.get("Name") or ""
-                file_path = s.get("file") or s.get("File") or ""
                 body = s.get("body") or s.get("Body") or ""
                 header = f"[SQL {kind}] {schema}.{name}".strip()
-                out.append(
-                    {
-                        "node_id": nid,
-                        "kind": "db_code",
-                        "file": file_path,
-                        "text": f"{header}\n{body}".strip(),
-                    }
-                )
-                continue
+                t = f"{header}\n{body}".strip()
 
-            # Unknown node id (keep a stub so caller can debug)
-            out.append({"node_id": nid, "kind": "unknown", "file": "", "text": ""})
+            if t:
+                remaining = max(0, int(max_chars) - used)
+                if remaining <= 0:
+                    break
+                if len(t) > remaining:
+                    t = t[:remaining]
+                used += len(t)
 
-        # Enforce a global max_chars budget across returned texts (deterministic, in-order).
-        used = 0
-        trimmed: List[Dict[str, Any]] = []
-        for item in out:
-            if used >= int(max_chars):
+            out.append({"id": nid, "text": t})
+
+            if used >= max_chars:
                 break
-            if not isinstance(item, dict):
-                continue
-            txt = item.get("text")
-            if not isinstance(txt, str):
-                trimmed.append(item)
-                continue
-            if used + len(txt) > int(max_chars):
-                item = dict(item)
-                item["text"] = txt[: max(0, int(max_chars) - used)]
-            used += len(item.get("text") or "")
-            trimmed.append(item)
 
-        return trimmed
+        return out

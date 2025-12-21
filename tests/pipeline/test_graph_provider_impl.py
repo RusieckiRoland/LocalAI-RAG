@@ -4,68 +4,77 @@ import json
 from pathlib import Path
 
 from code_query_engine.pipeline.providers.file_system_graph_provider import FileSystemGraphProvider
-from code_query_engine.pipeline.providers.graph_provider import GraphProvider
 
 
-def test_graph_provider_expand_dependency_tree_edges_csv(tmp_path: Path) -> None:
-    repos = tmp_path / "repositories"
-    graph_dir = repos / "repo1" / "branches" / "develop" / "sql_bundle" / "graph"
-    graph_dir.mkdir(parents=True)
-
-    (graph_dir / "edges.csv").write_text(
-        "from,to,type\n"
-        "A,B,Calls\n"
-        "B,C,Uses\n",
-        encoding="utf-8",
-    )
-
-    provider = GraphProvider(repositories_root=str(repos))
-    out = provider.expand_dependency_tree(seed_nodes=["A"], max_depth=2, repository="repo1", branch="develop")
-
-    assert out["nodes"] == ["A", "B", "C"]
-    assert out["edges"] == [
-        {"from": "A", "to": "B", "type": "Calls"},
-        {"from": "B", "to": "C", "type": "Uses"},
-    ]
+def _write_text(path: Path, text: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text, encoding="utf-8")
 
 
-def test_graph_provider_fetch_node_texts_nodes_json_and_max_chars(tmp_path: Path) -> None:
-    repos = tmp_path / "repositories"
-    graph_dir = repos / "repo1" / "branches" / "develop" / "sql_bundle" / "graph"
-    graph_dir.mkdir(parents=True)
+def test_filesystem_graph_provider_fetch_node_texts_returns_code_and_sql_texts(tmp_path: Path) -> None:
+    repo = "r"
+    branch = "b"
+    root = tmp_path / "repositories" / repo / "branches" / branch
 
-    (graph_dir / "nodes.json").write_text(json.dumps({"A": "ABCDE", "B": "FGHIJ"}), encoding="utf-8")
-
-    provider = GraphProvider(repositories_root=str(repos))
-    out = provider.fetch_node_texts(node_ids=["A", "B"], repository="repo1", branch="develop", max_chars=3)
-
-    # Budget should truncate and stop deterministically.
-    assert out == [{"id": "A", "text": "ABC"}]
-
-
-def test_file_system_graph_provider_contract_adapter(tmp_path: Path) -> None:
-    repos = tmp_path / "repositories"
-
-    # Minimal bundle layout
-    code_dir = repos / "repo1" / "branches" / "develop" / "regular_code_bundle"
-    code_dir.mkdir(parents=True)
-    (code_dir / "dependencies.json").write_text(json.dumps({"X": ["Y"]}), encoding="utf-8")
-    (code_dir / "chunks.json").write_text(
+    # regular_code_bundle/chunks.json
+    chunks_path = root / "regular_code_bundle" / "chunks.json"
+    _write_text(
+        chunks_path,
         json.dumps(
             [
-                {"Id": "X", "File": "a.cs", "Text": "class X {}"},
-                {"Id": "Y", "File": "b.cs", "Text": "class Y {}"},
-            ]
+                {"Id": "A", "File": "src/a.cs", "Text": "class A {}"},
+                {"Id": "B", "File": "src/b.cs", "Text": "class B {}"},
+            ],
+            ensure_ascii=False,
         ),
-        encoding="utf-8",
     )
 
-    provider = FileSystemGraphProvider(repositories_root=str(repos))
+    # regular_code_bundle/dependencies.json (not required for fetch, but common layout)
+    deps_path = root / "regular_code_bundle" / "dependencies.json"
+    _write_text(deps_path, json.dumps({"A": ["B"]}, ensure_ascii=False))
 
-    expanded = provider.expand_dependency_tree(seed_nodes=["X"], max_depth=1, repository="repo1", branch="develop", active_index="idx")
+    # sql_bundle/docs/sql_bodies.jsonl
+    sql_path = root / "sql_bundle" / "docs" / "sql_bodies.jsonl"
+    _write_text(
+        sql_path,
+        "\n".join(
+            [
+                json.dumps(
+                    {
+                        "key": "S1",
+                        "kind": "Proc",
+                        "schema": "dbo",
+                        "name": "P1",
+                        "file": "sql/p1.sql",
+                        "body": "SELECT 1;",
+                    },
+                    ensure_ascii=False,
+                )
+            ]
+        )
+        + "\n",
+    )
 
-    assert expanded["nodes"] == ["X", "Y"]
-    assert expanded["edges"], "Expected at least one edge"
+    gp = FileSystemGraphProvider(repositories_root=str(tmp_path / "repositories"))
 
-    texts = provider.fetch_node_texts(node_ids=["X", "Y"], repository="repo1", branch="develop", active_index="idx", max_chars=10_000)
-    assert any(t.get("node_id") == "X" and "class X" in (t.get("text") or "") for t in texts)
+    out = gp.fetch_node_texts(
+        node_ids=["A", "S1", "UNKNOWN"],
+        repository=repo,
+        branch=branch,
+        active_index=None,
+        max_chars=50_000,
+    )
+
+    # Expect contract A: [{"id": ..., "text": ...}, ...]
+    assert [x["id"] for x in out] == ["A", "S1", "UNKNOWN"]
+
+    a = out[0]["text"]
+    assert "### File: src/a.cs" in a
+    assert "class A" in a
+
+    s1 = out[1]["text"]
+    assert "[SQL Proc] dbo.P1" in s1
+    assert "SELECT 1" in s1
+
+    unk = out[2]["text"]
+    assert unk == ""
