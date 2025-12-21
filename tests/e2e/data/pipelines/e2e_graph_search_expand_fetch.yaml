@@ -1,0 +1,81 @@
+# tests/e2e/data/pipelines/e2e_graph_search_expand_fetch.yaml
+
+YAMLpipeline:
+  name: e2e_graph_search_expand_fetch
+
+  settings:
+    entry_step_id: translate_in
+    top_k: 2
+    max_turn_loops: 2
+    test: true
+
+  steps:
+    - id: translate_in
+      action: translate_in_if_needed
+      next: load_history
+
+    - id: load_history
+      action: load_conversation_history
+      next: call_router
+
+    - id: call_router
+      action: call_model
+      prompt_key: "e2e/router_v1"
+      next: handle_router
+
+    - id: handle_router
+      action: handle_prefix
+      bm25_prefix: "[BM25:]"
+      semantic_prefix: "[SEMANTIC:]"
+      hybrid_prefix: "[HYBRID:]"
+      semantic_rerank_prefix: "[SEMANTIC_RERANK:]"
+      direct_prefix: "[DIRECT:]"
+      on_bm25: search
+      on_other: search
+      next: search
+
+    # NOTE: na teraz "search" to nadal fetch_more_context (czyli: query -> wyniki + context_blocks + seed_nodes).
+    # W następnym kroku rozdzielimy to na osobne Search i osobne Fetch-by-Id.
+    - id: search
+      action: fetch_more_context
+      next: expand_graph
+
+    - id: expand_graph
+      action: expand_dependency_tree
+      next: fetch_texts
+
+    - id: fetch_texts
+      action: fetch_node_texts
+      next: call_answer
+
+    - id: call_answer
+      action: call_model
+      prompt_key: "e2e/answer_v1"
+      next: handle_answer
+
+    - id: handle_answer
+      action: handle_prefix
+      answer_prefix: "[Answer:]"
+      followup_prefix: "[Requesting data on:]"
+      on_answer: finalize_heuristic
+      on_followup: loop_guard
+      on_other: finalize_heuristic
+      next: finalize_heuristic
+
+    - id: loop_guard
+      action: loop_guard
+      on_allow: search
+      on_deny: finalize_heuristic
+
+    - id: finalize_heuristic
+      action: finalize_heuristic
+      next: finalize
+
+    # finalize robi tłumaczenie na PL, jeśli translate_chat=True
+    - id: finalize
+      action: finalize
+      next: persist
+
+    - id: persist
+      action: persist_turn_and_finalize
+      end: true

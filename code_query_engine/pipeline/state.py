@@ -55,6 +55,7 @@ class PipelineState:
     graph_expanded_nodes: List[str] = field(default_factory=list)
     graph_edges: List[Dict[str, Any]] = field(default_factory=list)
     graph_debug: Dict[str, Any] = field(default_factory=dict)
+    turn_loop_counter: int = 0
 
     # Final answer (optional convenience)
     final_answer: Optional[str] = None
