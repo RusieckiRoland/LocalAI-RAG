@@ -18,10 +18,12 @@ class CheckContextBudgetAction:
         input_key = (step.raw.get("input") or "").strip()
         max_key = (step.raw.get("max_tokens_from_settings") or "").strip()
 
+        # Backward-compatible defaults for older YAML steps
         if not input_key:
-            raise ValueError("check_context_budget requires step.input")
+            input_key = "composed_context_for_prompt"
         if not max_key:
-            raise ValueError("check_context_budget requires step.max_tokens_from_settings")
+            max_key = "context_budget_tokens"
+
 
         settings: Dict[str, Any] = runtime.pipeline_settings or {}
         if max_key not in settings:

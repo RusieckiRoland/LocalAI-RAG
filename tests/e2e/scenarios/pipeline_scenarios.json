@@ -3,54 +3,1201 @@
   "scenarios": [
     {
       "name": "direct_answer_pl",
+      "pipeline_name": "P0",
       "user_query": "Gdzie jest entry point?",
       "translate_chat": true,
       "model_outputs": {
-        "e2e/router_v1": ["[DIRECT:]"],
-        "e2e/answer_v1": ["[Answer:] E2E OK (direct)"]
+        "e2e/router_v1": [
+          "[DIRECT:]"
+        ],
+        "e2e/answer_v1": [
+          "[Answer:] E2E OK (direct)"
+        ]
       },
       "retriever_results": [
-        { "Id": "A", "File": "a.cs", "Content": "class A {}" }
+        {
+          "Id": "A",
+          "File": "a.cs",
+          "Content": "class A {}"
+        }
       ],
-      "graph_expand_result": { "nodes": ["A"], "edges": [] },
+      "graph_expand_result": {
+        "nodes": [
+          "A"
+        ],
+        "edges": []
+      },
       "graph_node_texts": [
-        { "node_id": "A", "kind": "regular_code", "file": "a.cs", "text": "class A {}" }
+        {
+          "node_id": "A",
+          "kind": "regular_code",
+          "file": "a.cs",
+          "text": "class A {}"
+        }
       ],
       "expected": {
         "final_answer_contains": "E2E OK (direct)",
-        "query_type_in": ["DIRECT", "ANSWER", ""]
+        "query_type_in": [
+          "DIRECT",
+          "ANSWER",
+          ""
+        ]
       }
     },
     {
       "name": "followup_then_answer_pl",
+      "pipeline_name": "P2",
       "user_query": "Gdzie jest entry point?",
       "translate_chat": true,
       "model_outputs": {
-        "e2e/router_v1": ["[BM25:] entry point"],
+        "e2e/router_v1": [
+          "[BM25:] entry point"
+        ],
         "e2e/answer_v1": [
           "[Requesting data on:] Program.cs Main",
           "[Answer:] E2E OK (after followup)"
         ]
       },
       "retriever_results": [
-        { "Id": "A", "File": "a.cs", "Content": "class A {}" },
-        { "Id": "B", "File": "b.cs", "Content": "class B {}" }
+        {
+          "Id": "A",
+          "File": "a.cs",
+          "Content": "class A {}"
+        },
+        {
+          "Id": "B",
+          "File": "b.cs",
+          "Content": "class B {}"
+        }
       ],
       "graph_expand_result": {
-        "nodes": ["A", "B", "C"],
+        "nodes": [
+          "A",
+          "B",
+          "C"
+        ],
         "edges": [
-          { "from": "A", "to": "B", "type": "code_dep" },
-          { "from": "B", "to": "C", "type": "code_dep" }
+          {
+            "from": "A",
+            "to": "B",
+            "type": "code_dep"
+          },
+          {
+            "from": "B",
+            "to": "C",
+            "type": "code_dep"
+          }
         ]
       },
       "graph_node_texts": [
-        { "node_id": "A", "kind": "regular_code", "file": "a.cs", "text": "class A {}" },
-        { "node_id": "B", "kind": "regular_code", "file": "b.cs", "text": "class B {}" },
-        { "node_id": "C", "kind": "regular_code", "file": "c.cs", "text": "class C {}" }
+        {
+          "node_id": "A",
+          "kind": "regular_code",
+          "file": "a.cs",
+          "text": "class A {}"
+        },
+        {
+          "node_id": "B",
+          "kind": "regular_code",
+          "file": "b.cs",
+          "text": "class B {}"
+        },
+        {
+          "node_id": "C",
+          "kind": "regular_code",
+          "file": "c.cs",
+          "text": "class C {}"
+        }
       ],
       "expected": {
         "final_answer_contains": "E2E OK (after followup)",
-        "query_type_in": ["BM25", "ANSWER", ""]
+        "query_type_in": [
+          "BM25",
+          "ANSWER",
+          ""
+        ]
+      }
+    },
+    {
+      "name": "direct_en",
+      "pipeline_name": "P0",
+      "user_query": "Where is the entry point?",
+      "translate_chat": false,
+      "model_outputs": {
+        "e2e/router_v1": [
+          "[DIRECT:]"
+        ],
+        "e2e/answer_v1": [
+          "[Answer:] OK DIRECT"
+        ]
+      },
+      "retriever_results": [],
+      "graph_expand_result": {
+        "nodes": [],
+        "edges": []
+      },
+      "graph_node_texts": [],
+      "expected": {
+        "final_answer_contains": "OK DIRECT",
+        "query_type_in": [
+          "DIRECT",
+          "ANSWER",
+          ""
+        ]
+      }
+    },
+    {
+      "name": "bm25_search_en",
+      "pipeline_name": "P1",
+      "user_query": "Where is the entry point?",
+      "translate_chat": false,
+      "model_outputs": {
+        "e2e/router_v1": [
+          "[BM25:] entry point"
+        ],
+        "e2e/answer_v1": [
+          "[Answer:] OK BM25"
+        ]
+      },
+      "retriever_results": [
+        {
+          "Id": "A",
+          "File": "a.cs",
+          "Content": "class A {}"
+        }
+      ],
+      "graph_expand_result": {
+        "nodes": [],
+        "edges": []
+      },
+      "graph_node_texts": [],
+      "expected": {
+        "final_answer_contains": "OK BM25"
+      }
+    },
+    {
+      "name": "semantic_search_en",
+      "pipeline_name": "P1",
+      "user_query": "Where is the entry point?",
+      "translate_chat": false,
+      "model_outputs": {
+        "e2e/router_v1": [
+          "[SEMANTIC:] entry point"
+        ],
+        "e2e/answer_v1": [
+          "[Answer:] OK SEM"
+        ]
+      },
+      "retriever_results": [
+        {
+          "Id": "A",
+          "File": "a.cs",
+          "Content": "class A {}"
+        }
+      ],
+      "graph_expand_result": {
+        "nodes": [],
+        "edges": []
+      },
+      "graph_node_texts": [],
+      "expected": {
+        "final_answer_contains": "OK SEM"
+      }
+    },
+    {
+      "name": "semantic_rerank_search_en",
+      "pipeline_name": "P1",
+      "user_query": "Where is the entry point?",
+      "translate_chat": false,
+      "model_outputs": {
+        "e2e/router_v1": [
+          "[SEMANTIC_RERANK:] entry point"
+        ],
+        "e2e/answer_v1": [
+          "[Answer:] OK RERANK"
+        ]
+      },
+      "retriever_results": [
+        {
+          "Id": "A",
+          "File": "a.cs",
+          "Content": "class A {}"
+        }
+      ],
+      "graph_expand_result": {
+        "nodes": [],
+        "edges": []
+      },
+      "graph_node_texts": [],
+      "expected": {
+        "final_answer_contains": "OK RERANK"
+      }
+    },
+    {
+      "name": "hybrid_search_en",
+      "pipeline_name": "P1",
+      "user_query": "Where is the entry point?",
+      "translate_chat": false,
+      "model_outputs": {
+        "e2e/router_v1": [
+          "[HYBRID:] entry point"
+        ],
+        "e2e/answer_v1": [
+          "[Answer:] OK HYBRID"
+        ]
+      },
+      "retriever_results": [
+        {
+          "Id": "A",
+          "File": "a.cs",
+          "Content": "class A {}"
+        }
+      ],
+      "graph_expand_result": {
+        "nodes": [],
+        "edges": []
+      },
+      "graph_node_texts": [],
+      "expected": {
+        "final_answer_contains": "OK HYBRID"
+      }
+    },
+    {
+      "name": "search_no_results_answer_fallback",
+      "pipeline_name": "P1",
+      "user_query": "Find something impossible",
+      "translate_chat": false,
+      "model_outputs": {
+        "e2e/router_v1": [
+          "[SEMANTIC:] impossible"
+        ],
+        "e2e/answer_v1": [
+          "[Answer:] [Could not find relevant information.]"
+        ]
+      },
+      "retriever_results": [],
+      "graph_expand_result": {
+        "nodes": [],
+        "edges": []
+      },
+      "graph_node_texts": [],
+      "expected": {
+        "final_answer_contains": "Could not find"
+      }
+    },
+    {
+      "name": "search_one_result",
+      "pipeline_name": "P1",
+      "user_query": "Search one result",
+      "translate_chat": false,
+      "model_outputs": {
+        "e2e/router_v1": [
+          "[BM25:] something"
+        ],
+        "e2e/answer_v1": [
+          "[Answer:] OK"
+        ]
+      },
+      "retriever_results": [
+        {
+          "Id": "A",
+          "File": "a.cs",
+          "Content": "AAA"
+        }
+      ],
+      "graph_expand_result": {
+        "nodes": [],
+        "edges": []
+      },
+      "graph_node_texts": [],
+      "expected": {
+        "final_answer_contains": "OK"
+      }
+    },
+    {
+      "name": "search_many_results",
+      "pipeline_name": "P1",
+      "user_query": "Search many results",
+      "translate_chat": false,
+      "model_outputs": {
+        "e2e/router_v1": [
+          "[BM25:] something"
+        ],
+        "e2e/answer_v1": [
+          "[Answer:] OK"
+        ]
+      },
+      "retriever_results": [
+        {
+          "Id": "A",
+          "File": "a.cs",
+          "Content": "AAA"
+        },
+        {
+          "Id": "B",
+          "File": "b.cs",
+          "Content": "BBB"
+        },
+        {
+          "Id": "C",
+          "File": "c.cs",
+          "Content": "CCC"
+        }
+      ],
+      "graph_expand_result": {
+        "nodes": [],
+        "edges": []
+      },
+      "graph_node_texts": [],
+      "expected": {
+        "final_answer_contains": "OK"
+      }
+    },
+    {
+      "name": "graph_zero_nodes",
+      "pipeline_name": "P2",
+      "user_query": "Graph zero nodes",
+      "translate_chat": false,
+      "model_outputs": {
+        "e2e/router_v1": [
+          "[SEMANTIC:] x"
+        ],
+        "e2e/answer_v1": [
+          "[Answer:] OK NO GRAPH"
+        ]
+      },
+      "retriever_results": [
+        {
+          "Id": "A",
+          "File": "a.cs",
+          "Content": "class A {}"
+        }
+      ],
+      "graph_expand_result": {
+        "nodes": [],
+        "edges": []
+      },
+      "graph_node_texts": [],
+      "expected": {
+        "final_answer_contains": "OK NO GRAPH"
+      }
+    },
+    {
+      "name": "graph_has_nodes_fetch_texts",
+      "pipeline_name": "P2",
+      "user_query": "Graph has nodes",
+      "translate_chat": false,
+      "model_outputs": {
+        "e2e/router_v1": [
+          "[SEMANTIC:] x"
+        ],
+        "e2e/answer_v1": [
+          "[Answer:] OK GRAPH"
+        ]
+      },
+      "retriever_results": [
+        {
+          "Id": "A",
+          "File": "a.cs",
+          "Content": "class A {}"
+        }
+      ],
+      "graph_expand_result": {
+        "nodes": [
+          "A",
+          "B"
+        ],
+        "edges": [
+          {
+            "from": "A",
+            "to": "B",
+            "type": "code_dep"
+          }
+        ]
+      },
+      "graph_node_texts": [
+        {
+          "node_id": "A",
+          "kind": "regular_code",
+          "file": "a.cs",
+          "text": "AAA"
+        },
+        {
+          "node_id": "B",
+          "kind": "regular_code",
+          "file": "b.cs",
+          "text": "BBB"
+        }
+      ],
+      "expected": {
+        "final_answer_contains": "OK GRAPH"
+      }
+    },
+    {
+      "name": "graph_only_seed_injected",
+      "pipeline_name": "P3",
+      "user_query": "Graph only seed injected",
+      "translate_chat": false,
+      "model_outputs": {
+        "e2e/answer_v1": [
+          "[Answer:] OK"
+        ]
+      },
+      "retriever_results": [],
+      "graph_expand_result": {
+        "nodes": [
+          "X"
+        ],
+        "edges": []
+      },
+      "graph_node_texts": [
+        {
+          "node_id": "X",
+          "kind": "unknown",
+          "file": "",
+          "text": "XXX"
+        }
+      ],
+      "expected": {
+        "final_answer_contains": "OK"
+      }
+    },
+    {
+      "name": "no_history",
+      "pipeline_name": "P0",
+      "user_query": "No history direct",
+      "translate_chat": false,
+      "model_outputs": {
+        "e2e/router_v1": [
+          "[DIRECT:]"
+        ],
+        "e2e/answer_v1": [
+          "[Answer:] OK"
+        ]
+      },
+      "retriever_results": [],
+      "graph_expand_result": {
+        "nodes": [],
+        "edges": []
+      },
+      "graph_node_texts": [],
+      "expected": {
+        "final_answer_contains": "OK"
+      }
+    },
+    {
+      "name": "router_sets_bm25_mode",
+      "pipeline_name": "P1",
+      "user_query": "mode bm25",
+      "translate_chat": false,
+      "model_outputs": {
+        "e2e/router_v1": [
+          "[BM25:] q"
+        ],
+        "e2e/answer_v1": [
+          "[Answer:] OK"
+        ]
+      },
+      "retriever_results": [
+        {
+          "Id": "A",
+          "File": "a.cs",
+          "Content": "AAA"
+        }
+      ],
+      "graph_expand_result": {
+        "nodes": [],
+        "edges": []
+      },
+      "graph_node_texts": [],
+      "expected": {
+        "final_answer_contains": "OK",
+        "state_retrieval_mode": "bm25"
+      }
+    },
+    {
+      "name": "router_sets_semantic_mode",
+      "pipeline_name": "P1",
+      "user_query": "mode semantic",
+      "translate_chat": false,
+      "model_outputs": {
+        "e2e/router_v1": [
+          "[SEMANTIC:] q"
+        ],
+        "e2e/answer_v1": [
+          "[Answer:] OK"
+        ]
+      },
+      "retriever_results": [
+        {
+          "Id": "A",
+          "File": "a.cs",
+          "Content": "AAA"
+        }
+      ],
+      "graph_expand_result": {
+        "nodes": [],
+        "edges": []
+      },
+      "graph_node_texts": [],
+      "expected": {
+        "final_answer_contains": "OK",
+        "state_retrieval_mode": "semantic"
+      }
+    },
+    {
+      "name": "router_sets_semantic_rerank_mode",
+      "pipeline_name": "P1",
+      "user_query": "mode rerank",
+      "translate_chat": false,
+      "model_outputs": {
+        "e2e/router_v1": [
+          "[SEMANTIC_RERANK:] q"
+        ],
+        "e2e/answer_v1": [
+          "[Answer:] OK"
+        ]
+      },
+      "retriever_results": [
+        {
+          "Id": "A",
+          "File": "a.cs",
+          "Content": "AAA"
+        }
+      ],
+      "graph_expand_result": {
+        "nodes": [],
+        "edges": []
+      },
+      "graph_node_texts": [],
+      "expected": {
+        "final_answer_contains": "OK",
+        "state_retrieval_mode": "semantic_rerank"
+      }
+    },
+    {
+      "name": "router_sets_hybrid_mode",
+      "pipeline_name": "P1",
+      "user_query": "mode hybrid",
+      "translate_chat": false,
+      "model_outputs": {
+        "e2e/router_v1": [
+          "[HYBRID:] q"
+        ],
+        "e2e/answer_v1": [
+          "[Answer:] OK"
+        ]
+      },
+      "retriever_results": [
+        {
+          "Id": "A",
+          "File": "a.cs",
+          "Content": "AAA"
+        }
+      ],
+      "graph_expand_result": {
+        "nodes": [],
+        "edges": []
+      },
+      "graph_node_texts": [],
+      "expected": {
+        "final_answer_contains": "OK",
+        "state_retrieval_mode": "hybrid"
+      }
+    },
+    {
+      "name": "router_direct_skips_search",
+      "pipeline_name": "P1",
+      "user_query": "direct skip search",
+      "translate_chat": false,
+      "model_outputs": {
+        "e2e/router_v1": [
+          "[DIRECT:]"
+        ],
+        "e2e/answer_v1": [
+          "[Answer:] OK"
+        ]
+      },
+      "retriever_results": [
+        {
+          "Id": "A",
+          "File": "a.cs",
+          "Content": "AAA"
+        }
+      ],
+      "graph_expand_result": {
+        "nodes": [],
+        "edges": []
+      },
+      "graph_node_texts": [],
+      "expected": {
+        "final_answer_contains": "OK",
+        "retriever_calls": 0
+      }
+    },
+    {
+      "name": "router_garbage_on_other",
+      "pipeline_name": "P0",
+      "user_query": "router garbage",
+      "translate_chat": false,
+      "model_outputs": {
+        "e2e/router_v1": [
+          "nonsense"
+        ],
+        "e2e/answer_v1": [
+          "[Answer:] OK"
+        ]
+      },
+      "retriever_results": [],
+      "graph_expand_result": {
+        "nodes": [],
+        "edges": []
+      },
+      "graph_node_texts": [],
+      "expected": {
+        "final_answer_contains": "OK"
+      }
+    },
+    {
+      "name": "router_prefix_empty_query",
+      "pipeline_name": "P1",
+      "user_query": "empty query",
+      "translate_chat": false,
+      "model_outputs": {
+        "e2e/router_v1": [
+          "[BM25:]"
+        ],
+        "e2e/answer_v1": [
+          "[Answer:] [Could not find relevant information.]"
+        ]
+      },
+      "retriever_results": [],
+      "graph_expand_result": {
+        "nodes": [],
+        "edges": []
+      },
+      "graph_node_texts": [],
+      "expected": {
+        "final_answer_contains": "Could not find"
+      }
+    },
+    {
+      "name": "router_trims_whitespace",
+      "pipeline_name": "P1",
+      "user_query": "trim",
+      "translate_chat": false,
+      "model_outputs": {
+        "e2e/router_v1": [
+          " [SEMANTIC:] entry point \n"
+        ],
+        "e2e/answer_v1": [
+          "[Answer:] OK"
+        ]
+      },
+      "retriever_results": [
+        {
+          "Id": "A",
+          "File": "a.cs",
+          "Content": "AAA"
+        }
+      ],
+      "graph_expand_result": {
+        "nodes": [],
+        "edges": []
+      },
+      "graph_node_texts": [],
+      "expected": {
+        "final_answer_contains": "OK",
+        "followup_query": "entry point"
+      }
+    },
+    {
+      "name": "router_multiple_prefixes_first_wins",
+      "pipeline_name": "P1",
+      "user_query": "multi prefix",
+      "translate_chat": false,
+      "model_outputs": {
+        "e2e/router_v1": [
+          "[BM25:] q\n[SEMANTIC:] z"
+        ],
+        "e2e/answer_v1": [
+          "[Answer:] OK"
+        ]
+      },
+      "retriever_results": [
+        {
+          "Id": "A",
+          "File": "a.cs",
+          "Content": "AAA"
+        }
+      ],
+      "graph_expand_result": {
+        "nodes": [],
+        "edges": []
+      },
+      "graph_node_texts": [],
+      "expected": {
+        "final_answer_contains": "OK",
+        "state_retrieval_mode": "bm25"
+      }
+    },
+    {
+      "name": "search_sets_seed_nodes_unique",
+      "pipeline_name": "P1",
+      "user_query": "seed dedupe",
+      "translate_chat": false,
+      "model_outputs": {
+        "e2e/router_v1": [
+          "[BM25:] q"
+        ],
+        "e2e/answer_v1": [
+          "[Answer:] OK"
+        ]
+      },
+      "retriever_results": [
+        {
+          "Id": "A",
+          "File": "a.cs",
+          "Content": "AAA"
+        },
+        {
+          "Id": "A",
+          "File": "a.cs",
+          "Content": "AAA dup"
+        },
+        {
+          "Id": "B",
+          "File": "b.cs",
+          "Content": "BBB"
+        }
+      ],
+      "graph_expand_result": {
+        "nodes": [],
+        "edges": []
+      },
+      "graph_node_texts": [],
+      "expected": {
+        "final_answer_contains": "OK",
+        "seed_nodes": [
+          "A",
+          "B"
+        ]
+      }
+    },
+    {
+      "name": "search_sets_context_blocks",
+      "pipeline_name": "P1",
+      "user_query": "context blocks",
+      "translate_chat": false,
+      "model_outputs": {
+        "e2e/router_v1": [
+          "[BM25:] q"
+        ],
+        "e2e/answer_v1": [
+          "[Answer:] OK"
+        ]
+      },
+      "retriever_results": [
+        {
+          "Id": "A",
+          "File": "a.cs",
+          "Content": "AAA"
+        }
+      ],
+      "graph_expand_result": {
+        "nodes": [],
+        "edges": []
+      },
+      "graph_node_texts": [],
+      "expected": {
+        "final_answer_contains": "OK",
+        "context_contains": "### File: a.cs"
+      }
+    },
+    {
+      "name": "expand_uses_seed_nodes",
+      "pipeline_name": "P2",
+      "user_query": "expand uses seeds",
+      "translate_chat": false,
+      "model_outputs": {
+        "e2e/router_v1": [
+          "[BM25:] q"
+        ],
+        "e2e/answer_v1": [
+          "[Answer:] OK"
+        ]
+      },
+      "retriever_results": [
+        {
+          "Id": "A",
+          "File": "a.cs",
+          "Content": "AAA"
+        },
+        {
+          "Id": "B",
+          "File": "b.cs",
+          "Content": "BBB"
+        }
+      ],
+      "graph_expand_result": {
+        "nodes": [
+          "A",
+          "B"
+        ],
+        "edges": []
+      },
+      "graph_node_texts": [
+        {
+          "node_id": "A",
+          "text": "AAA"
+        },
+        {
+          "node_id": "B",
+          "text": "BBB"
+        }
+      ],
+      "expected": {
+        "final_answer_contains": "OK",
+        "graph_seed_nodes": [
+          "A",
+          "B"
+        ]
+      }
+    },
+    {
+      "name": "expand_no_seeds_debug",
+      "pipeline_name": "P2",
+      "user_query": "expand no seeds",
+      "translate_chat": false,
+      "model_outputs": {
+        "e2e/router_v1": [
+          "[BM25:] q"
+        ],
+        "e2e/answer_v1": [
+          "[Answer:] OK"
+        ]
+      },
+      "retriever_results": [],
+      "graph_expand_result": {
+        "nodes": [],
+        "edges": []
+      },
+      "graph_node_texts": [],
+      "expected": {
+        "final_answer_contains": "OK",
+        "graph_debug_reason": "no_seeds"
+      }
+    },
+    {
+      "name": "fetched_texts_go_to_context",
+      "pipeline_name": "P2",
+      "user_query": "texts to context",
+      "translate_chat": false,
+      "model_outputs": {
+        "e2e/router_v1": [
+          "[SEMANTIC:] q"
+        ],
+        "e2e/answer_v1": [
+          "[Answer:] OK"
+        ]
+      },
+      "retriever_results": [
+        {
+          "Id": "A",
+          "File": "a.cs",
+          "Content": "AAA"
+        }
+      ],
+      "graph_expand_result": {
+        "nodes": [
+          "A"
+        ],
+        "edges": []
+      },
+      "graph_node_texts": [
+        {
+          "node_id": "A",
+          "kind": "regular_code",
+          "file": "a.cs",
+          "text": "ZZZ"
+        }
+      ],
+      "expected": {
+        "final_answer_contains": "OK",
+        "context_contains": "ZZZ"
+      }
+    },
+    {
+      "name": "mixed_db_and_code_texts",
+      "pipeline_name": "P2",
+      "user_query": "mixed texts",
+      "translate_chat": false,
+      "model_outputs": {
+        "e2e/router_v1": [
+          "[SEMANTIC:] q"
+        ],
+        "e2e/answer_v1": [
+          "[Answer:] OK"
+        ]
+      },
+      "retriever_results": [
+        {
+          "Id": "A",
+          "File": "a.cs",
+          "Content": "AAA"
+        }
+      ],
+      "graph_expand_result": {
+        "nodes": [
+          "A",
+          "K"
+        ],
+        "edges": []
+      },
+      "graph_node_texts": [
+        {
+          "node_id": "A",
+          "kind": "regular_code",
+          "file": "a.cs",
+          "text": "class A {}"
+        },
+        {
+          "node_id": "K",
+          "kind": "db_code",
+          "file": "dbo.sql",
+          "text": "[SQL Proc] dbo.K\nSELECT 1;"
+        }
+      ],
+      "expected": {
+        "final_answer_contains": "OK",
+        "context_contains_all": [
+          "class A",
+          "[SQL"
+        ]
+      }
+    },
+    {
+      "name": "followup_then_search_then_answer",
+      "pipeline_name": "P2",
+      "user_query": "Followup loop",
+      "translate_chat": false,
+      "model_outputs": {
+        "e2e/router_v1": [
+          "[BM25:] entry point"
+        ],
+        "e2e/answer_v1": [
+          "[Requesting data on:] Program.cs Main",
+          "[Answer:] OK"
+        ]
+      },
+      "retriever_results": [
+        {
+          "Id": "A",
+          "File": "a.cs",
+          "Content": "AAA"
+        }
+      ],
+      "graph_expand_result": {
+        "nodes": [
+          "A"
+        ],
+        "edges": []
+      },
+      "graph_node_texts": [
+        {
+          "node_id": "A",
+          "text": "AAA"
+        }
+      ],
+      "expected": {
+        "final_answer_contains": "OK",
+        "min_retriever_calls": 1
+      }
+    },
+    {
+      "name": "followup_twice_then_guard_denies",
+      "pipeline_name": "P2",
+      "user_query": "Followup guard",
+      "translate_chat": false,
+      "override_settings": {
+        "max_turn_loops": 2
+      },
+      "model_outputs": {
+        "e2e/router_v1": [
+          "[BM25:] entry point"
+        ],
+        "e2e/answer_v1": [
+          "[Requesting data on:] A",
+          "[Requesting data on:] B",
+          "[Requesting data on:] C"
+        ]
+      },
+      "retriever_results": [
+        {
+          "Id": "A",
+          "File": "a.cs",
+          "Content": "AAA"
+        }
+      ],
+      "graph_expand_result": {
+        "nodes": [
+          "A"
+        ],
+        "edges": []
+      },
+      "graph_node_texts": [
+        {
+          "node_id": "A",
+          "text": "AAA"
+        }
+      ],
+      "expected": {
+        "final_answer_contains_any": [
+          "Could not",
+          "Error",
+          "fallback"
+        ]
+      }
+    },
+    {
+      "name": "budget_under_limit",
+      "pipeline_name": "P4",
+      "user_query": "Budget under",
+      "translate_chat": false,
+      "model_outputs": {
+        "e2e/answer_v1": [
+          "[Answer:] OK"
+        ]
+      },
+      "retriever_results": [],
+      "graph_expand_result": {
+        "nodes": [],
+        "edges": []
+      },
+      "graph_node_texts": [],
+      "expected": {
+        "final_answer_contains": "OK",
+        "budget_summarized": false
+      }
+    },
+    {
+      "name": "budget_over_limit_summarize",
+      "pipeline_name": "P4",
+      "user_query": "Budget over",
+      "translate_chat": false,
+      "override_settings": {
+        "context_budget_tokens": 1,
+        "history_budget_tokens": 1
+      },
+      "model_outputs": {
+        "e2e/answer_v1": [
+          "[Answer:] OK"
+        ]
+      },
+      "retriever_results": [],
+      "graph_expand_result": {
+        "nodes": [],
+        "edges": []
+      },
+      "graph_node_texts": [],
+      "expected": {
+        "final_answer_contains": "OK",
+        "budget_summarized": true
+      }
+    },
+    {
+      "name": "translate_off_passthrough",
+      "pipeline_name": "P0",
+      "user_query": "Gdzie jest entry point?",
+      "translate_chat": false,
+      "model_outputs": {
+        "e2e/router_v1": [
+          "[DIRECT:]"
+        ],
+        "e2e/answer_v1": [
+          "[Answer:] OK"
+        ]
+      },
+      "retriever_results": [],
+      "graph_expand_result": {
+        "nodes": [],
+        "edges": []
+      },
+      "graph_node_texts": [],
+      "expected": {
+        "final_answer_contains": "OK"
+      }
+    },
+    {
+      "name": "translate_in_on_calls_translator",
+      "pipeline_name": "P0",
+      "user_query": "Gdzie jest entry point?",
+      "translate_chat": true,
+      "model_outputs": {
+        "e2e/router_v1": [
+          "[DIRECT:]"
+        ],
+        "e2e/answer_v1": [
+          "[Answer:] OK"
+        ]
+      },
+      "retriever_results": [],
+      "graph_expand_result": {
+        "nodes": [],
+        "edges": []
+      },
+      "graph_node_texts": [],
+      "expected": {
+        "final_answer_contains": "OK",
+        "translator_called": true
+      }
+    },
+    {
+      "name": "yaml_missing_entry_step",
+      "mode": "validate_only",
+      "pipeline_yaml": "YAMLpipeline:\n  name: BAD\n  settings: {}\n  steps: []\n",
+      "expected": {
+        "error_contains": "entry_step_id"
+      }
+    },
+    {
+      "name": "yaml_next_unknown_step",
+      "mode": "validate_only",
+      "pipeline_yaml": "YAMLpipeline:\n  name: BAD\n  settings:\n    entry_step_id: a\n  steps:\n    - id: a\n      action: call_model\n      next: missing\n",
+      "expected": {
+        "error_contains": "missing"
+      }
+    },
+    {
+      "name": "yaml_unknown_action",
+      "mode": "validate_only",
+      "pipeline_yaml": "YAMLpipeline:\n  name: BAD\n  settings:\n    entry_step_id: a\n  steps:\n    - id: a\n      action: totally_unknown\n      end: true\n",
+      "expected": {
+        "error_contains": "Unknown action"
+      }
+    },
+    {
+      "name": "lint_expand_without_seed_source_warn",
+      "mode": "lint_only",
+      "pipeline_name": "P3",
+      "expected": {
+        "warning_contains": "expand without seed"
+      }
+    },
+    {
+      "name": "lint_fetch_node_texts_without_expand_warn",
+      "mode": "lint_only",
+      "pipeline_name": "P1",
+      "expected": {
+        "warning_contains": "fetch_node_texts without expand"
+      }
+    },
+    {
+      "name": "lint_answer_before_fetch_warn",
+      "mode": "lint_only",
+      "pipeline_name": "P1",
+      "expected": {
+        "warning_contains": "answer before fetch"
       }
     }
   ]

@@ -165,7 +165,6 @@ YAMLpipelines:
         answer_prefix: "[Answer:]"
         followup_prefix: "[Requesting data on:]"
         on_answer: finalize
-        on_followup: loop_guard
         on_other: loop_guard
         next: finalize
 
@@ -184,14 +183,18 @@ YAMLpipelines:
 
   - name: P3
     settings:
-      entry_step_id: expand
+      entry_step_id: translate_in
       test: true
-      max_turn_loops: 2
+      max_turn_loops: 4
       max_depth: 2
       max_nodes: 200
       node_texts_count: 3
 
     steps:
+      - id: translate_in
+        action: translate_in_if_needed
+        next: expand
+
       - id: expand
         action: expand_dependency_tree
         next: fetch_texts
@@ -235,38 +238,8 @@ YAMLpipelines:
 
       - id: budget
         action: check_context_budget
-        next: call_answer
-
-      - id: call_answer
-        action: call_model
-        prompt_key: "e2e/answer_v1"
-        next: handle_answer
-
-      - id: handle_answer
-        action: handle_prefix
-        answer_prefix: "[Answer:]"
-        followup_prefix: "[Requesting data on:]"
-        on_answer: finalize
-        on_other: finalize
-        next: finalize
-
-      - id: finalize
-        action: finalize_heuristic
-        next: persist
-
-      - id: persist
-        action: persist_turn_and_finalize
-        end: true
-
-  - name: P5
-    settings:
-      entry_step_id: translate_in
-      test: true
-      max_turn_loops: 2
-
-    steps:
-      - id: translate_in
-        action: translate_in_if_needed
+        input: "composed_context_for_prompt"
+        max_tokens_from_settings: "context_budget_tokens"
         next: call_answer
 
       - id: call_answer
@@ -281,6 +254,3 @@ YAMLpipelines:
       - id: persist
         action: persist_turn_and_finalize
         end: true
-
-
-

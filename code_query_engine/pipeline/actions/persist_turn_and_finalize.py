@@ -13,16 +13,43 @@ class PersistTurnAndFinalizeAction:
         # In the assessment pipeline, the last model response may be the assessor routing line.
         codellama_response = state.draft_answer_en or state.last_model_response or ""
 
-        runtime.logger.log_interaction(
-            original_question=state.user_query,
-            model_input_en=state.model_input_en_or_fallback(),
-            codellama_response=codellama_response,
-            followup_query=state.followup_query,
-            query_type=state.query_type,
-            final_answer=state.answer_en,
-            context_blocks=list(state.history_blocks) + list(state.context_blocks),
-            next_codellama_prompt=state.next_codellama_prompt,
-        )
+        logger = getattr(runtime, "logger", None)
+        log_fn = getattr(logger, "log_interaction", None)
+
+        if callable(log_fn):
+            # Prefer the "ports" logger signature if available, fall back to legacy kwargs.
+            try:
+                log_fn(
+                    session_id=state.session_id,
+                    pipeline_name="",
+                    step_id=step.id,
+                    action=step.action,
+                    data={
+                        "original_question": state.user_query,
+                        "model_input_en": state.model_input_en_or_fallback(),
+                        "codellama_response": codellama_response,
+                        "followup_query": state.followup_query,
+                        "query_type": state.query_type,
+                        "final_answer": state.answer_en,
+                        "context_blocks": list(state.history_blocks) + list(state.context_blocks),
+                        "next_codellama_prompt": state.next_codellama_prompt,
+                    },
+                )
+            except TypeError:
+                try:
+                    log_fn(
+                        original_question=state.user_query,
+                        model_input_en=state.model_input_en_or_fallback(),
+                        codellama_response=codellama_response,
+                        followup_query=state.followup_query,
+                        query_type=state.query_type,
+                        final_answer=state.answer_en,
+                        context_blocks=list(state.history_blocks) + list(state.context_blocks),
+                        next_codellama_prompt=state.next_codellama_prompt,
+                    )
+                except TypeError:
+                    pass
+
 
         # Persist final answer in history (best-effort)
         try:

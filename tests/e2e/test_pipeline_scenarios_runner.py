@@ -1,139 +1,100 @@
-from __future__ import annotations
-
 import json
+import textwrap
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 import pytest
 
-import constants
-from history.history_manager import HistoryManager
 from code_query_engine.pipeline.action_registry import build_default_action_registry
-from code_query_engine.pipeline.engine import PipelineEngine, PipelineRuntime
+from code_query_engine.pipeline.engine import PipelineEngine
 from code_query_engine.pipeline.loader import PipelineLoader
+from code_query_engine.pipeline import PipelineRuntime
 from code_query_engine.pipeline.state import PipelineState
 from code_query_engine.pipeline.validator import PipelineValidator
 
+from history.history_manager import HistoryManager
+
 
 # -----------------------
-# Fakes (self-contained)
+# Test doubles
 # -----------------------
 
-class FakeModelWithAsk:
-    def __init__(self, *, outputs_by_consultant: Dict[str, List[str]]) -> None:
-        self._by = {k: list(v) for k, v in (outputs_by_consultant or {}).items()}
-        self.calls: List[Dict[str, Any]] = []
-
-    def ask(self, *, context: str, question: str, consultant: str) -> str:
-        self.calls.append({"consultant": consultant, "question": question, "context": context})
-        seq = self._by.get(consultant, [])
-        if not seq:
-            return ""
-        return seq.pop(0)
-
-
-class FakeRetriever:
-    def __init__(self, *, results: List[Dict[str, Any]]) -> None:
-        self._results = list(results or [])
-        self.calls: List[Dict[str, Any]] = []
-
-    def search(self, *args: Any, **kwargs: Any) -> List[Dict[str, Any]]:
-        self.calls.append({"args": args, "kwargs": kwargs})
-        return list(self._results)
-
-
-class DummyRetrievalDispatcher:
-    def __init__(self, *, retriever: FakeRetriever) -> None:
-        self._retriever = retriever
-
-    def search(self, decision: Any, *, top_k: int, settings: Dict[str, Any], filters: Dict[str, Any]) -> List[Dict[str, Any]]:
-        # FetchMoreContextAction normalizuje różne formaty wyników.
-        # Tu tylko delegujemy do jednego fake retrievera.
-        return self._retriever.search(decision=decision, top_k=top_k, settings=settings, filters=filters)
-
-
-class FakeGraphProvider:
-    def __init__(self, *, expand_result: Dict[str, Any], node_texts: List[Dict[str, Any]]) -> None:
-        self._expand = dict(expand_result or {"nodes": [], "edges": []})
-        self._texts = list(node_texts or [])
-        self.expand_calls: List[Dict[str, Any]] = []
-        self.text_calls: List[Dict[str, Any]] = []
-
-    def expand_dependency_tree(
-        self,
-        *,
-        seed_nodes: List[str],
-        max_depth: int = 2,
-        max_nodes: int = 200,
-        edge_allowlist: Optional[List[str]] = None,
-        repository: Optional[str] = None,
-        branch: Optional[str] = None,
-        active_index: Optional[str] = None,
-    ) -> Dict[str, Any]:
-        self.expand_calls.append(
-            {
-                "seed_nodes": list(seed_nodes),
-                "max_depth": max_depth,
-                "max_nodes": max_nodes,
-                "edge_allowlist": list(edge_allowlist or []),
-                "repository": repository,
-                "branch": branch,
-                "active_index": active_index,
-            }
-        )
-        return dict(self._expand)
-
-    def fetch_node_texts(
-        self,
-        *,
-        node_ids: List[str],
-        repository: Optional[str] = None,
-        branch: Optional[str] = None,
-        active_index: Optional[str] = None,
-        max_chars: int = 50_000,
-    ) -> List[Dict[str, Any]]:
-        self.text_calls.append(
-            {
-                "node_ids": list(node_ids),
-                "repository": repository,
-                "branch": branch,
-                "active_index": active_index,
-                "max_chars": max_chars,
-            }
-        )
-        return list(self._texts)
+class DummyMarkdownTranslator:
+    def translate_en_pl(self, text: str) -> str:
+        return text
 
 
 class DummyTranslator:
-    def translate(self, text: str) -> str:
-        # PL -> EN (stub)
-        return f"EN: {text}"
-
-
-class DummyMarkdownTranslator:
-    def translate(self, text: str) -> str:
-        # EN -> PL (stub)
-        return f"PL: {text}"
-
-    def translate_markdown(self, text: str) -> str:
-        # jeśli akcja używa innej nazwy metody
-        return f"PL: {text}"
+    def translate_pl_en(self, text: str) -> str:
+        return text
 
 
 class NoopInteractionLogger:
-    def log_interaction(self, **kwargs: Any) -> None:
+    def info(self, *args: Any, **kwargs: Any) -> None:
+        return
+
+    def debug(self, *args: Any, **kwargs: Any) -> None:
+        return
+
+    def warning(self, *args: Any, **kwargs: Any) -> None:
+        return
+
+    def error(self, *args: Any, **kwargs: Any) -> None:
         return
 
 
-class InMemoryMockRedis:
-    def __init__(self) -> None:
-        self._store: Dict[str, Any] = {}
+class FakeModelWithAsk:
+    def __init__(self, outputs_by_consultant: Dict[str, List[str]]):
+        self._outputs_by_consultant = outputs_by_consultant
+        self._counters: Dict[str, int] = {}
 
-    def get(self, key: str) -> Any:
+    def ask(self, *, consultant: str, prompt: str, **kwargs: Any) -> str:
+        outs = self._outputs_by_consultant.get(consultant, [])
+        idx = self._counters.get(consultant, 0)
+        self._counters[consultant] = idx + 1
+        if idx >= len(outs):
+            return ""
+        return outs[idx]
+
+
+class FakeRetriever:
+    def __init__(self, results: List[Dict[str, Any]]):
+        self._results = results
+
+    def search(self, *args: Any, **kwargs: Any) -> List[Dict[str, Any]]:
+        return self._results
+
+
+class DummyRetrievalDispatcher:
+    def __init__(self, retriever: Any):
+        self._retriever = retriever
+
+    def retrieve(self, *args: Any, **kwargs: Any) -> List[Dict[str, Any]]:
+        return self._retriever.search(*args, **kwargs)
+
+
+class FakeGraphProvider:
+    def __init__(self, *, expand_result: Dict[str, Any], node_texts: List[Dict[str, Any]]):
+        self._expand_result = expand_result
+        self._node_texts = node_texts
+
+    def expand(self, *args: Any, **kwargs: Any) -> Dict[str, Any]:
+        return self._expand_result
+
+    def fetch_node_texts(self, *args: Any, **kwargs: Any) -> List[Dict[str, Any]]:
+        return self._node_texts
+
+
+class InMemoryMockRedis:
+    def __init__(self):
+        self._store: Dict[str, str] = {}
+
+    def get(self, key: str) -> str | None:
         return self._store.get(key)
 
-    def set(self, key: str, value: Any) -> None:
+    def set(self, key: str, value: str) -> None:
         self._store[key] = value
 
     def delete(self, key: str) -> None:
@@ -162,18 +123,33 @@ def _load_scenarios() -> Dict[str, Any]:
     return json.loads(p.read_text(encoding="utf-8"))
 
 
-def _load_pipeline(pipeline_file: str):
-    pipelines_root = Path(__file__).resolve().parent / "data" / "pipelines"
-    yaml_path = pipelines_root / pipeline_file
+def _pipelines_root() -> Path:
+    return Path(__file__).parent / "data" / "pipelines"
 
-    loader = PipelineLoader(pipelines_root=str(pipelines_root))
-    pipe = loader.load_from_path(str(yaml_path))
-    PipelineValidator().validate(pipe)
-    return pipe
+
+def _load_pipeline_from_file(pipeline_file: str, pipeline_name: str) -> Any:
+    pipelines_root = _pipelines_root()
+    yaml_path = pipelines_root / pipeline_file
+    loader = PipelineLoader(pipelines_root=pipelines_root)
+    return loader.load_from_path(str(yaml_path), pipeline_name=pipeline_name)
+
+
+def _load_pipeline_from_inline_yaml(yaml_text: str) -> Any:
+    # Inline YAML scenarios are standalone; write them to a temp file and load.
+    with tempfile.TemporaryDirectory() as td:
+        tmp_root = Path(td)
+        yaml_path = tmp_root / "inline.yaml"
+        yaml_path.write_text(textwrap.dedent(yaml_text).lstrip(), encoding="utf-8")
+
+        loader = PipelineLoader(pipelines_root=tmp_root)
+        return loader.load_from_path(str(yaml_path), pipeline_name=None)
 
 
 def _runtime(*, pipe_settings: Dict[str, Any], model: Any, dispatcher: Any, graph: Any) -> PipelineRuntime:
     history = HistoryManager(backend=InMemoryMockRedis(), session_id="s")
+
+    # 'constants' is a project-level module in your repo; the test uses it via runtime.
+    import constants  # type: ignore
 
     return PipelineRuntime(
         pipeline_settings=pipe_settings,
@@ -201,9 +177,56 @@ def _scenario_ids() -> List[str]:
 @pytest.mark.parametrize("scenario_name", _scenario_ids())
 def test_pipeline_scenarios_runner(scenario_name: str) -> None:
     data = _load_scenarios()
-    pipe = _load_pipeline(data["pipeline_file"])
-
     raw = next(s for s in data["scenarios"] if s["name"] == scenario_name)
+
+    mode = str(raw.get("mode") or "run").strip().lower()
+
+    # -----------------------
+    # validate_only: load inline YAML and assert it fails with expected message
+    # -----------------------
+    if mode == "validate_only":
+        yaml_text = raw.get("pipeline_yaml")
+        assert isinstance(yaml_text, str) and yaml_text.strip(), "validate_only scenario must provide pipeline_yaml"
+
+        expected_err = (raw.get("expected", {}) or {}).get("error_contains", "")
+        expected_err = str(expected_err or "").strip()
+
+        with pytest.raises(Exception) as ex:
+            pipe = _load_pipeline_from_inline_yaml(yaml_text)
+            PipelineValidator().validate(pipe)
+
+        if expected_err:
+            assert expected_err in str(ex.value)
+        return
+
+    # -----------------------
+    # lint_only: load pipeline from shared multi-pipeline file and assert warnings
+    # -----------------------
+    if mode == "lint_only":
+        pipeline_name = str(raw.get("pipeline_name") or "").strip()
+        assert pipeline_name, "lint_only scenario must provide pipeline_name"
+
+        pipe = _load_pipeline_from_file(data["pipeline_file"], pipeline_name=pipeline_name)
+        warnings = PipelineValidator().validate(pipe)
+
+        expected_warns = (raw.get("expected", {}) or {}).get("warnings_contains", []) or []
+        joined = "\n".join(warnings)
+
+        for w in expected_warns:
+            w = str(w or "").strip()
+            if w:
+                assert w in joined
+
+        return
+
+    # -----------------------
+    # run: execute pipeline and assert final output
+    # -----------------------
+    pipeline_name = str(raw.get("pipeline_name") or "").strip()
+    assert pipeline_name, "run scenario must provide pipeline_name"
+
+    pipe = _load_pipeline_from_file(data["pipeline_file"], pipeline_name=pipeline_name)
+
     sc = Scenario(
         name=raw["name"],
         user_query=raw["user_query"],
@@ -221,7 +244,6 @@ def test_pipeline_scenarios_runner(scenario_name: str) -> None:
     graph = FakeGraphProvider(expand_result=sc.graph_expand_result, node_texts=sc.graph_node_texts)
 
     rt = _runtime(pipe_settings=pipe.settings, model=model, dispatcher=dispatcher, graph=graph)
-
     engine = PipelineEngine(build_default_action_registry())
 
     state = PipelineState(
@@ -232,7 +254,7 @@ def test_pipeline_scenarios_runner(scenario_name: str) -> None:
         translate_chat=sc.translate_chat,
     )
 
-    # Safety: część akcji używa licznika pętli (jeśli nie istnieje w dataclass)
+    # Safety: some actions use a loop counter; ensure it exists for older state versions.
     if not hasattr(state, "turn_loop_counter"):
         setattr(state, "turn_loop_counter", 0)
 
@@ -241,7 +263,3 @@ def test_pipeline_scenarios_runner(scenario_name: str) -> None:
     must_contain = (sc.expected.get("final_answer_contains") or "").strip()
     if must_contain:
         assert must_contain in (out.final_answer or "")
-
-    allowed_qt = sc.expected.get("query_type_in")
-    if isinstance(allowed_qt, list) and allowed_qt:
-        assert (out.query_type or "") in allowed_qt

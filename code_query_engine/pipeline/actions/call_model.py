@@ -20,11 +20,22 @@ class CallModelAction:
 
         state.next_codellama_prompt = consultant_for_prompt
 
-        response = runtime.main_model.ask(
-            context=context,
-            question=model_input_en,
-            consultant=consultant_for_prompt,
-        )
+        prompt = "\n\n".join([p for p in [context.strip(), model_input_en.strip()] if p])
+
+        # Prefer the new IModelClient API (prompt-based),
+        # but remain backward-compatible with the legacy Model.ask(context, question, consultant).
+        try:
+            response = runtime.main_model.ask(
+                prompt=prompt,
+                consultant=consultant_for_prompt,
+            )
+        except TypeError:
+            response = runtime.main_model.ask(
+                context=context,
+                question=model_input_en,
+                consultant=consultant_for_prompt,
+            )
+
         state.last_model_response = response
 
         return None

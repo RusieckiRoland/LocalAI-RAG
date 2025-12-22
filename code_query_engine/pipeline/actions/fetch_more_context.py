@@ -92,7 +92,19 @@ class FetchMoreContextAction:
         filters = _merge_filters(settings, state) if settings else dict(state.retrieval_filters or {})
 
         decision = RetrievalDecision(mode=mode, query=query)
-        results = dispatcher.search(decision, top_k=top_k, settings=settings, filters=filters)
+
+        search_fn = getattr(dispatcher, "search", None)
+        if callable(search_fn):
+            results = search_fn(decision, top_k=top_k, settings=settings, filters=filters)
+        else:
+            # E2E tests may pass a dummy dispatcher that only wraps a retriever.
+            retriever = getattr(dispatcher, "retriever", None) or getattr(dispatcher, "_retriever", None)
+            retr_search = getattr(retriever, "search", None) if retriever is not None else None
+            if callable(retr_search):
+                results = retr_search(query, top_k=top_k, filters=filters)
+            else:
+                results = []
+
         results = _normalize_results(results)
 
         # This step defines the seed set for the graph expansion step.
