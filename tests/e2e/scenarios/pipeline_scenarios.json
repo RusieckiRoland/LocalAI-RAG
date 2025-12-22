@@ -1,0 +1,57 @@
+{
+  "pipeline_file": "e2e_scenarios_runner.yaml",
+  "scenarios": [
+    {
+      "name": "direct_answer_pl",
+      "user_query": "Gdzie jest entry point?",
+      "translate_chat": true,
+      "model_outputs": {
+        "e2e/router_v1": ["[DIRECT:]"],
+        "e2e/answer_v1": ["[Answer:] E2E OK (direct)"]
+      },
+      "retriever_results": [
+        { "Id": "A", "File": "a.cs", "Content": "class A {}" }
+      ],
+      "graph_expand_result": { "nodes": ["A"], "edges": [] },
+      "graph_node_texts": [
+        { "node_id": "A", "kind": "regular_code", "file": "a.cs", "text": "class A {}" }
+      ],
+      "expected": {
+        "final_answer_contains": "E2E OK (direct)",
+        "query_type_in": ["DIRECT", "ANSWER", ""]
+      }
+    },
+    {
+      "name": "followup_then_answer_pl",
+      "user_query": "Gdzie jest entry point?",
+      "translate_chat": true,
+      "model_outputs": {
+        "e2e/router_v1": ["[BM25:] entry point"],
+        "e2e/answer_v1": [
+          "[Requesting data on:] Program.cs Main",
+          "[Answer:] E2E OK (after followup)"
+        ]
+      },
+      "retriever_results": [
+        { "Id": "A", "File": "a.cs", "Content": "class A {}" },
+        { "Id": "B", "File": "b.cs", "Content": "class B {}" }
+      ],
+      "graph_expand_result": {
+        "nodes": ["A", "B", "C"],
+        "edges": [
+          { "from": "A", "to": "B", "type": "code_dep" },
+          { "from": "B", "to": "C", "type": "code_dep" }
+        ]
+      },
+      "graph_node_texts": [
+        { "node_id": "A", "kind": "regular_code", "file": "a.cs", "text": "class A {}" },
+        { "node_id": "B", "kind": "regular_code", "file": "b.cs", "text": "class B {}" },
+        { "node_id": "C", "kind": "regular_code", "file": "c.cs", "text": "class C {}" }
+      ],
+      "expected": {
+        "final_answer_contains": "E2E OK (after followup)",
+        "query_type_in": ["BM25", "ANSWER", ""]
+      }
+    }
+  ]
+}
