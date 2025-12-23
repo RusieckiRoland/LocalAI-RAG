@@ -1,128 +1,206 @@
+# code_query_engine/pipeline/validator.py
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Dict, List, Tuple
 
-from .definitions import PipelineDef, StepDef
+
+# NOTE: This validator is intentionally "DbC + backward-compatible":
+# - hard errors for broken references / missing required fields
+# - warnings (not errors) for missing optional routing branches (legacy pipelines)
 
 
 class PipelineValidator:
-    def __init__(self, *, allowed_actions: Optional[Set[str]] = None) -> None:
-        # If provided, validate() will reject any step.action not present in this allowlist.
-        self._allowed_actions = allowed_actions
+    """
+    Validates pipeline structure (hard errors) and returns lint warnings (soft issues).
+    """
 
-    def validate(self, pipeline: PipelineDef) -> List[str]:
+    # Keep this list in sync with build_default_action_registry()
+    _KNOWN_ACTIONS = {
+        "call_model",
+        "handle_prefix",
+        "translate_in_if_needed",
+        "translate_out_if_needed",
+        "load_conversation_history",
+        "check_context_budget",
+        "fetch_more_context",
+        "expand_dependency_tree",
+        "fetch_node_texts",
+        "persist_turn_and_finalize",
+        "finalize",
+        "finalize_heuristic",
+        "loop_guard",
+    }
+
+    def validate(self, pipeline: Any) -> List[str]:
         warnings: List[str] = []
 
-        steps_by_id = {s.id: s for s in pipeline.steps}
+        if pipeline is None:
+            raise ValueError("pipeline is None")
 
-        entry = pipeline.settings.get("entry_step_id")
-        if not entry or entry not in steps_by_id:
-            raise ValueError(f"entry_step_id missing or unknown: {entry}")
+        settings = getattr(pipeline, "settings", None)
+        if settings is None or not isinstance(settings, dict):
+            raise ValueError("pipeline.settings must be a dict")
 
-        # If caller did not provide an allowlist, default to built-in actions.
-        if self._allowed_actions is None:
-            from .action_registry import build_default_action_registry
+        # IMPORTANT: validate entry_step_id before steps (tests expect this)
+        entry_step_id = settings.get("entry_step_id")
+        if not (isinstance(entry_step_id, str) and entry_step_id.strip()):
+            raise ValueError("pipeline.settings.entry_step_id is required")
 
-            reg = build_default_action_registry()
-            # ActionRegistry stores actions in a dict {action_name: ActionInstance}
-            self._allowed_actions = set(reg._actions.keys())  # type: ignore[attr-defined]
+        steps = getattr(pipeline, "steps", None)
+        if not isinstance(steps, list) or not steps:
+            raise ValueError("pipeline.steps must be a non-empty list")
 
-        for step in pipeline.steps:
-            if self._allowed_actions is not None and step.action not in self._allowed_actions:
-                raise ValueError(f"Unknown action: {step.action}")
+        steps_by_id: Dict[str, Any] = {}
+        for s in steps:
+            sid = getattr(s, "id", None)
+            if not (isinstance(sid, str) and sid.strip()):
+                raise ValueError("each step must have a non-empty string id")
+            if sid in steps_by_id:
+                raise ValueError(f"duplicate step id: {sid}")
+            steps_by_id[sid] = s
 
-            next_id = step.raw.get("next")
-            if next_id and next_id not in steps_by_id:
-                raise ValueError(f"Unknown step referenced: {next_id}")
+        if entry_step_id not in steps_by_id:
+            raise ValueError(f"entry_step_id references unknown step: {entry_step_id}")
 
-            for branch_key, next_step in step.raw.items():
-                if branch_key.startswith("on_") and isinstance(next_step, str):
-                    if next_step not in steps_by_id:
-                        raise ValueError(f"Unknown step referenced: {next_step}")
+        for s in steps:
+            self._validate_step_common(s, steps_by_id)
+            action = getattr(s, "action", None)
 
-        # ---- Lint warnings (non-fatal) ----
-        actions = [s.action for s in pipeline.steps]
+            if action == "call_model":
+                self._validate_call_model(s)
+            elif action == "handle_prefix":
+                self._validate_handle_prefix_contract(s, steps_by_id, warnings)
 
-        if "expand_dependency_tree" in actions and "fetch_more_context" not in actions:
-            warnings.append("WARN: expand_dependency_tree used without fetch_more_context (no seed source).")
-
-        if "fetch_node_texts" in actions and "expand_dependency_tree" not in actions:
-            warnings.append("WARN: fetch_node_texts used without expand_dependency_tree.")
-
-        # Heuristic: if an "answer" call_model step is listed before fetch_more_context, warn.
-        answer_idx = None
-        fetch_idx = None
-        for idx, s in enumerate(pipeline.steps):
-            if fetch_idx is None and s.action == "fetch_more_context":
-                fetch_idx = idx
-            if answer_idx is None and s.action == "call_model" and "answer" in (s.id or "").lower():
-                answer_idx = idx
-
-        if answer_idx is not None and fetch_idx is not None and answer_idx < fetch_idx:
-            warnings.append("WARN: answer call_model appears before fetch_more_context.")
-
+        warnings.extend(self._lint_pipeline(steps))
         return warnings
 
-    def lint(self, pipeline: PipelineDef) -> List[str]:
-        """Return non-fatal warnings about suspicious pipeline topology."""
-        warnings: List[str] = []
+    def _validate_step_common(self, step: Any, steps_by_id: Dict[str, Any]) -> None:
+        action = getattr(step, "action", None)
+        sid = getattr(step, "id", None)
+        raw = getattr(step, "raw", None)
 
-        # 1) expand_graph without any obvious seed source.
-        expand_idx = self._first_action_index(pipeline.steps, "expand_graph")
-        if expand_idx is not None:
-            has_seed_before = any(
-                s.action in ("search", "fetch_more_context") for s in pipeline.steps[:expand_idx]
+        if not (isinstance(action, str) and action.strip()):
+            raise ValueError(f"step {sid}: action is required")
+
+        if action not in self._KNOWN_ACTIONS:
+            # tests expect "Unknown action" casing
+            raise ValueError(f"Unknown action: {action}")
+
+        if not isinstance(raw, dict):
+            raise ValueError(f"step {sid}: raw dict is required")
+
+        nxt = raw.get("next")
+        end = raw.get("end")
+
+        if nxt is not None:
+            if not (isinstance(nxt, str) and nxt.strip()):
+                raise ValueError(f"step {sid}: next must be a non-empty string if present")
+            if nxt.strip() not in steps_by_id:
+                raise ValueError(f"step {sid}: next references unknown step: {nxt}")
+
+        if end is not None and not isinstance(end, bool):
+            raise ValueError(f"step {sid}: end must be boolean if present")
+
+    def _validate_call_model(self, step: Any) -> None:
+        raw = step.raw
+        sid = step.id
+
+        prompt_key = raw.get("prompt_key")
+        if not (isinstance(prompt_key, str) and prompt_key.strip()):
+            raise ValueError(f"step {sid}: call_model requires prompt_key")
+
+    def _validate_handle_prefix_contract(
+        self,
+        step: Any,
+        steps_by_id: Dict[str, Any],
+        warnings: List[str],
+    ) -> None:
+        raw = step.raw
+        sid = step.id
+
+        on_other = raw.get("on_other")
+        if not (isinstance(on_other, str) and on_other.strip()):
+            raise ValueError("handle_prefix contract broken: on_other is required")
+        if on_other.strip() not in steps_by_id:
+            raise ValueError(
+                f"handle_prefix contract broken: on_other references unknown step: {on_other}"
             )
-            if not has_seed_before:
-                warnings.append("expand_graph without seed_source")
 
-        # 2) fetch_node_texts without expand_graph.
-        fetch_texts_idx = self._first_action_index(pipeline.steps, "fetch_node_texts")
-        if fetch_texts_idx is not None and expand_idx is None:
-            warnings.append("fetch_node_texts without expand_graph")
+        prefixes: List[Tuple[str, str]] = []
+        for k, v in raw.items():
+            if isinstance(k, str) and k.endswith("_prefix") and isinstance(v, str) and v.strip():
+                prefixes.append((k, v.strip()))
 
-        # 3) call_answer before fetch_node_texts.
-        answer_idx = self._find_call_answer_index(pipeline.steps)
-        if answer_idx is not None:
-            if fetch_texts_idx is None or answer_idx < fetch_texts_idx:
-                warnings.append("call_answer before fetch_node_texts")
+        if not prefixes:
+            warnings.append(f"handle_prefix {sid}: no *_prefix keys defined")
+
+        prefix_values = [v for _, v in prefixes]
+        if len(prefix_values) != len(set(prefix_values)):
+            raise ValueError("handle_prefix contract broken: duplicate *_prefix values detected")
+
+        required_pairs = [
+            ("semantic_prefix", "on_semantic"),
+            ("bm25_prefix", "on_bm25"),
+            ("hybrid_prefix", "on_hybrid"),
+            ("semantic_rerank_prefix", "on_semantic_rerank"),
+            ("direct_prefix", "on_direct"),
+            ("answer_prefix", "on_answer"),
+            ("followup_prefix", "on_followup"),
+        ]
+
+        for prefix_key, on_key in required_pairs:
+            prefix_val = raw.get(prefix_key)
+            if isinstance(prefix_val, str) and prefix_val.strip():
+                target = raw.get(on_key)
+
+                # Missing branch = warning (backward compatible)
+                if not (isinstance(target, str) and target.strip()):
+                    warnings.append(
+                        f"handle_prefix {sid}: {prefix_key} is set but {on_key} is missing"
+                    )
+                    continue
+
+                target_id = target.strip()
+                if target_id not in steps_by_id:
+                    raise ValueError(
+                        f"handle_prefix contract broken: {on_key} references unknown step: {target_id}"
+                    )
+
+        # Validate any explicit on_* keys that exist
+        for k, v in raw.items():
+            if isinstance(k, str) and k.startswith("on_") and isinstance(v, str) and v.strip():
+                if v.strip() not in steps_by_id:
+                    raise ValueError(
+                        f"handle_prefix contract broken: {k} references unknown step: {v}"
+                    )
+
+    def _lint_pipeline(self, steps: List[Any]) -> List[str]:
+        warnings: List[str] = []
+
+        actions = [getattr(s, "action", "") for s in steps]
+        ids = [getattr(s, "id", "") for s in steps]
+
+        has_expand = "expand_dependency_tree" in actions
+        has_fetch_more = "fetch_more_context" in actions
+        has_fetch_texts = "fetch_node_texts" in actions
+
+        if has_fetch_texts and not has_expand:
+            warnings.append("fetch_node_texts without expand_dependency_tree")
+
+        if has_expand and not has_fetch_more:
+            warnings.append("expand_dependency_tree without seed source")
+
+        try:
+            idx_answer = ids.index("call_answer")
+        except ValueError:
+            idx_answer = -1
+
+        try:
+            idx_fetch = actions.index("fetch_more_context")
+        except ValueError:
+            idx_fetch = -1
+
+        if idx_answer >= 0 and idx_fetch >= 0 and idx_answer < idx_fetch:
+            warnings.append("answer before fetch_more_context")
 
         return warnings
-
-    @staticmethod
-    def _collect_step_refs(raw_step: Dict[str, Any]) -> List[str]:
-        refs: List[str] = []
-
-        nxt = raw_step.get("next")
-        if isinstance(nxt, str) and nxt.strip():
-            refs.append(nxt.strip())
-
-        for k, v in raw_step.items():
-            if not isinstance(k, str):
-                continue
-            if not k.startswith("on_"):
-                continue
-            if isinstance(v, str) and v.strip():
-                refs.append(v.strip())
-
-        return refs
-
-    @staticmethod
-    def _first_action_index(steps: List[StepDef], action_name: str) -> Optional[int]:
-        for i, s in enumerate(steps):
-            if s.action == action_name:
-                return i
-        return None
-
-    @staticmethod
-    def _find_call_answer_index(steps: List[StepDef]) -> Optional[int]:
-        for i, s in enumerate(steps):
-            if s.id == "call_answer":
-                return i
-
-            if s.action == "call_model":
-                prompt_key = str(s.raw.get("prompt_key") or "")
-                if "answer" in prompt_key:
-                    return i
-
-        return None

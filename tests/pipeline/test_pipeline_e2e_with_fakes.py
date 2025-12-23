@@ -65,6 +65,10 @@ def test_pipeline_router_bm25_fetch_then_answer(tmp_path):
                   semantic_rerank_prefix: "[SEMANTIC_RERANK:]"
                   direct_prefix: "[DIRECT:]"
                   on_bm25: fetch
+                  on_semantic: fetch
+                  on_hybrid: fetch
+                  on_semantic_rerank: fetch
+                  on_direct: finalize
                   on_other: finalize
                   next: finalize
 

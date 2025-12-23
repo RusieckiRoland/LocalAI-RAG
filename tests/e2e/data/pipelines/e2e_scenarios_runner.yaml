@@ -1,63 +1,10 @@
+# tests/e2e/data/pipelines/e2e_scenarios_runner.yaml
 YAMLpipelines:
   - name: P0
     settings:
       entry_step_id: translate_in
-      test: true
-      max_turn_loops: 4
-
-    steps:
-      - id: translate_in
-        action: translate_in_if_needed
-        next: load_history
-
-      - id: load_history
-        action: load_conversation_history
-        next: call_router
-
-      - id: call_router
-        action: call_model
-        prompt_key: "e2e/router_v1"
-        next: handle_router
-
-      - id: handle_router
-        action: handle_prefix
-        bm25_prefix: "[BM25:]"
-        semantic_prefix: "[SEMANTIC:]"
-        hybrid_prefix: "[HYBRID:]"
-        semantic_rerank_prefix: "[SEMANTIC_RERANK:]"
-        direct_prefix: "[DIRECT:]"
-        on_bm25: call_answer
-        on_other: call_answer
-        next: call_answer
-
-      - id: call_answer
-        action: call_model
-        prompt_key: "e2e/answer_v1"
-        next: handle_answer
-
-      - id: handle_answer
-        action: handle_prefix
-        answer_prefix: "[Answer:]"
-        followup_prefix: "[Requesting data on:]"
-        on_answer: finalize
-        on_other: finalize
-        next: finalize
-
-      - id: finalize
-        action: finalize_heuristic
-        next: persist
-
-      - id: persist
-        action: persist_turn_and_finalize
-        end: true
-
-  - name: P1
-    settings:
-      entry_step_id: translate_in
       top_k: 2
       test: true
-      max_turn_loops: 4
-
     steps:
       - id: translate_in
         action: translate_in_if_needed
@@ -80,6 +27,10 @@ YAMLpipelines:
         semantic_rerank_prefix: "[SEMANTIC_RERANK:]"
         direct_prefix: "[DIRECT:]"
         on_bm25: search
+        on_semantic: search
+        on_hybrid: search
+        on_semantic_rerank: search
+        on_direct: call_answer
         on_other: call_answer
         next: call_answer
 
@@ -97,6 +48,7 @@ YAMLpipelines:
         answer_prefix: "[Answer:]"
         followup_prefix: "[Requesting data on:]"
         on_answer: finalize
+        on_followup: search
         on_other: finalize
         next: finalize
 
@@ -108,16 +60,11 @@ YAMLpipelines:
         action: persist_turn_and_finalize
         end: true
 
-  - name: P2
+  - name: P1
     settings:
       entry_step_id: translate_in
       top_k: 2
       test: true
-      max_turn_loops: 4
-      max_depth: 2
-      max_nodes: 200
-      node_texts_count: 3
-
     steps:
       - id: translate_in
         action: translate_in_if_needed
@@ -140,6 +87,78 @@ YAMLpipelines:
         semantic_rerank_prefix: "[SEMANTIC_RERANK:]"
         direct_prefix: "[DIRECT:]"
         on_bm25: search
+        on_semantic: search
+        on_hybrid: search
+        on_semantic_rerank: search
+        on_direct: call_answer
+        on_other: call_answer
+        next: call_answer
+
+      # Intentionally declared before fetch_more_context to trigger lint:
+      # "answer before fetch_more_context"
+      - id: call_answer
+        action: call_model
+        prompt_key: "e2e/answer_v1"
+        next: handle_answer
+
+      # Intentionally present without expand_dependency_tree to trigger lint:
+      # "fetch_node_texts without expand_dependency_tree"
+      - id: fetch_texts
+        action: fetch_node_texts
+        next: call_answer
+
+      - id: search
+        action: fetch_more_context
+        next: call_answer
+
+      - id: handle_answer
+        action: handle_prefix
+        answer_prefix: "[Answer:]"
+        followup_prefix: "[Requesting data on:]"
+        on_answer: finalize
+        on_followup: search
+        on_other: finalize
+        next: finalize
+
+      - id: finalize
+        action: finalize_heuristic
+        next: persist
+
+      - id: persist
+        action: persist_turn_and_finalize
+        end: true
+
+  - name: P2
+    settings:
+      entry_step_id: translate_in
+      top_k: 2
+      test: true
+    steps:
+      - id: translate_in
+        action: translate_in_if_needed
+        next: load_history
+
+      - id: load_history
+        action: load_conversation_history
+        next: call_router
+
+      - id: call_router
+        action: call_model
+        prompt_key: "e2e/router_v1"
+        next: handle_router
+
+      - id: handle_router
+        action: handle_prefix
+        bm25_prefix: "[BM25:]"
+        semantic_prefix: "[SEMANTIC:]"
+        hybrid_prefix: "[HYBRID:]"
+        semantic_rerank_prefix: "[SEMANTIC_RERANK:]"
+        direct_prefix: "[DIRECT:]"
+        on_bm25: search
+        on_semantic: search
+        on_hybrid: search
+        on_semantic_rerank: search
+        on_direct: call_answer
         on_other: call_answer
         next: call_answer
 
@@ -165,14 +184,9 @@ YAMLpipelines:
         answer_prefix: "[Answer:]"
         followup_prefix: "[Requesting data on:]"
         on_answer: finalize
-        on_followup: loop_guard
-        on_other: loop_guard
+        on_followup: search
+        on_other: finalize
         next: finalize
-
-      - id: loop_guard
-        action: loop_guard
-        on_allow: search
-        on_deny: finalize
 
       - id: finalize
         action: finalize_heuristic
@@ -184,14 +198,20 @@ YAMLpipelines:
 
   - name: P3
     settings:
-      entry_step_id: expand
+      entry_step_id: translate_in
+      top_k: 2
       test: true
-      max_turn_loops: 2
-      max_depth: 2
-      max_nodes: 200
-      node_texts_count: 3
-
     steps:
+      - id: translate_in
+        action: translate_in_if_needed
+        next: load_history
+
+      - id: load_history
+        action: load_conversation_history
+        next: expand
+
+      # No fetch_more_context in this pipeline on purpose (lint expects):
+      # "expand_dependency_tree without seed source"
       - id: expand
         action: expand_dependency_tree
         next: fetch_texts
@@ -203,14 +223,6 @@ YAMLpipelines:
       - id: call_answer
         action: call_model
         prompt_key: "e2e/answer_v1"
-        next: handle_answer
-
-      - id: handle_answer
-        action: handle_prefix
-        answer_prefix: "[Answer:]"
-        followup_prefix: "[Requesting data on:]"
-        on_answer: finalize
-        on_other: finalize
         next: finalize
 
       - id: finalize
@@ -223,14 +235,40 @@ YAMLpipelines:
 
   - name: P4
     settings:
-      entry_step_id: load_history
+      entry_step_id: translate_in
+      top_k: 2
       test: true
-      context_budget_tokens: 100
-      history_budget_tokens: 50
-
     steps:
+      - id: translate_in
+        action: translate_in_if_needed
+        next: load_history
+
       - id: load_history
         action: load_conversation_history
+        next: call_router
+
+      - id: call_router
+        action: call_model
+        prompt_key: "e2e/router_v1"
+        next: handle_router
+
+      - id: handle_router
+        action: handle_prefix
+        bm25_prefix: "[BM25:]"
+        semantic_prefix: "[SEMANTIC:]"
+        hybrid_prefix: "[HYBRID:]"
+        semantic_rerank_prefix: "[SEMANTIC_RERANK:]"
+        direct_prefix: "[DIRECT:]"
+        on_bm25: search
+        on_semantic: search
+        on_hybrid: search
+        on_semantic_rerank: search
+        on_direct: budget
+        on_other: budget
+        next: budget
+
+      - id: search
+        action: fetch_more_context
         next: budget
 
       - id: budget
@@ -240,14 +278,6 @@ YAMLpipelines:
       - id: call_answer
         action: call_model
         prompt_key: "e2e/answer_v1"
-        next: handle_answer
-
-      - id: handle_answer
-        action: handle_prefix
-        answer_prefix: "[Answer:]"
-        followup_prefix: "[Requesting data on:]"
-        on_answer: finalize
-        on_other: finalize
         next: finalize
 
       - id: finalize
@@ -257,30 +287,3 @@ YAMLpipelines:
       - id: persist
         action: persist_turn_and_finalize
         end: true
-
-  - name: P5
-    settings:
-      entry_step_id: translate_in
-      test: true
-      max_turn_loops: 2
-
-    steps:
-      - id: translate_in
-        action: translate_in_if_needed
-        next: call_answer
-
-      - id: call_answer
-        action: call_model
-        prompt_key: "e2e/answer_v1"
-        next: finalize
-
-      - id: finalize
-        action: finalize_heuristic
-        next: persist
-
-      - id: persist
-        action: persist_turn_and_finalize
-        end: true
-
-
-

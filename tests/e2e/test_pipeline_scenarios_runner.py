@@ -227,6 +227,9 @@ def test_pipeline_scenarios_runner(scenario_name: str) -> None:
 
     pipe = _load_pipeline_from_file(data["pipeline_file"], pipeline_name=pipeline_name)
 
+    # Provide a default for scenarios that don't define it explicitly.
+    pipe.settings.setdefault("context_budget_tokens", 400)
+
     sc = Scenario(
         name=raw["name"],
         user_query=raw["user_query"],

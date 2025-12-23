@@ -186,6 +186,10 @@ def test_e2e_router_direct_answer_path(tmp_path: Path) -> None:
               semantic_rerank_prefix: "[SEMANTIC_RERANK:]"
               direct_prefix: "[DIRECT:]"
               on_bm25: fetch
+              on_semantic: fetch
+              on_hybrid: fetch
+              on_semantic_rerank: fetch
+              on_direct: call_answer
               on_other: call_answer
               next: call_answer
 

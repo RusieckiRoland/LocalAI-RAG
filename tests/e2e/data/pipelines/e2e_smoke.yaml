@@ -28,6 +28,10 @@ YAMLpipeline:
       semantic_rerank_prefix: "[SEMANTIC_RERANK:]"
       direct_prefix: "[DIRECT:]"
       on_direct: call_answer
+      on_semantic: call_answer
+      on_bm25: call_answer
+      on_hybrid: call_answer
+      on_semantic_rerank: call_answer
       on_other: finalize
       next: finalize
 
