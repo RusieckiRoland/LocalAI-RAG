@@ -29,8 +29,7 @@
 },
 
   "use_gpu": true,
-  "plantuml_server" : "http://localhost:8080",
-  "branch":"develop",
+  "plantuml_server" : "http://localhost:8080",  
   "vector_indexes_root": "repositories/nopCommerce/indexes",
   "active_index_id": "2025-12-14__develop",
   "repo_name": "nopCommerce"

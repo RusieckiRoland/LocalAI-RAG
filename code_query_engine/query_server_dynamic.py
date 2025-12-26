@@ -1,7 +1,9 @@
-# File: code_query_engine/query_server_dynamic.py
 import os
 import re
 import uuid
+import json
+from pathlib import Path
+from threading import Lock
 from typing import Any, Dict, List, Optional, Tuple
 
 from flask import Flask, jsonify, request
@@ -28,11 +30,28 @@ REDIS_PORT = int(os.getenv("REDIS_PORT", "6379"))
 # Repositories root for listing repositories/branches (used by UI)
 REPOSITORIES_ROOT = os.path.abspath(os.getenv("REPOSITORIES_ROOT", "repositories"))
 
+# Frontend contracts (JSON)
+PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+UI_CONTRACTS_DIR = os.path.join(PROJECT_ROOT, "ui_contracts", "frontend_requirements")
+UI_TEMPLATES_PATH = os.path.join(UI_CONTRACTS_DIR, "templates.json")
+UI_BASE_CONTRACT_PATH = os.path.join(UI_CONTRACTS_DIR, "base_frontend_requirements.json")
+RUNTIME_CONFIG_PATH = os.path.join(PROJECT_ROOT, "config.json")
+
+_json_cache_lock = Lock()
+_json_cache: dict[str, tuple[float, dict]] = {}
+
 ALLOWED_ORIGINS = [
     "http://localhost:5173",
     "http://127.0.0.1:5173",
     "http://localhost:3000",
     "http://127.0.0.1:3000",
+
+    # Node mock (if used)
+    "http://localhost:8081",
+    "http://127.0.0.1:8081",
+
+    # Opening HTML directly from disk (file://) => Origin: null
+    "null",
 ]
 
 app = Flask(__name__)
@@ -140,6 +159,84 @@ def _get_int_field(payload: Dict[str, Any], key: str, default: int) -> int:
         return default
 
 
+def _load_json_file(path: str) -> dict:
+    """Load a JSON file with a tiny mtime cache."""
+    p = Path(path)
+    try:
+        mtime = p.stat().st_mtime
+    except Exception:
+        return {}
+
+    with _json_cache_lock:
+        cached = _json_cache.get(path)
+        if cached and cached[0] == mtime:
+            return cached[1]
+
+    try:
+        data = json.loads(p.read_text(encoding="utf-8"))
+        if not isinstance(data, dict):
+            data = {}
+    except Exception:
+        data = {}
+
+    with _json_cache_lock:
+        _json_cache[path] = (mtime, data)
+
+    return data
+
+
+def _load_runtime_config() -> dict:
+    """Load runtime config.json from repository root."""
+    return _load_json_file(RUNTIME_CONFIG_PATH)
+
+
+def _load_ui_templates() -> dict:
+    """Load UI templates (consultants) from ui_contracts."""
+    return _load_json_file(UI_TEMPLATES_PATH)
+
+
+def _derive_branch_from_active_index(active_index_id: str | None) -> str | None:
+    """Extract branch name from index id like '2025-12-14__develop'."""
+    v = (active_index_id or "").strip()
+    if "__" in v:
+        return v.split("__", 1)[1].strip() or None
+    return None
+
+
+def _pick_default_branch(available: list[str], cfg: dict) -> str:
+    """Pick a default branch using config (branch / active_index_id) with fallbacks."""
+    if not available:
+        return ""
+    b = str(cfg.get("branch") or "").strip()
+    if b and b in available:
+        return b
+    b2 = _derive_branch_from_active_index(str(cfg.get("active_index_id") or ""))
+    if b2 and b2 in available:
+        return b2
+    return available[0]
+
+
+def _find_pipeline_for_consultant(consultant_id: str, templates: dict) -> str:
+    """Map consultant id to pipelineName from templates.json."""
+    consultants = templates.get("consultants") if isinstance(templates, dict) else None
+    if isinstance(consultants, list):
+        for c in consultants:
+            if isinstance(c, dict) and str(c.get("id") or "") == consultant_id:
+                return str(c.get("pipelineName") or "").strip()
+    return ""
+
+
+def _normalize_runner_result(result):
+    """Support both dict and tuple outputs from different runner versions."""
+    if isinstance(result, dict):
+        return result
+    if isinstance(result, (list, tuple)):
+        final_answer = result[0] if len(result) > 0 else ""
+        model_input_en = result[3] if len(result) > 3 else ""
+        return {"results": final_answer, "translated": model_input_en}
+    return {"results": "", "translated": ""}
+
+
 def _list_repositories() -> List[str]:
     """List repository directory names under REPOSITORIES_ROOT."""
     root = REPOSITORIES_ROOT
@@ -232,6 +329,120 @@ def health():
     )
 
 
+@app.route("/app-config", methods=["GET"])
+def app_config():
+    if not _is_authorized(request):
+        return jsonify({"error": "Unauthorized"}), 401
+
+    session_id = _valid_session_id(request.headers.get("X-Session-ID"))
+    user_id = _valid_user_id(request.headers.get("X-User-ID"))
+
+    cfg = _load_runtime_config()
+    templates = _load_ui_templates()
+
+    repo_name = str(cfg.get("repo_name") or "").strip()
+    active_index_id = str(cfg.get("active_index_id") or "").strip()
+
+    branches = _list_branches(repo_name) if repo_name else []
+    default_branch_a = _pick_default_branch(branches, cfg)
+    default_branch_b = ""
+
+    consultants = templates.get("consultants") if isinstance(templates, dict) else []
+    default_consultant_id = str((templates.get("defaultConsultantId") if isinstance(templates, dict) else "") or "").strip()
+
+    return jsonify(
+        {
+            "session_id": session_id,
+            "user_id": user_id,
+            "user_kind": "anonymous" if not user_id else "user",
+            "repository": repo_name,
+            "active_index_id": active_index_id,
+            "branches": branches,
+            "defaultBranchA": default_branch_a,
+            "defaultBranchB": default_branch_b,
+            "defaultConsultantId": default_consultant_id,
+            "consultants": consultants,
+        }
+    )
+
+
+@app.route("/branch", methods=["GET"])
+def branch():
+    if not _is_authorized(request):
+        return jsonify({"error": "Unauthorized"}), 401
+
+    cfg = _load_runtime_config()
+    b = str(cfg.get("branch") or "").strip()
+    if not b:
+        b = _derive_branch_from_active_index(str(cfg.get("active_index_id") or "")) or ""
+    return jsonify({"branch": b})
+
+
+@app.route("/search", methods=["POST", "OPTIONS"])
+def search():
+    # Backwards-compatible endpoint for the existing HTML UI.
+    if request.method == "OPTIONS":
+        return ("", 204)
+
+    if not _is_authorized(request):
+        return jsonify({"error": "Unauthorized"}), 401
+
+    session_id = _valid_session_id(request.headers.get("X-Session-ID"))
+    user_id = _valid_user_id(request.headers.get("X-User-ID"))
+
+    payload = request.get_json(silent=True) or {}
+
+    cfg = _load_runtime_config()
+    repo_name = str(cfg.get("repo_name") or "").strip()
+    branches = _list_branches(repo_name) if repo_name else []
+    default_branch = _pick_default_branch(branches, cfg)
+
+    consultant_id = _get_str_field(payload, "consultant", "")
+    templates = _load_ui_templates()
+    pipeline_name = _find_pipeline_for_consultant(consultant_id, templates)
+
+    original_query = _get_str_field(payload, "query", "")
+    if not original_query:
+        return jsonify({"error": "Missing query."}), 400
+    if len(original_query) > MAX_QUERY_LEN:
+        return jsonify({"error": f"Query too long (>{MAX_QUERY_LEN})."}), 400
+
+    translate_chat = _get_bool_field(payload, "translate_chat", _get_bool_field(payload, "translateChat", False))
+    top_k = _get_int_field(payload, "top_k", _get_int_field(payload, "topK", 10))
+
+    branch_a = _get_str_field(payload, "branchA", "") or _get_str_field(payload, "branch", "") or default_branch
+    branch_b = _get_str_field(payload, "branchB", "")
+
+    try:
+        result = _runner.run(
+            user_query=original_query,
+            session_id=session_id,
+            user_id=user_id,
+            repository=repo_name,
+            branch=branch_a,
+            active_index=None,
+            pipeline_name=pipeline_name or None,
+            translate_chat=translate_chat,
+            overrides={"top_k": top_k, "branch_b": branch_b or None},
+        )
+    except Exception as ex:
+        return jsonify({"error": str(ex)}), 500
+
+    out = _normalize_runner_result(result)
+    out["session_id"] = session_id
+    if user_id:
+        out["user_id"] = user_id
+    out["repository"] = repo_name
+    out["branch"] = branch_a
+    if branch_b:
+        out["branch_b"] = branch_b
+    out["consultant"] = consultant_id
+    if pipeline_name:
+        out["pipeline_name"] = pipeline_name
+
+    return jsonify(out)
+
+
 @app.route("/repos", methods=["GET"])
 def list_repos():
     if not _is_authorized(request):
@@ -273,7 +484,7 @@ def query():
     # Required: repository + branch (for all searches and graph back-search scoping).
     try:
         repository = _valid_repo_or_branch(_get_str_field(payload, "repository", ""), field="repository")
-        branch = _valid_repo_or_branch(_get_str_field(payload, "branch", ""), field="branch")
+        branch_val = _valid_repo_or_branch(_get_str_field(payload, "branch", ""), field="branch")
     except Exception as ex:
         return jsonify({"error": str(ex)}), 400
 
@@ -296,7 +507,7 @@ def query():
             session_id=session_id,
             user_id=user_id,
             repository=repository,
-            branch=branch,
+            branch=branch_val,
             active_index=active_index or None,
             pipeline_name=pipeline_name or None,
             translate_chat=translate_chat,
@@ -306,13 +517,15 @@ def query():
         return jsonify({"error": str(ex)}), 500
 
     # Ensure session id is returned so client can persist it.
-    result_out = dict(result or {})
+    result_out = _normalize_runner_result(result)
     result_out["session_id"] = session_id
     if user_id:
         result_out["user_id"] = user_id
     result_out["repository"] = repository
-    result_out["branch"] = branch
+    result_out["branch"] = branch_val
     if active_index:
         result_out["active_index"] = active_index
+    if pipeline_name:
+        result_out["pipeline_name"] = pipeline_name
 
     return jsonify(result_out)
