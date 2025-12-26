@@ -59,7 +59,10 @@ class FileSystemGraphProvider(IGraphProvider):
             regular_code_bundle/
               chunks.json
               dependencies.json
-            sql_bundle/
+            sql_bundle/                # preferred
+              docs/sql_bodies.jsonl
+              graph/edges.csv
+            sql_code_bundle/           # legacy (also supported)
               docs/sql_bodies.jsonl
               graph/edges.csv
         indexes/
@@ -82,23 +85,40 @@ class FileSystemGraphProvider(IGraphProvider):
         repo_root = os.path.join(self.repositories_root, repository)
         branch_root = os.path.join(repo_root, "branches", branch)
 
-        # Some zips are extracted into branches/<branch>/<branch>/...
-        # Prefer the direct layout, fallback to the nested one.
+        # Backward compatibility:
+        # Some old zips were extracted into branches/<branch>/<branch>/...
         direct_code = os.path.join(branch_root, "regular_code_bundle")
         nested_root = os.path.join(branch_root, branch)
         nested_code = os.path.join(nested_root, "regular_code_bundle")
+
         if os.path.isdir(direct_code):
             effective_root = branch_root
         elif os.path.isdir(nested_code):
             effective_root = nested_root
         else:
-            # Keep deterministic: point to direct layout; loader will treat missing files as empty.
             effective_root = branch_root
 
         chunks_json = os.path.join(effective_root, "regular_code_bundle", "chunks.json")
         dependencies_json = os.path.join(effective_root, "regular_code_bundle", "dependencies.json")
-        sql_bodies_jsonl = os.path.join(effective_root, "sql_bundle", "docs", "sql_bodies.jsonl")
-        sql_edges_csv = os.path.join(effective_root, "sql_bundle", "graph", "edges.csv")
+
+        # Prefer sql_bundle if either bodies OR edges exist.
+        sql_bundle_bodies = os.path.join(effective_root, "sql_bundle", "docs", "sql_bodies.jsonl")
+        sql_bundle_edges = os.path.join(effective_root, "sql_bundle", "graph", "edges.csv")
+
+        # Legacy fallback: sql_code_bundle (also if either bodies OR edges exist there).
+        sql_code_bodies = os.path.join(effective_root, "sql_code_bundle", "docs", "sql_bodies.jsonl")
+        sql_code_edges = os.path.join(effective_root, "sql_code_bundle", "graph", "edges.csv")
+
+        if os.path.isfile(sql_bundle_bodies) or os.path.isfile(sql_bundle_edges):
+            sql_bodies_jsonl = sql_bundle_bodies
+            sql_edges_csv = sql_bundle_edges
+        elif os.path.isfile(sql_code_bodies) or os.path.isfile(sql_code_edges):
+            sql_bodies_jsonl = sql_code_bodies
+            sql_edges_csv = sql_code_edges
+        else:
+            # Default to preferred layout even if files are missing (deterministic paths).
+            sql_bodies_jsonl = sql_bundle_bodies
+            sql_edges_csv = sql_bundle_edges
 
         return _BundlePaths(
             branch_root=effective_root,
@@ -107,6 +127,7 @@ class FileSystemGraphProvider(IGraphProvider):
             sql_bodies_jsonl=sql_bodies_jsonl,
             sql_edges_csv=sql_edges_csv,
         )
+
 
     # ------------------------------ #
     # Loaders
@@ -239,8 +260,14 @@ class FileSystemGraphProvider(IGraphProvider):
         br = (branch or "").strip()
         seeds = _dedupe_preserve_order(_strip_part_suffix(s) for s in (seed_nodes or []))
 
-        if not repo or not br or not seeds:
-            return {"nodes": seeds, "edges": []}
+        if not seeds:
+            return {"nodes": [], "edges": []}
+
+        # Branch is REQUIRED for graph back-search scoping.
+        if not repo:
+            raise ValueError("Missing required 'repository' for graph expansion.")
+        if not br:
+            raise ValueError("Missing required 'branch' for graph expansion.")
 
         allow = {str(x).strip().lower() for x in (edge_allowlist or []) if str(x).strip()}
         allow_all = (not allow) or ("*" in allow)
@@ -299,8 +326,14 @@ class FileSystemGraphProvider(IGraphProvider):
         br = (branch or "").strip()
 
         picked = _dedupe_preserve_order(_strip_part_suffix(str(n)) for n in (node_ids or []))
-        if not repo or not br or not picked:
-            return [{"id": nid, "text": ""} for nid in picked]
+        if not picked:
+            return []
+
+        # Branch is REQUIRED for fetching node texts (path is branch-scoped).
+        if not repo:
+            raise ValueError("Missing required 'repository' for graph node fetch.")
+        if not br:
+            raise ValueError("Missing required 'branch' for graph node fetch.")
 
         chunks = self._load_chunks(repository=repo, branch=br)
         sql = self._load_sql_bodies(repository=repo, branch=br)

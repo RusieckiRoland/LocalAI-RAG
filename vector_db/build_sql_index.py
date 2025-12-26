@@ -24,6 +24,8 @@ from tqdm import tqdm
 from sentence_transformers import SentenceTransformer
 from collections import defaultdict
 
+from vector_db.build_vector_index import extract_to_named_root
+
 
 # ===============================
 # 🔹 Helpers
@@ -59,6 +61,8 @@ def clean_text(text: str) -> str:
 def find_sql_bodies_jsonl(branch_root: str):
     """
     Find sql_bodies.jsonl (prefer: */sql_bundle/docs/sql_bodies.jsonl).
+    Also supports sql_code_bundle (legacy name).
+
     Returns: (jsonl_path, output_dir, edges_csv_path or None)
     """
     preferred = os.path.join(branch_root, "sql_bundle", "docs", "sql_bodies.jsonl")
@@ -66,6 +70,12 @@ def find_sql_bodies_jsonl(branch_root: str):
         edges_csv = os.path.join(branch_root, "sql_bundle", "graph", "edges.csv")
         out_dir = os.path.dirname(preferred)
         return preferred, out_dir, edges_csv if os.path.isfile(edges_csv) else None
+
+    preferred_legacy = os.path.join(branch_root, "sql_code_bundle", "docs", "sql_bodies.jsonl")
+    if os.path.isfile(preferred_legacy):
+        edges_csv = os.path.join(branch_root, "sql_code_bundle", "graph", "edges.csv")
+        out_dir = os.path.dirname(preferred_legacy)
+        return preferred_legacy, out_dir, edges_csv if os.path.isfile(edges_csv) else None
 
     alt = os.path.join(branch_root, "docs", "sql_bodies.jsonl")
     if os.path.isfile(alt):
@@ -189,10 +199,7 @@ def build_sql_index(branch_root: str | None = None, branch_zip: str | None = Non
     else:
         if branch_zip and os.path.isfile(branch_zip):
             print(f"\n🧩 Extracting provided archive: {os.path.basename(branch_zip)} → {branches_dir}")
-            with zipfile.ZipFile(branch_zip, "r") as z:
-                z.extractall(branches_dir)
-            root_name = top_level_in_zip(branch_zip)
-            branch_root = os.path.join(branches_dir, root_name)
+            branch_root = extract_to_named_root(branch_zip, branches_dir)
             print(f"✅ Extracted to: {branch_root}")
         else:
             # Interactive ZIP selection
@@ -212,10 +219,7 @@ def build_sql_index(branch_root: str | None = None, branch_zip: str | None = Non
                     print("❌ Invalid selection."); sys.exit(1)
                 chosen_zip = zip_files[sel_idx - 1]
                 print(f"🧩 Extracting {os.path.basename(chosen_zip)} → {branches_dir}")
-                with zipfile.ZipFile(chosen_zip, "r") as z:
-                    z.extractall(branches_dir)
-                root_name = top_level_in_zip(chosen_zip)
-                branch_root = os.path.join(branches_dir, root_name)
+                branch_root = extract_to_named_root(chosen_zip, branches_dir)
                 print(f"✅ Extracted to: {branch_root}")
             else:
                 print("\n( No ZIPs in 'branches' )")

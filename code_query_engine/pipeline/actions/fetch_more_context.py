@@ -17,11 +17,17 @@ def _merge_filters(settings: Dict[str, Any], state: PipelineState) -> Dict[str, 
     repo = (state.repository or settings.get("repository") or "").strip()
     branch = (state.branch or settings.get("branch") or "").strip()
 
-    # Tests expect plain strings here (not lists)
+    # Branch is REQUIRED for all searches (including graph back-search scoping).
+    if not branch:
+        raise ValueError("Missing required 'branch' (state.branch or pipeline settings['branch']).")
+
+    # Repository may be provided either by state/settings OR implicitly by the retriever implementation.
+    # Keep it optional to avoid breaking test harnesses and single-repo deployments.
     if repo:
         filters["repository"] = repo
-    if branch:
-        filters["branch"] = branch
+
+    # Tests and downstream retrievers expect plain strings here (not lists).
+    filters["branch"] = branch
 
     return filters
 

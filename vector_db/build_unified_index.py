@@ -11,15 +11,15 @@ repositories/
     branches/   # source ZIPs + extracted branch folders
     indexes/    # output indexes (FAISS + TF + metadata + manifest)
 
-What it builds (inside indexes/<IndexId>/):
-- unified_index.faiss
-- unified_metadata.json
-- TF/BM25-ready artifacts (no pickle):
-  tf_vocab.json, tf_offsets.npy, tf_doc_ids.npy, tf_tfs.npy, tf_df.npy, tf_doc_len.npy, tf_index_meta.json
-- manifest.json (exact ZIPs used + sha256)
+Target layout for extracted branches:
+  branches/<BranchName>/...
 
-IndexId:
-- YYYY-MM-DD__<friendly_slug>  e.g. 2025-12-22__stable+dev
+Target layout for indexes:
+  indexes/<FriendlyNameSlug>/
+
+Index folder name:
+- <FriendlyNameSlug>  e.g. release_490+release_460
+  (NO date prefix)
 """
 
 from __future__ import annotations
@@ -281,8 +281,8 @@ def build_unified_index(index_id: str | None = None) -> None:
     Build unified FAISS index + TF (BM25-ready) index for one or more branches.
 
     Target layout:
-      repositories/<repo_name>/branches
-      repositories/<repo_name>/indexes/<IndexId>
+      repositories/<repo_name>/branches/<BranchName>
+      repositories/<repo_name>/indexes/<FriendlyNameSlug>
     """
     script_dir = os.path.dirname(os.path.abspath(__file__))
     config, config_dir = load_config(script_dir)
@@ -315,18 +315,18 @@ def build_unified_index(index_id: str | None = None) -> None:
     for z in chosen_zips:
         print(f"   - {os.path.basename(z)}")
 
-    # 2) Determine IndexId + FriendlyName
+    # 2) Determine index folder name (FriendlyNameSlug)
     friendly_default = "+".join(os.path.splitext(os.path.basename(z))[0] for z in chosen_zips)
+
     if index_id is None:
         friendly = input(f"\nFriendlyName for this index (Enter = {friendly_default}): ").strip()
         if not friendly:
             friendly = friendly_default
-
-        date_str = datetime.now().strftime("%Y-%m-%d")
-        slug = slugify_friendly_name(friendly)
-        index_id = f"{date_str}__{slug}"
+        index_id = slugify_friendly_name(friendly)
     else:
+        # CLI arg is treated as friendly name; folder name is a slug.
         friendly = index_id
+        index_id = slugify_friendly_name(index_id)
 
     index_dir = os.path.join(indexes_root, index_id)
     os.makedirs(index_dir, exist_ok=True)
@@ -453,8 +453,8 @@ def build_unified_index(index_id: str | None = None) -> None:
 
 
 def main() -> None:
-    # Optional: allow overriding IndexId via CLI
-    # python -m vector_db.build_unified_index 2025-12-22__stable+dev
+    # Optional: allow overriding FriendlyName via CLI
+    # python -m vector_db.build_unified_index "Release_4.90+Release_4.60"
     index_id = sys.argv[1] if len(sys.argv) > 1 else None
     build_unified_index(index_id=index_id)
 
