@@ -32,14 +32,15 @@
       padding: .5rem .75rem;
       border-radius: .75rem;
       margin: .75rem 1rem .5rem 1rem;
-      display: flex;
-      justify-content: space-between;
+
+      display: grid;
+      grid-template-columns: auto 1fr auto;
       align-items: center;
       gap: .75rem;
     }
 
     /* Consultant tabs */
-    #consultants { display:flex; gap:.5rem; flex-wrap:wrap; align-items:center; }
+    #consultants { display:flex; gap:.5rem; flex-wrap:wrap; align-items:center; justify-content:center; }
 
     .consultant-card {
       border: 1px solid #e5e7eb;
@@ -92,6 +93,25 @@
       box-shadow: 0 2px 6px rgba(0,0,0,0.08);
     }
 
+    /* New chat button (in topbar, left) */
+    .topbar-newchat {
+      background:#2563eb;
+      color:#fff;
+      border-radius:.75rem;
+      padding:.55rem .9rem;
+      font-weight:800;
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      gap:.45rem;
+      height: 44px;
+      white-space: nowrap;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+    }
+    .topbar-newchat:hover { background:#1d4ed8; }
+
+    .topbar-spacer { width: 1px; height: 1px; }
+
     /* Form */
     #queryForm {
       background-color: white;
@@ -130,7 +150,6 @@
     #queryForm.centered .welcome-message { display: block; }
     #queryForm:not(.centered) .welcome-message { display: none; }
 
-    /* Link only on the name part */
     .welcome-message a {
       color: #2563eb;
       text-decoration: underline;
@@ -173,7 +192,7 @@
       box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
     }
 
-    /* Controls row (branch + language + send) */
+    /* Controls row */
     .controls-row {
       display: flex;
       align-items: center;
@@ -181,7 +200,6 @@
       flex-wrap: nowrap;
     }
 
-    /* Left side: branch controls take remaining width */
     .branch-controls {
       display: flex;
       align-items: center;
@@ -212,12 +230,19 @@
       height: 40px;
       border: 1px solid #e5e7eb;
       border-radius: 0.75rem;
-      padding: 0.45rem 0.75rem;
+      padding: 0.45rem 2.25rem 0.45rem 0.75rem;
       background: #ffffff;
       outline: none;
-      min-width: 220px;
-      max-width: 340px;   /* <-- single-branch not too long */
-      flex: 1 1 260px;
+
+      min-width: 160px;
+      max-width: 520px;
+
+      width: auto;
+      flex: 0 1 auto;
+
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
     .branch-select:focus {
       border-color: #2563eb;
@@ -225,9 +250,9 @@
     }
 
     .branch-controls.compare .branch-select {
-      max-width: none;    /* <-- compare can use the space */
-      flex: 1 1 320px;
-      min-width: 220px;
+      max-width: 520px;
+      flex: 0 1 auto;
+      min-width: 160px;
     }
 
     .vs-badge {
@@ -244,7 +269,6 @@
       flex: 0 0 auto;
     }
 
-    /* Right side: language + send stay compact, never overlap */
     .actions-controls {
       display: flex;
       align-items: center;
@@ -276,7 +300,7 @@
     .send-btn:hover { background-color: #1d4ed8; }
     .send-btn:disabled { opacity: 0.6; cursor: not-allowed; }
 
-    /* Responsive: only when screen is tight, allow wrapping cleanly */
+    /* Medium: wrap cleanly */
     @media (max-width: 820px) {
       .controls-row { flex-wrap: wrap; }
       .branch-controls {
@@ -290,6 +314,51 @@
       }
       .lang-select { min-width: 220px; }
       .branch-select { max-width: none; }
+    }
+
+    /* Small: stop the "syf" and STACK everything */
+    @media (max-width: 520px) {
+      .topbar { grid-template-columns: 1fr; gap: .6rem; }
+      #consultants { justify-content: center; }
+      .topbar-spacer { display:none; }
+      .topbar-newchat { width: 100%; }
+
+      .branch-controls {
+        flex-wrap: wrap;
+        gap: .5rem;
+      }
+
+      .branch-label { height: 40px; }
+
+      .branch-select {
+        width: 100% !important;
+        max-width: none !important;
+        flex: 1 1 100% !important;
+        min-width: 0 !important;
+      }
+
+      .vs-badge {
+        margin: 0 auto;
+      }
+
+      .actions-controls {
+        flex-wrap: wrap;
+        justify-content: stretch;
+        gap: .5rem;
+      }
+
+      .lang-select {
+        min-width: 0;
+        max-width: none;
+        width: 100%;
+        flex: 1 1 100%;
+      }
+
+      .send-btn {
+        width: 100%;
+        flex: 1 1 100%;
+        min-width: 0;
+      }
     }
 
     /* Markdown */
@@ -310,7 +379,6 @@
     .copy-btn:hover { background-color: #2563eb; }
     .copy-btn.copied { background-color: #10b981; }
 
-    /* Small error banner */
     .ui-error {
       margin: 0.0rem 1rem 0.5rem 1rem;
       padding: 0.5rem 0.75rem;
@@ -329,11 +397,9 @@
 
   <div class="max-w-7xl mx-auto h-screen" id="chat-container">
     <div class="topbar">
+      <button onclick="newChat()" class="topbar-newchat" id="newChatBtn">♻️ Nowy Chat</button>
       <div class="flex gap-2" id="consultants"></div>
-      <button onclick="newChat()" class="btn-secondary text-sm" id="newChatBtn"
-              style="background:#ef4444;color:#fff;border-radius:.75rem;padding:.55rem .9rem;font-weight:700;">
-        ♻️ Nowy Chat
-      </button>
+      <div class="topbar-spacer" aria-hidden="true"></div>
     </div>
 
     <div class="ui-error" id="uiError"></div>
@@ -365,8 +431,6 @@
 <script>
   // English comments only.
 
-  // If served via http(s), use same-origin.
-  // If opened as file://, fallback to the Node mock server.
   const API_BASE = (window.location.protocol === "file:")
     ? "http://localhost:8081"
     : window.location.origin;
@@ -391,6 +455,10 @@
   const newChatBtn = document.getElementById("newChatBtn");
   const uiError = document.getElementById("uiError");
   const branchControls = document.getElementById("branchControls");
+
+  // If name is longer than this, we shorten it in CLOSED state.
+  // In compare mode we also shorten even if it's below the threshold (to make differences obvious).
+  const MAX_BRANCH_LABEL_LEN = 28;
 
   const uiTexts = {
     pl: {
@@ -544,6 +612,164 @@
     return branches.length ? branches[0] : null;
   }
 
+  // Autosize select width to its selected option text (clamped).
+  const __selectMeasureSpan = (() => {
+    const s = document.createElement("span");
+    s.style.position = "absolute";
+    s.style.visibility = "hidden";
+    s.style.whiteSpace = "pre";
+    s.style.top = "-9999px";
+    s.style.left = "-9999px";
+    document.body.appendChild(s);
+    return s;
+  })();
+
+  function autoSizeSelectToValue(selectEl, opts = {}) {
+    if (!selectEl) return;
+
+    const minPx = opts.minPx ?? 160;
+    const maxPx = opts.maxPx ?? 520;
+
+    const text = selectEl.options?.[selectEl.selectedIndex]?.text ?? "";
+    const cs = window.getComputedStyle(selectEl);
+
+    __selectMeasureSpan.style.fontFamily = cs.fontFamily;
+    __selectMeasureSpan.style.fontSize = cs.fontSize;
+    __selectMeasureSpan.style.fontWeight = cs.fontWeight;
+    __selectMeasureSpan.style.letterSpacing = cs.letterSpacing;
+
+    __selectMeasureSpan.textContent = text;
+
+    const textWidth = __selectMeasureSpan.getBoundingClientRect().width;
+
+    // Room for paddings + native arrow + safety.
+    const extra = 80;
+
+    const target = Math.ceil(textWidth + extra);
+    const clamped = Math.max(minPx, Math.min(maxPx, target));
+
+    selectEl.style.width = `${clamped}px`;
+  }
+
+  function autoSizeAllBranchSelects() {
+    document.querySelectorAll("select.branch-select").forEach(sel => autoSizeSelectToValue(sel));
+  }
+
+  function commonPrefixLen(strings) {
+    if (!strings || strings.length === 0) return 0;
+    const s0 = String(strings[0] ?? "");
+    let i = 0;
+    while (i < s0.length) {
+      const ch = s0[i];
+      for (let k = 1; k < strings.length; k++) {
+        const sk = String(strings[k] ?? "");
+        if (i >= sk.length || sk[i] !== ch) return i;
+      }
+      i++;
+    }
+    return i;
+  }
+
+  function commonSuffixLen(strings) {
+    if (!strings || strings.length === 0) return 0;
+    const s0 = String(strings[0] ?? "");
+    let i = 0;
+    while (i < s0.length) {
+      const ch = s0[s0.length - 1 - i];
+      for (let k = 1; k < strings.length; k++) {
+        const sk = String(strings[k] ?? "");
+        if (i >= sk.length || sk[sk.length - 1 - i] !== ch) return i;
+      }
+      i++;
+    }
+    return i;
+  }
+
+  function trimLeadingSeparators(s) {
+    return String(s).replace(/^[_\-.\/\\\s]+/, "");
+  }
+
+  function trimTrailingSeparators(s) {
+    return String(s).replace(/[_\-.\/\\\s]+$/, "");
+  }
+
+  function computeClosedBranchLabel(fullName, mode) {
+    const name = String(fullName ?? "");
+    if (!name) return "";
+
+    const inCompare = (mode === "compare");
+
+    // Single mode: show full if "reasonable".
+    // Compare mode: force smart-shortening to make A vs B obvious.
+    const shouldShorten = inCompare || (name.length > MAX_BRANCH_LABEL_LEN);
+    if (!shouldShorten) return name;
+
+    if (!Array.isArray(branches) || branches.length <= 1) {
+      if (name.length <= MAX_BRANCH_LABEL_LEN) return name;
+      return "…" + name.slice(-(MAX_BRANCH_LABEL_LEN - 1));
+    }
+
+    const pref = commonPrefixLen(branches);
+    const suff = commonSuffixLen(branches);
+
+    // Candidate A: cut common PREFIX, keep the differing tail.
+    let candPrefix = null;
+    if (pref > 0 && pref < name.length) {
+      const tail = trimLeadingSeparators(name.slice(pref));
+      if (tail) candPrefix = "…" + tail;
+    }
+
+    // Candidate B: cut common SUFFIX, keep the differing head.
+    let candSuffix = null;
+    if (suff > 0 && suff < name.length) {
+      const head = trimTrailingSeparators(name.slice(0, name.length - suff));
+      if (head) candSuffix = head + "…";
+    }
+
+    // Prefer cutting the side that is more common across all names.
+    let chosen = null;
+    if (pref >= suff) {
+      chosen = candPrefix || candSuffix || name;
+    } else {
+      chosen = candSuffix || candPrefix || name;
+    }
+
+    if (chosen.length <= MAX_BRANCH_LABEL_LEN) return chosen;
+
+    if (chosen.startsWith("…")) {
+      return "…" + name.slice(-(MAX_BRANCH_LABEL_LEN - 1));
+    }
+    return name.slice(0, MAX_BRANCH_LABEL_LEN - 1) + "…";
+  }
+
+  function setAllOptionsToFull(selectEl) {
+    if (!selectEl) return;
+    for (const opt of selectEl.options) {
+      const full = opt.getAttribute("data-full");
+      if (full != null) opt.textContent = full;
+    }
+  }
+
+  function applyClosedLabelToSelected(selectEl, mode) {
+    if (!selectEl) return;
+
+    setAllOptionsToFull(selectEl);
+
+    const full = String(selectEl.value ?? "");
+    const label = computeClosedBranchLabel(full, mode);
+
+    const opt = selectEl.options?.[selectEl.selectedIndex];
+    if (opt) opt.textContent = label;
+
+    selectEl.title = full || "";
+
+    autoSizeSelectToValue(selectEl);
+  }
+
+  function prepareOpenSelect(selectEl) {
+    setAllOptionsToFull(selectEl);
+  }
+
   function renderBranchControls() {
     const lang = getCurrentLang();
     const t = getTexts(lang);
@@ -559,7 +785,6 @@
     const mode = (c && c.branchPickerMode) ? c.branchPickerMode : "single";
     branchControls.classList.toggle("compare", mode === "compare");
 
-    // Ensure selections exist
     if (!selectedBranchA) selectedBranchA = firstBranchOrNull();
     if (mode === "compare") {
       if (!selectedBranchB) selectedBranchB = secondBranchOrFirst();
@@ -570,18 +795,38 @@
     const makeSelect = (currentValue, onChange) => {
       const sel = document.createElement("select");
       sel.className = "branch-select";
+
       for (const b of branches) {
         const opt = document.createElement("option");
         opt.value = b;
         opt.textContent = b;
+        opt.setAttribute("data-full", b);
         sel.appendChild(opt);
       }
+
       if (currentValue && branches.includes(currentValue)) {
         sel.value = currentValue;
       } else if (branches.length) {
         sel.value = branches[0];
       }
-      sel.addEventListener("change", e => onChange(e.target.value));
+
+      sel.addEventListener("focus", () => prepareOpenSelect(sel));
+      sel.addEventListener("mousedown", () => prepareOpenSelect(sel));
+      sel.addEventListener("keydown", (e) => {
+        if (e.key === "ArrowDown" || e.key === " " || e.key === "Enter") {
+          prepareOpenSelect(sel);
+        }
+      });
+
+      sel.addEventListener("change", (e) => {
+        onChange(e.target.value);
+        setTimeout(() => applyClosedLabelToSelected(sel, mode), 0);
+      });
+
+      sel.addEventListener("blur", () => applyClosedLabelToSelected(sel, mode));
+
+      applyClosedLabelToSelected(sel, mode);
+
       return sel;
     };
 
@@ -597,6 +842,16 @@
       const selB = makeSelect(selectedBranchB, v => selectedBranchB = v);
       branchControls.appendChild(selB);
     }
+
+    requestAnimationFrame(autoSizeAllBranchSelects);
+  }
+
+  function refreshCopyButtonsText(lang) {
+    const t = getTexts(lang);
+    document.querySelectorAll(".copy-btn").forEach(btn => {
+      const isCopied = btn.classList.contains("copied");
+      btn.textContent = isCopied ? t.copied : t.copy;
+    });
   }
 
   function applyLang(lang) {
@@ -612,6 +867,9 @@
     buildConsultantsBar(lang);
     renderWelcomeMessage(lang);
     renderBranchControls();
+
+    // Fix: existing copy buttons must update when language changes.
+    refreshCopyButtonsText(lang);
   }
 
   function selectConsultant(id) {
@@ -773,7 +1031,6 @@
         appConfig.defaultConsultantId ||
         (appConfig.consultants?.[0]?.id ?? null);
 
-      // Default branch selections
       selectedBranchA = firstBranchOrNull();
       selectedBranchB = secondBranchOrFirst();
 
@@ -797,6 +1054,10 @@
       langSelect.value = savedLang;
       langSelect.addEventListener("change", e => applyLang(e.target.value));
     }
+
+    window.addEventListener("resize", () => {
+      autoSizeAllBranchSelects();
+    });
 
     form.addEventListener("submit", handleSubmit);
 
