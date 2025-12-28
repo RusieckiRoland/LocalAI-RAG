@@ -1,4 +1,3 @@
-# code_query_engine/dynamic_pipeline.py
 from __future__ import annotations
 
 import os
@@ -11,8 +10,34 @@ from integrations.plant_uml.plantuml_check import add_plant_link
 from .pipeline.action_registry import build_default_action_registry
 from .pipeline.engine import PipelineEngine, PipelineRuntime
 from .pipeline.loader import PipelineLoader
+from .pipeline.providers.retrieval import RetrievalDispatcher
 from .pipeline.state import PipelineState
 from .pipeline.validator import PipelineValidator
+
+
+def _create_history_manager(*, mock_redis: Any, session_id: str, consultant: str, user_id: Optional[str]):
+    """
+    HistoryManager signature changed a few times; keep this tolerant for tests/mocks.
+    """
+    candidates = [
+        lambda: HistoryManager(mock_redis=mock_redis, session_id=session_id, consultant=consultant, user_id=user_id),
+        lambda: HistoryManager(mock_redis=mock_redis, session_id=session_id, consultant=consultant),
+        lambda: HistoryManager(mock_redis, session_id=session_id, consultant=consultant, user_id=user_id),
+        lambda: HistoryManager(mock_redis, session_id=session_id, user_id=user_id),
+        lambda: HistoryManager(mock_redis, session_id=session_id),
+        lambda: HistoryManager(mock_redis, session_id, user_id),
+        lambda: HistoryManager(mock_redis, session_id),
+    ]
+
+    last_err: Optional[Exception] = None
+    for ctor in candidates:
+        try:
+            return ctor()
+        except TypeError as e:
+            last_err = e
+
+    # If we got here, no signature matched.
+    raise last_err or TypeError("Unable to construct HistoryManager with provided arguments.")
 
 
 class DynamicPipelineRunner:
@@ -42,6 +67,7 @@ class DynamicPipelineRunner:
         self.searcher = searcher
         self.bm25_searcher = bm25_searcher
         self.semantic_rerank_searcher = semantic_rerank_searcher
+
         if graph_provider is None:
             try:
                 from .pipeline.providers.graph_provider import GraphProvider
@@ -51,7 +77,6 @@ class DynamicPipelineRunner:
                 graph_provider = None
 
         self.graph_provider = graph_provider
-
         self.token_counter = token_counter
 
         self.markdown_translator = markdown_translator
@@ -62,28 +87,9 @@ class DynamicPipelineRunner:
 
         self._loader = PipelineLoader(pipelines_root=self.pipelines_root)
         self._validator = PipelineValidator()
-        self._engine = PipelineEngine(build_default_action_registry())
 
-    def _create_history_manager(self, mock_redis: Any, session_id: str) -> Any:
-        # Try production signatures first, then test/dummy signatures.
-        constructors = [
-            lambda: HistoryManager(backend=mock_redis, session_id=session_id),
-            lambda: HistoryManager(mock_redis, session_id=session_id),
-            lambda: HistoryManager(mock_redis),
-            lambda: HistoryManager(session_id=session_id),
-            lambda: HistoryManager(),
-        ]
-        last_exc: Optional[Exception] = None
-        for ctor in constructors:
-            try:
-                return ctor()
-            except Exception as exc:
-                last_exc = exc
-                continue
-        # Re-raise last error to aid debugging
-        if last_exc:
-            raise last_exc
-        raise TypeError("Could not construct HistoryManager")
+        # Engine needs an action registry (tests may override runner._engine anyway).
+        self._engine = PipelineEngine(registry=build_default_action_registry())
 
     def run(
         self,
@@ -96,33 +102,63 @@ class DynamicPipelineRunner:
         user_id: Optional[str] = None,
         pipeline_name: Optional[str] = None,
         repository: Optional[str] = None,
+        active_index: Optional[str] = None,
+        overrides: Optional[dict[str, Any]] = None,
         mock_redis: Any = None,
     ):
-        pipe_name = (pipeline_name or consultant or "").strip()
-        if not pipe_name:
-            pipe_name = "default"
+        pipe_name = pipeline_name or consultant
 
+        # ✅ Correct loader API
         pipeline = self._loader.load_by_name(pipe_name)
         self._validator.validate(pipeline)
 
-        if bool(pipeline.settings.get("test")) and not self.allow_test_pipelines:
+        # ✅ Block test pipelines unless explicitly allowed (required by E2E test)
+        if bool((pipeline.settings or {}).get("test")) and not self.allow_test_pipelines:
             raise PermissionError("Test pipelines are blocked unless allow_test_pipelines=True")
+
+        effective_settings = dict(pipeline.settings or {})
+        if overrides:
+            effective_settings.update(dict(overrides))
 
         state = PipelineState(
             user_query=user_query,
             session_id=session_id,
-            user_id=user_id,
             consultant=consultant,
             branch=branch,
-            translate_chat=translate_chat,
+            translate_chat=bool(translate_chat),
+            user_id=user_id,
+            repository=repository,
         )
+
         if repository:
             state.repository = repository
 
-        history_manager = self._create_history_manager(mock_redis, session_id)
+        if active_index:
+            setattr(state, "active_index", active_index)
 
+        if overrides:
+            # Common ad-hoc request fields used by UI (best-effort).
+            if "branch_b" in overrides:
+                setattr(state, "branch_b", overrides.get("branch_b"))
+            if "active_index" in overrides and not active_index:
+                setattr(state, "active_index", overrides.get("active_index"))
+
+        history_manager = _create_history_manager(
+            mock_redis=mock_redis,
+            session_id=session_id,
+            consultant=consultant,
+            user_id=user_id,
+        )
+
+        retrieval_dispatcher = RetrievalDispatcher(
+            semantic=self.searcher,
+            bm25=self.bm25_searcher,
+            semantic_rerank=self.semantic_rerank_searcher,
+        )
+
+        # ✅ Match PipelineRuntime signature (no action_registry kwarg here)
         runtime = PipelineRuntime(
-            pipeline_settings=pipeline.settings,
+            pipeline_settings=effective_settings,
             main_model=self.main_model,
             searcher=self.searcher,
             markdown_translator=self.markdown_translator,
@@ -130,7 +166,7 @@ class DynamicPipelineRunner:
             history_manager=history_manager,
             logger=self.logger,
             constants=constants,
-            retrieval_dispatcher=None,
+            retrieval_dispatcher=retrieval_dispatcher,
             bm25_searcher=self.bm25_searcher,
             semantic_rerank_searcher=self.semantic_rerank_searcher,
             graph_provider=self.graph_provider,
@@ -141,9 +177,7 @@ class DynamicPipelineRunner:
         self._engine.run(pipeline, state, runtime)
 
         final_answer = state.final_answer or state.answer_en or ""
-        query_type = state.query_type or state.retrieval_mode
-        if not query_type:
-            query_type = None
+        query_type = state.query_type or state.retrieval_mode or None
         steps_used = state.steps_used
         model_input_en = state.model_input_en_or_fallback()
 

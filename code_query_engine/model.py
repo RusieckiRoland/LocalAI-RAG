@@ -60,63 +60,49 @@ class Model:
             if self._looks_like_hallucination(output):
                 raise RuntimeError("Detected hallucination or recursive loop in LLM response.")
 
-            return output or ""
+            return output
+
         except Exception as e:
-            logger.warning("Error during LLM call: %s", e, exc_info=False)
-            return "[ERROR: Response suppressed due to suspected hallucination or runtime failure.]"
+            logger.error(f"Model error: {e}")
+            return "[MODEL_ERROR]"
 
     # --------------------------------------------------------------------- #
-    # Internals
+    # Internal helpers
     # --------------------------------------------------------------------- #
-
-    @staticmethod
-    def _looks_like_hallucination(text: str) -> bool:
-        """
-        Simple pattern-based guard; tune as needed.
-        Returns True if any suspicious pattern appears excessively.
-        """
-        suspicious_phrases = [
-            "TransactionErrorTransaction",
-            "ErrorTransactionError",
-            "TransactionErrorTransactionErrorTransaction",
-        ]
-        return any(text.count(p) > 5 for p in suspicious_phrases)
 
     def _create_llama(self, model_path: str) -> Llama:
         """
-        Try to initialize a GPU-backed model first; if it fails,
-        retry with a conservative CPU config.
+        Try GPU first, then fall back to CPU if GPU init fails.
         """
-        primary_kwargs: Dict[str, Any] = {
-            "model_path": model_path,
-            "n_gpu_layers": 40,
-            "n_batch": 512,
-            "n_ctx": 9000,
-            "verbose": False,
-            # The following flags may be build-dependent in llama.cpp:
-            "low_vram": True,
-            "chat_mode": False,
-            "flash_attn": True,
-            "offload_kqv": True,
-        }
-
         try:
-            logger.info("Loading llama model (GPU-first): %s", model_path)
-            return Llama(**primary_kwargs)
+            return Llama(
+                model_path=model_path,
+                n_ctx=4096,
+                n_threads=8,
+                n_gpu_layers=-1,
+                verbose=False,
+            )
         except Exception as gpu_err:
-            logger.warning("GPU init failed (%s). Falling back to CPU.", gpu_err)
+            logger.warning(f"GPU init failed, falling back to CPU. Error: {gpu_err}")
+            return Llama(
+                model_path=model_path,
+                n_ctx=4096,
+                n_threads=8,
+                n_gpu_layers=0,
+                verbose=False,
+            )
 
-        # CPU fallback (trim to broadly-supported arguments)
-        cpu_kwargs: Dict[str, Any] = {
-            "model_path": model_path,
-            "n_gpu_layers": 0,
-            "n_batch": 256,
-            "n_ctx": 4096,
-            "verbose": False,
-        }
-        try:
-            return Llama(**cpu_kwargs)
-        except Exception as cpu_err:
-            # Re-raise with clearer context; caller will handle the error path
-            logger.error("CPU init failed: %s", cpu_err)
-            raise
+    def _looks_like_hallucination(self, text: str) -> bool:
+        """
+        Very simple loop detection: repeated tokens / obvious recursive patterns.
+        """
+        t = (text or "").strip().lower()
+        if not t:
+            return False
+
+        # Common bad patterns:
+        # - Same short phrase repeated
+        if len(t) > 200 and len(set(t.split())) < 10:
+            return True
+
+        return False

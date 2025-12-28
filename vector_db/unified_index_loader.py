@@ -45,26 +45,47 @@ def _load_config_and_paths() -> Tuple[dict, str]:
     return config, config_dir
 
 
-def _resolve_index_dir(config: dict, config_dir: str, index_id: str | None = None) -> str:
+def _list_subdirs(root: str) -> List[str]:
     """
-    Resolve the directory that holds the unified index artifacts.
+    Return sorted list of immediate subdirectory names under root.
+    """
+    try:
+        if not os.path.isdir(root):
+            return []
+        out: List[str] = []
+        for name in os.listdir(root):
+            full = os.path.join(root, name)
+            if os.path.isdir(full):
+                out.append(name)
+        out.sort(key=lambda x: x.lower())
+        return out
+    except Exception:
+        return []
 
-    The directory structure is:
+
+def _resolve_index_paths(config: dict, config_dir: str, index_id: str | None = None) -> Tuple[str, str, str]:
+    """
+    Resolve paths for the unified index artifacts.
+
+    Directory structure:
         <vector_indexes_root>/<index_id>/
 
-    config keys:
+    Config keys:
         vector_indexes_root  (default: "vector_indexes")
         active_index_id      (default: "nop_main_index")
     """
     root = resolve_path(config.get("vector_indexes_root", "vector_indexes"), config_dir)
-    if index_id is None:
-        index_id = config.get("active_index_id", "nop_main_index")
-
-    index_dir = os.path.join(root, index_id)
-    return index_dir
+    chosen_id = index_id or config.get("active_index_id", "nop_main_index")
+    index_dir = os.path.join(root, chosen_id)
+    return root, chosen_id, index_dir
 
 
-def _load_faiss_and_metadata(index_dir: str) -> Tuple[faiss.Index, List[Dict[str, Any]]]:
+def _load_faiss_and_metadata(
+    *,
+    index_dir: str,
+    vector_root: str,
+    index_id: str,
+) -> Tuple[faiss.Index, List[Dict[str, Any]]]:
     """
     Load FAISS index and metadata JSON from a given directory.
 
@@ -76,10 +97,36 @@ def _load_faiss_and_metadata(index_dir: str) -> Tuple[faiss.Index, List[Dict[str
     meta_path = os.path.join(index_dir, "unified_metadata.json")
 
     if not os.path.isfile(faiss_path):
-        raise FileNotFoundError(f"FAISS index not found: {faiss_path}")
+        available = _list_subdirs(vector_root)
+        details = ""
+        if available:
+            details = (
+                "\nAvailable index dirs under vector_indexes_root:\n  - "
+                + "\n  - ".join(available)
+            )
+        raise FileNotFoundError(
+            "FAISS index not found: "
+            f"{faiss_path}\n"
+            f"Requested index_id: {index_id}\n"
+            f"vector_indexes_root: {vector_root}"
+            f"{details}"
+        )
 
     if not os.path.isfile(meta_path):
-        raise FileNotFoundError(f"Metadata file not found: {meta_path}")
+        available = _list_subdirs(vector_root)
+        details = ""
+        if available:
+            details = (
+                "\nAvailable index dirs under vector_indexes_root:\n  - "
+                + "\n  - ".join(available)
+            )
+        raise FileNotFoundError(
+            "Metadata file not found: "
+            f"{meta_path}\n"
+            f"Requested index_id: {index_id}\n"
+            f"vector_indexes_root: {vector_root}"
+            f"{details}"
+        )
 
     index = faiss.read_index(faiss_path)
 
@@ -89,6 +136,7 @@ def _load_faiss_and_metadata(index_dir: str) -> Tuple[faiss.Index, List[Dict[str
     if not isinstance(metadata, list):
         raise ValueError(f"Metadata JSON must be a list, got {type(metadata)}")
 
+    # Critical invariant: FAISS row_id must align 1:1 with metadata rows.
     if hasattr(index, "ntotal") and index.ntotal != len(metadata):
         raise ValueError(
             f"FAISS index size ({getattr(index, 'ntotal', 'n/a')}) "
@@ -132,9 +180,9 @@ def load_unified_search(index_id: str | None = None) -> UnifiedSearch:
         - embedding model from model_path_embd
     """
     config, config_dir = _load_config_and_paths()
-    index_dir = _resolve_index_dir(config, config_dir, index_id=index_id)
+    vector_root, chosen_id, index_dir = _resolve_index_paths(config, config_dir, index_id=index_id)
 
-    index, metadata = _load_faiss_and_metadata(index_dir)
+    index, metadata = _load_faiss_and_metadata(index_dir=index_dir, vector_root=vector_root, index_id=chosen_id)
     embed_model = _load_embedding_model(config, config_dir)
 
     # Construct UnifiedSearch – this is the main entry point for vector queries.
