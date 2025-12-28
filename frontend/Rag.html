@@ -1042,8 +1042,8 @@
     } catch (e) {
       console.error("bootstrapUi:", e);
       showUiError(
-        `Nie udało się pobrać konfiguracji z ${API_BASE}/app-config. ` +
-        `Jeśli otwierasz plik z pulpitu, uruchom server.js na http://localhost:8081 i odśwież stronę.`
+        `Failed to load configuration from z ${API_BASE}/app-config. ` +
+        `If you opened this page as a local file (file://), start the mock server (server.js) on http://localhost:8081 and refresh the page.`
       );
     }
   }

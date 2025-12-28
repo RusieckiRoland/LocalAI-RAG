@@ -1,12 +1,14 @@
+# code_query_engine/query_server_dynamic.py
+
 import os
 import re
 import uuid
 import json
 from pathlib import Path
 from threading import Lock
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, request, send_file
 from flask_cors import CORS
 from dotenv import load_dotenv
 
@@ -42,6 +44,9 @@ UI_TEMPLATES_PATH = os.path.join(UI_CONTRACTS_DIR, "templates.json")
 # Runtime config.json (repo root)
 RUNTIME_CONFIG_PATH = os.path.join(PROJECT_ROOT, "config.json")
 
+# Frontend HTML (served by Flask)
+FRONTEND_HTML_PATH = os.path.join(PROJECT_ROOT, "frontend", "Rag.html")
+
 # Security/limits
 MAX_QUERY_LEN = int(os.getenv("APP_MAX_QUERY_LEN", "8000"))
 MAX_FIELD_LEN = int(os.getenv("APP_MAX_FIELD_LEN", "128"))
@@ -67,6 +72,23 @@ CORS(
     resources={r"/*": {"origins": ALLOWED_ORIGINS}},
     supports_credentials=True,
 )
+
+
+@app.get("/")
+def ui_index():
+    # Serve the single-file frontend UI from the Flask server.
+    if not os.path.isfile(FRONTEND_HTML_PATH):
+        return (
+            jsonify(
+                {
+                    "ok": False,
+                    "error": "Frontend file not found.",
+                    "path": FRONTEND_HTML_PATH,
+                }
+            ),
+            404,
+        )
+    return send_file(FRONTEND_HTML_PATH)
 
 
 def _is_authorized(req) -> bool:
@@ -101,16 +123,6 @@ def _valid_user_id(value: str | None) -> str | None:
     return v
 
 
-def _valid_repo_or_branch(value: str, *, field: str) -> str:
-    v = (value or "").strip()
-    if not v:
-        raise ValueError(f"Missing required field '{field}'.")
-    v = v[:MAX_FIELD_LEN]
-    if not re.match(r"^[a-zA-Z0-9_\-\.]+$", v):
-        raise ValueError(f"Invalid '{field}'.")
-    return v
-
-
 def _get_str_field(payload: Dict[str, Any], key: str, default: str = "") -> str:
     v = payload.get(key, default)
     if v is None:
@@ -132,14 +144,6 @@ def _get_bool_field(payload: Dict[str, Any], key: str, default: bool = False) ->
     if isinstance(v, str):
         return v.strip().lower() in ("1", "true", "yes", "y", "on")
     return default
-
-
-def _get_int_field(payload: Dict[str, Any], key: str, default: int) -> int:
-    v = payload.get(key, default)
-    try:
-        return int(v)
-    except Exception:
-        return int(default)
 
 
 def _load_json_file(path: str) -> dict:
@@ -242,45 +246,35 @@ def _list_repositories() -> List[str]:
         return []
 
 
-def _is_valid_branch_dir(branch_dir: str, branch_name: str) -> bool:
+def _read_active_index_branches(cfg: dict) -> List[str]:
     """
-    Validate if a branch directory is an extracted branch bundle:
-    - must be a directory
-    - must contain at least one of known marker files
+    Option A: branches come from active unified index manifest.json.
+
+    Expected config keys:
+    - vector_indexes_root: path to indexes root
+    - active_index_id: active unified index id (folder name)
     """
-    full = os.path.join(branch_dir, branch_name)
-    if not os.path.isdir(full):
-        return False
-
-    # Common marker files in extracted bundles
-    markers = ["_manifest.json", "manifest.json", "repo_manifest.json", "graph.json", "nodes.csv"]
-    for m in markers:
-        if os.path.exists(os.path.join(full, m)):
-            return True
-
-    # Or any jsonl/sql_bodies etc (best-effort)
-    for m in ["sql_bodies.jsonl", "cs_bodies.jsonl", "bodies.jsonl"]:
-        if os.path.exists(os.path.join(full, m)):
-            return True
-
-    return False
-
-
-def _list_branches(repository: str) -> List[str]:
-    branch_root = os.path.join(REPOSITORIES_ROOT, repository, "branches")
     try:
+        indexes_root = _resolve_cfg_path(str(cfg.get("vector_indexes_root") or "").strip())
+        index_id = str(cfg.get("active_index_id") or "").strip()
+        if not indexes_root or not index_id:
+            return []
+
+        manifest_path = os.path.join(indexes_root, index_id, "manifest.json")
+        manifest = _load_json_file(manifest_path)
+        branches = manifest.get("branches") if isinstance(manifest, dict) else None
+        if not isinstance(branches, list):
+            return []
+
         out: List[str] = []
-        if not os.path.isdir(branch_root):
-            return out
-
-        for name in os.listdir(branch_root):
-            # Ignore accidental folders that are not extracted branch bundles
-            if not _is_valid_branch_dir(branch_root, name):
+        for b in branches:
+            if not isinstance(b, dict):
                 continue
-            out.append(name)
+            name = str(b.get("branch_name") or "").strip()
+            if name:
+                out.append(name)
 
-        out.sort(key=lambda x: x.lower())
-        return out
+        return sorted(set(out), key=lambda x: x.lower())
     except Exception:
         return []
 
@@ -356,10 +350,11 @@ def app_config():
     repos = _list_repositories()
     repo_name = str(cfg.get("repo_name") or "").strip() or (repos[0] if repos else "")
 
-    branches = _list_branches(repo_name) if repo_name else []
+    # Option A: branches come from active index manifest (source of truth).
+    branches = _read_active_index_branches(cfg)
+
     default_branch = _pick_default_branch(branches, cfg)
 
-    # Return only what UI needs; keep it stable for the mock/server combo
     return jsonify(
         {
             "repositories": repos,
@@ -371,9 +366,11 @@ def app_config():
     )
 
 
-@app.route("/query", methods=["POST"])
 @app.route("/search", methods=["POST"])
-def query_legacy():
+def search():
+    """
+    Single entrypoint (no legacy): dynamic pipeline runner behind POST /search.
+    """
     if not _is_authorized(request):
         return jsonify({"error": "Unauthorized"}), 401
 
@@ -382,13 +379,23 @@ def query_legacy():
     templates = _load_ui_templates()
 
     repo_name = str(cfg.get("repo_name") or "").strip() or "repo"
-    branches = _list_branches(repo_name)
+
+    branches = _read_active_index_branches(cfg)
     default_branch = _pick_default_branch(branches, cfg)
 
-    session_id = _valid_session_id(_get_str_field(payload, "session_id", _get_str_field(payload, "sessionId", "")))
+    # UI sends session in header (X-Session-ID). Support also body fields as fallback.
+    session_in = (request.headers.get("X-Session-ID") or "").strip()
+    if not session_in:
+        session_in = _get_str_field(payload, "session_id", _get_str_field(payload, "sessionId", ""))
+
+    session_id = _valid_session_id(session_in)
+
     user_id = _valid_user_id(_get_str_field(payload, "user_id", _get_str_field(payload, "userId", "")))
 
     consultant_id = _get_str_field(payload, "consultant", _get_str_field(payload, "consultantId", ""))
+    if not consultant_id:
+        return jsonify({"error": "Missing consultant."}), 400
+
     pipeline_name = _get_str_field(payload, "pipeline_name", _find_pipeline_for_consultant(consultant_id, templates))
 
     translate_chat = _get_bool_field(payload, "translateChat", False)
@@ -400,16 +407,24 @@ def query_legacy():
         return jsonify({"error": f"Query too long (>{MAX_QUERY_LEN})."}), 400
 
     branch_a = _get_str_field(payload, "branchA", "") or _get_str_field(payload, "branch", "") or default_branch
+    branch_b = _get_str_field(payload, "branchB", "") or ""
+
+    overrides: dict[str, Any] = {}
+    if branch_b:
+        overrides["branch_b"] = branch_b
 
     try:
         result = _runner.run(
             user_query=original_query,
             session_id=session_id,
-            user_id=user_id,
-            repository=repo_name,
+            consultant=consultant_id,
             branch=branch_a,
-            pipeline_name=pipeline_name or None,
             translate_chat=translate_chat,
+            user_id=user_id,
+            pipeline_name=pipeline_name or None,
+            repository=repo_name,
+            active_index=_active_index_id,
+            overrides=(overrides or None),
             mock_redis=_history_backend,
         )
     except Exception as ex:
@@ -421,77 +436,8 @@ def query_legacy():
         out["user_id"] = user_id
     out["repository"] = repo_name
     out["branch"] = branch_a
-    if pipeline_name:
-        out["pipeline_name"] = pipeline_name
-    out["consultant"] = consultant_id
-
-    return jsonify(out)
-
-
-@app.route("/list-repos", methods=["GET"])
-def list_repos():
-    if not _is_authorized(request):
-        return jsonify({"error": "Unauthorized"}), 401
-    return jsonify({"repositories": _list_repositories()})
-
-
-@app.route("/list-branches/<repo>", methods=["GET"])
-def list_repo_branches(repo: str):
-    if not _is_authorized(request):
-        return jsonify({"error": "Unauthorized"}), 401
-    repo_name = _valid_repo_or_branch(repo, field="repository")
-    return jsonify({"repository": repo_name, "branches": _list_branches(repo_name)})
-
-
-@app.route("/query-v2", methods=["POST"])
-def query():
-    if not _is_authorized(request):
-        return jsonify({"error": "Unauthorized"}), 401
-
-    payload = request.get_json(silent=True) or {}
-    cfg = _load_runtime_config()
-    templates = _load_ui_templates()
-
-    repo_name = str(cfg.get("repo_name") or "").strip() or "repo"
-    branches = _list_branches(repo_name)
-    default_branch = _pick_default_branch(branches, cfg)
-
-    session_id = _valid_session_id(_get_str_field(payload, "session_id", _get_str_field(payload, "sessionId", "")))
-    user_id = _valid_user_id(_get_str_field(payload, "user_id", _get_str_field(payload, "userId", "")))
-
-    consultant_id = _get_str_field(payload, "consultant", _get_str_field(payload, "consultantId", ""))
-    pipeline_name = _get_str_field(payload, "pipeline_name", _find_pipeline_for_consultant(consultant_id, templates))
-
-    translate_chat = _get_bool_field(payload, "translateChat", False)
-
-    original_query = _get_str_field(payload, "query", "")
-    if not original_query:
-        return jsonify({"error": "Missing query."}), 400
-    if len(original_query) > MAX_QUERY_LEN:
-        return jsonify({"error": f"Query too long (>{MAX_QUERY_LEN})."}), 400
-
-    branch_a = _get_str_field(payload, "branchA", "") or _get_str_field(payload, "branch", "") or default_branch
-
-    try:
-        result = _runner.run(
-            user_query=original_query,
-            session_id=session_id,
-            user_id=user_id,
-            repository=repo_name,
-            branch=branch_a,
-            pipeline_name=pipeline_name or None,
-            translate_chat=translate_chat,
-            mock_redis=_history_backend,
-        )
-    except Exception as ex:
-        return jsonify({"error": str(ex)}), 500
-
-    out = _normalize_runner_result(result)
-    out["session_id"] = session_id
-    if user_id:
-        out["user_id"] = user_id
-    out["repository"] = repo_name
-    out["branch"] = branch_a
+    if branch_b:
+        out["branchB"] = branch_b
     if pipeline_name:
         out["pipeline_name"] = pipeline_name
     out["consultant"] = consultant_id

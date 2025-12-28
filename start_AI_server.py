@@ -23,8 +23,44 @@ if args.env:
     else:
         print("⚠️  .env file not found, skipping.")
 
+
+def _get_primary_ipv4() -> str:
+    # English comments only.
+    import socket
+
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        # No packets are actually sent; this picks the primary interface IP.
+        s.connect(("10.255.255.255", 1))
+        return s.getsockname()[0]
+    except Exception:
+        return "127.0.0.1"
+    finally:
+        s.close()
+
+
+def _print_start_banner(host: str, port: int) -> None:
+    # English comments only.
+    ip = _get_primary_ipv4()
+
+    print("")
+    print("🚀 LocalAI-RAG UI")
+    print(f"➜  Local:   http://127.0.0.1:{port}/")
+    print(f"➜  Network: http://{ip}:{port}/")
+    print("")
+    print("🔎 Health / config")
+    print(f"➜  /health:     http://127.0.0.1:{port}/health")
+    print(f"➜  /app-config: http://127.0.0.1:{port}/app-config")
+    print("")
+
+
 # --- Main app import and run ---
 from code_query_engine.query_server_dynamic import app  # <-- nowy serwer
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000, debug=True)
+    host = "0.0.0.0"
+    port = 5000
+
+    _print_start_banner(host=host, port=port)
+
+    app.run(host=host, port=port, debug=True)
