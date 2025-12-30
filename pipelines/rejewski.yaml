@@ -1,34 +1,12 @@
-# File: pipelines/base/marian_rejewski_code_analysis_assesment_base.yaml
+# File: pipelines/rejewski_assesment.yaml
 YAMLpipeline:
-  name: marian_rejewski_code_analysis_assesment_base
+  name: rejewski
 
-  extends: ./marian_rejewski_code_analysis_base.yaml
+  extends: ./base/marian_rejewski_code_analysis_base.yaml
 
-  steps:
-    # Override the answer step to always produce a Markdown draft answer (no prefixes).
-    - id: call_model_answer
-      action: call_model
-      prompt_key: "rejewski/answerer_markdown_v1"
-      next: call_model_assessor
+  settings:
+    repository: "nopCommerce"
+    active_index: "2025-12-14_develop"
 
-    # New step: assessor decides whether the draft answer is good enough or we must retrieve more.
-    - id: call_model_assessor
-      action: call_model
-      prompt_key: "rejewski/assessor_v1"
-      next: handle_answer_prefix
-
-    # Override the prefix handler: READY => accept draft, otherwise route to retrieval.
-    - id: handle_answer_prefix
-      action: handle_prefix
-      ready_prefix: "[READY:]"
-      ready_from_state: "draft_answer_en"
-      semantic_prefix: "[SEMANTIC:]"
-      bm25_prefix: "[BM25:]"
-      hybrid_prefix: "[HYBRID:]"
-      semantic_rerank_prefix: "[SEMANTIC_RERANK:]"
-      on_ready: persist_turn_and_finalize
-      on_semantic: loop_guard
-      on_bm25: loop_guard
-      on_hybrid: loop_guard
-      on_semantic_rerank: loop_guard
-      on_other: finalize_heuristic
+    entry_step_id: maybe_translate_in
+    model_language: en

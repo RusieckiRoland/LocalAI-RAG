@@ -21,7 +21,7 @@ class PersistTurnAndFinalizeAction:
             try:
                 log_fn(
                     session_id=state.session_id,
-                    pipeline_name="",
+                    pipeline_name=getattr(state, "pipeline_name", "") or "",
                     step_id=step.id,
                     action=step.action,
                     data={
