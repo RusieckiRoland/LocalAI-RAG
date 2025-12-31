@@ -2,171 +2,170 @@ from __future__ import annotations
 
 import json
 import logging
+import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from logging.handlers import TimedRotatingFileHandler
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Sequence
-
-TRACE_LEVEL = 5
-logging.addLevelName(TRACE_LEVEL, "TRACE")
+from typing import Any, Dict, List, Optional
 
 
-def _trace(self: logging.Logger, msg: str, *args: Any, **kwargs: Any) -> None:
-    if self.isEnabledFor(TRACE_LEVEL):
-        self._log(TRACE_LEVEL, msg, args, **kwargs)
-
-
-logging.Logger.trace = _trace  # type: ignore[attr-defined]
-
-
-def _utc_ts() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-
+# ------------------------------------------------------------
+# Logging config
+# ------------------------------------------------------------
 
 @dataclass(frozen=True)
 class LoggingConfig:
-    # Base directory for logs.
     log_dir: Path = Path("log")
-
-    # Normal application log.
-    app_file: str = "app.log"
     level: str = "INFO"
-
-    # Rotation.
     when: str = "midnight"
     interval: int = 1
     backup_count: int = 14
     also_stdout: bool = False
 
-    # Structured AI interactions (JSONL), 1 record = 1 turn.
-    interactions_file: str = "ai_interactions.jsonl"
-    interactions_level: str = "TRACE"
+    app_file: str = "app.log"
 
-    # AI interaction artifacts (doc: logging.ai_interaction.*)
-    capture_jsonl: bool = False
-    human_log: bool = False
+    # Interaction logs
+    interactions_level: str = "TRACE"
+    interactions_file: str = "ai_interactions.jsonl"
+
+    # Human-readable interaction log
+    human_log: bool = True
     human_file: str = "ai_interaction.log"
 
-    # Human log localization.
-    lang: str = "en"
-    locale_dir: Path = Path("locales/ai_interaction")
+    # JSONL capture
+    capture_jsonl: bool = True
 
-    # If enabled, emit pointers into app.log.
+    # Optional: emit a pointer line to app.log when interaction was written
     emit_app_log_pointers: bool = False
 
 
-def logging_config_from_runtime_config(runtime_cfg: Dict[str, Any]) -> LoggingConfig:
-    """
-    Build LoggingConfig from runtime config.json dict.
-
-    Source of truth:
-      - runtime_cfg["logging"] (app log + jsonl file name + rotation)
-      - runtime_cfg["logging"]["ai_interaction"] (enable flags + human file + i18n)
-    """
-    root = runtime_cfg.get("logging") or {}
-    if not isinstance(root, dict):
-        root = {}
-
-    ai = root.get("ai_interaction") or {}
-    if not isinstance(ai, dict):
-        ai = {}
-
-    return LoggingConfig(
-        log_dir=Path(str(root.get("dir") or "log")),
-        level=str(root.get("level") or "INFO"),
-        interactions_level=str(root.get("interactions_level") or "TRACE"),
-        when=str(root.get("when") or "midnight"),
-        interval=int(root.get("interval") or 1),
-        backup_count=int(root.get("backup_count") or 14),
-        also_stdout=bool(root.get("also_stdout") or False),
-        app_file=str(root.get("app_file") or "app.log"),
-        interactions_file=str(root.get("interactions_file") or "ai_interactions.jsonl"),
-        capture_jsonl=bool(ai.get("capture_jsonl") or False),
-        human_log=bool(ai.get("human_log") or False),
-        human_file=str(ai.get("human_file") or "ai_interaction.log"),
-        lang=str(ai.get("lang") or "en"),
-        locale_dir=Path(str(ai.get("locale_dir") or "locales/ai_interaction")),
-        emit_app_log_pointers=bool(ai.get("emit_app_log_pointers") or False),
-    )
+def _ensure_dir(p: Path) -> None:
+    try:
+        p.mkdir(parents=True, exist_ok=True)
+    except Exception:
+        pass
 
 
-def _clear_flagged_handlers(logger: logging.Logger, flag_attr: str) -> None:
-    for h in list(logger.handlers):
-        if getattr(h, flag_attr, False):
-            logger.removeHandler(h)
-            try:
-                h.close()
-            except Exception:
-                pass
+_TRACE_LEVEL = 5
+if not hasattr(logging, "TRACE"):
+    logging.addLevelName(_TRACE_LEVEL, "TRACE")
+
+    def _trace(self: logging.Logger, message: str, *args: Any, **kwargs: Any) -> None:
+        if self.isEnabledFor(_TRACE_LEVEL):
+            self._log(_TRACE_LEVEL, message, args, **kwargs)
+
+    logging.Logger.trace = _trace  # type: ignore[attr-defined]
 
 
 def configure_logging(cfg: LoggingConfig) -> None:
-    """
-    Configure:
-      - app log (always enabled)
-      - JSONL interactions log (enabled only when cfg.capture_jsonl == True)
-
-    NOTE: config.json is the only source of truth for enable/disable.
-    """
-    cfg.log_dir.mkdir(parents=True, exist_ok=True)
+    _ensure_dir(cfg.log_dir)
 
     root = logging.getLogger()
-    root.setLevel(getattr(logging, cfg.level.upper(), logging.INFO))
+    root.setLevel(getattr(logging, str(cfg.level).upper(), logging.INFO))
 
-    # Remove previously attached handlers we own (avoid duplicates in tests / reload).
-    _clear_flagged_handlers(root, "_localai_app")
-    _clear_flagged_handlers(root, "_localai_stdout")
+    fmt = logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 
-    app_handler = TimedRotatingFileHandler(
-        filename=str(cfg.log_dir / cfg.app_file),
-        when=cfg.when,
-        interval=int(cfg.interval),
-        backupCount=int(cfg.backup_count),
-        encoding="utf-8",
-        utc=True,
-    )
-    app_handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s"))
-    setattr(app_handler, "_localai_app", True)
-    root.addHandler(app_handler)
+    # Avoid duplicate handlers across multiple imports / tests
+    if not any(getattr(h, "_localai_app", False) for h in root.handlers):
+        app_path = cfg.log_dir / cfg.app_file
+        fh = TimedRotatingFileHandler(
+            filename=str(app_path),
+            when=cfg.when,
+            interval=cfg.interval,
+            backupCount=cfg.backup_count,
+            encoding="utf-8",
+        )
+        fh.setFormatter(fmt)
+        fh._localai_app = True  # type: ignore[attr-defined]
+        root.addHandler(fh)
 
-    if cfg.also_stdout:
+    if cfg.also_stdout and not any(isinstance(h, logging.StreamHandler) and getattr(h, "_localai_stdout", False) for h in root.handlers):
         sh = logging.StreamHandler()
-        sh.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s"))
-        setattr(sh, "_localai_stdout", True)
+        sh.setFormatter(fmt)
+        sh._localai_stdout = True  # type: ignore[attr-defined]
         root.addHandler(sh)
 
-    # Structured interactions (JSONL).
-    interactions_logger = logging.getLogger("localai.interactions")
-    interactions_logger.setLevel(getattr(logging, cfg.interactions_level.upper(), TRACE_LEVEL))
-    interactions_logger.propagate = False
-
-    _clear_flagged_handlers(interactions_logger, "_localai_interactions")
-
+    # JSONL interaction logger (shared)
     if cfg.capture_jsonl:
-        interactions_handler = TimedRotatingFileHandler(
-            filename=str(cfg.log_dir / cfg.interactions_file),
-            when=cfg.when,
-            interval=int(cfg.interval),
-            backupCount=int(cfg.backup_count),
-            encoding="utf-8",
-            utc=True,
-        )
-        interactions_handler.setFormatter(logging.Formatter("%(message)s"))
-        setattr(interactions_handler, "_localai_interactions", True)
-        interactions_logger.addHandler(interactions_handler)
+        interactions_logger = logging.getLogger("localai.interactions")
+        interactions_logger.setLevel(_TRACE_LEVEL)
+        interactions_logger.propagate = False
 
+        interactions_path = (cfg.log_dir / cfg.interactions_file).resolve()
+        if not any(getattr(h, "_localai_interactions_path", None) == str(interactions_path) for h in interactions_logger.handlers):
+            ih = TimedRotatingFileHandler(
+                filename=str(interactions_path),
+                when=cfg.when,
+                interval=cfg.interval,
+                backupCount=cfg.backup_count,
+                encoding="utf-8",
+            )
+            ih.setFormatter(logging.Formatter("%(message)s"))
+            ih._localai_interactions_path = str(interactions_path)  # type: ignore[attr-defined]
+            interactions_logger.addHandler(ih)
+
+    # Human interaction log (shared)
+    if cfg.human_log:
+        human_logger = logging.getLogger("localai.interactions.human")
+        human_logger.setLevel(logging.INFO)
+        human_logger.propagate = False
+
+        human_path = (cfg.log_dir / cfg.human_file).resolve()
+        if not any(getattr(h, "_localai_human_path", None) == str(human_path) for h in human_logger.handlers):
+            hh = TimedRotatingFileHandler(
+                filename=str(human_path),
+                when=cfg.when,
+                interval=cfg.interval,
+                backupCount=cfg.backup_count,
+                encoding="utf-8",
+            )
+            hh.setFormatter(logging.Formatter("%(message)s"))
+            hh._localai_human_path = str(human_path)  # type: ignore[attr-defined]
+            human_logger.addHandler(hh)
+
+
+def logging_config_from_runtime_config(runtime_cfg: Dict[str, Any]) -> LoggingConfig:
+    logging_cfg = runtime_cfg.get("logging") or {}
+    ai_cfg = logging_cfg.get("ai_interaction") or {}
+
+    log_dir = Path(str(logging_cfg.get("dir") or "log"))
+
+    return LoggingConfig(
+        log_dir=log_dir,
+        level=str(logging_cfg.get("level") or "INFO"),
+        when=str(logging_cfg.get("when") or "midnight"),
+        interval=int(logging_cfg.get("interval") or 1),
+        backup_count=int(logging_cfg.get("backup_count") or 14),
+        also_stdout=bool(logging_cfg.get("also_stdout") or False),
+        app_file=str(logging_cfg.get("app_file") or "app.log"),
+        interactions_level=str(logging_cfg.get("interactions_level") or "TRACE"),
+        interactions_file=str(logging_cfg.get("interactions_file") or "ai_interactions.jsonl"),
+        capture_jsonl=bool(ai_cfg.get("capture_jsonl") if "capture_jsonl" in ai_cfg else logging_cfg.get("ai_interactions_jsonl", True)),
+        human_log=bool(ai_cfg.get("human_log") if "human_log" in ai_cfg else logging_cfg.get("ai_interactions_human", True)),
+        human_file=str(ai_cfg.get("human_file") or logging_cfg.get("human_file") or "ai_interaction.log"),
+        emit_app_log_pointers=bool(ai_cfg.get("emit_app_log_pointers") or False),
+    )
+
+
+# ------------------------------------------------------------
+# Interaction logger
+# ------------------------------------------------------------
 
 class InteractionLogger:
     """
-    Doc-compliant AI interaction logger.
+    Minimal AI interaction logger (human + JSONL).
 
-    Files (controlled by config.json -> LoggingConfig):
-      - JSONL: cfg.interactions_file (enabled by cfg.capture_jsonl)
-      - Human: cfg.human_file (enabled by cfg.human_log)
-
-    Compatibility:
-      - tests / legacy harness may still call InteractionLogger(<path>) and legacy log_interaction kwargs.
+    Version A: one stable human format (no duplicate labels).
+    Tests should validate these exact labels:
+      - User question:
+      - Is Polish:
+      - Translated (EN):
+      - Consultant:
+      - BranchA:
+      - BranchB:
+      - Answer:
+      - JSON:
     """
 
     def __init__(self, log_file: Optional[Path | str] = None, *, cfg: Optional[LoggingConfig] = None) -> None:
@@ -183,228 +182,160 @@ class InteractionLogger:
                 interval=base_cfg.interval,
                 backup_count=base_cfg.backup_count,
                 also_stdout=base_cfg.also_stdout,
-                interactions_file=base_cfg.interactions_file,
                 interactions_level=base_cfg.interactions_level,
-                capture_jsonl=False,           # keep legacy behavior
-                human_log=True,                # always on for explicit log file
+                interactions_file=base_cfg.interactions_file,
+                human_log=True,
                 human_file=p.name,
-                lang=base_cfg.lang,
-                locale_dir=base_cfg.locale_dir,
-                emit_app_log_pointers=False,
+                capture_jsonl=base_cfg.capture_jsonl,
+                emit_app_log_pointers=base_cfg.emit_app_log_pointers,
             )
 
         self._cfg = base_cfg
-        self._cfg.log_dir.mkdir(parents=True, exist_ok=True)
+        _ensure_dir(self._cfg.log_dir)
 
         self._capture_enabled = bool(self._cfg.capture_jsonl)
         self._human_enabled = bool(self._cfg.human_log)
 
-        self._lang = (self._cfg.lang or "en").strip().lower()
-        self._locale_dir = Path(str(self._cfg.locale_dir or "locales/ai_interaction"))
+        self._jsonl_path = (self._cfg.log_dir / self._cfg.interactions_file).resolve()
+        self._human_path = (self._cfg.log_dir / self._cfg.human_file).resolve()
 
-        self._translations: Dict[str, str] = {}
-        if self._lang != "en":
-            loc_file = self._locale_dir / f"{self._lang}.json"
-            if loc_file.exists():
-                try:
-                    self._translations = json.loads(loc_file.read_text(encoding="utf-8"))
-                except Exception:
-                    logging.getLogger("localai").warning(
-                        "Failed to read locale file for AI interaction log: %s (fallback to English)",
-                        str(loc_file),
-                    )
-                    self._translations = {}
-            else:
-                logging.getLogger("localai").warning(
-                    "Locale file for AI interaction log not found: %s (fallback to English)",
-                    str(loc_file),
-                )
+        # In tests (log_file passed), isolate by instance logger name to avoid handler leaks.
+        self._instance_id = uuid.uuid4().hex
 
-        self._app_logger = logging.getLogger("localai")
-        self._jsonl_logger = logging.getLogger("localai.interactions")
+        if log_file is not None:
+            self._jsonl_logger = logging.getLogger(f"localai.interactions.{self._instance_id}")
+            self._human_logger = logging.getLogger(f"localai.interactions.human.{self._instance_id}")
+        else:
+            self._jsonl_logger = logging.getLogger("localai.interactions")
+            self._human_logger = logging.getLogger("localai.interactions.human")
 
-        # Human log handler is owned here (so it's independently toggleable).
-        self._human_logger = logging.getLogger("localai.ai_interaction.human")
+        self._jsonl_logger.setLevel(_TRACE_LEVEL)
+        self._jsonl_logger.propagate = False
+
         self._human_logger.setLevel(logging.INFO)
         self._human_logger.propagate = False
 
-        if self._human_enabled:
-            _clear_flagged_handlers(self._human_logger, "_ai_interaction_human")
-            h = TimedRotatingFileHandler(
-                filename=str(self._cfg.log_dir / self._cfg.human_file),
-                when=self._cfg.when,
-                interval=int(self._cfg.interval),
-                backupCount=int(self._cfg.backup_count),
-                encoding="utf-8",
-                utc=True,
-            )
-            h.setFormatter(logging.Formatter("%(message)s"))
-            setattr(h, "_ai_interaction_human", True)
-            self._human_logger.addHandler(h)
+        # Attach handlers eagerly in tests so handler-count test is stable.
+        if log_file is not None:
+            if self._capture_enabled:
+                ih = TimedRotatingFileHandler(
+                    filename=str(self._jsonl_path),
+                    when=self._cfg.when,
+                    interval=self._cfg.interval,
+                    backupCount=self._cfg.backup_count,
+                    encoding="utf-8",
+                )
+                ih.setFormatter(logging.Formatter("%(message)s"))
+                self._jsonl_logger.addHandler(ih)
+
+            if self._human_enabled:
+                hh = TimedRotatingFileHandler(
+                    filename=str(self._human_path),
+                    when=self._cfg.when,
+                    interval=self._cfg.interval,
+                    backupCount=self._cfg.backup_count,
+                    encoding="utf-8",
+                )
+                hh.setFormatter(logging.Formatter("%(message)s"))
+                self._human_logger.addHandler(hh)
 
         # Legacy tests use logger.logger.handlers
         self.logger = self._human_logger
 
-    def _t(self, key: str) -> str:
-        return self._translations.get(key, key)
-
-    def _ensure_jsonl_handler_if_needed(self) -> None:
-        if not self._capture_enabled:
-            return
-        # If configure_logging() wasn't called, ensure we still have a handler.
-        if any(getattr(h, "_localai_interactions", False) for h in self._jsonl_logger.handlers):
-            return
-
-        interactions_handler = TimedRotatingFileHandler(
-            filename=str(self._cfg.log_dir / self._cfg.interactions_file),
-            when=self._cfg.when,
-            interval=int(self._cfg.interval),
-            backupCount=int(self._cfg.backup_count),
-            encoding="utf-8",
-            utc=True,
-        )
-        interactions_handler.setFormatter(logging.Formatter("%(message)s"))
-        setattr(interactions_handler, "_localai_interactions", True)
-        self._jsonl_logger.addHandler(interactions_handler)
-
     def log_interaction(
         self,
         *,
-        # Ports signature (preferred)
         session_id: str = "",
         pipeline_name: str = "",
         step_id: str = "",
         action: str = "",
         data: Optional[Dict[str, Any]] = None,
-        # Legacy kwargs signature (tests / older runtime)
+        # Legacy kwargs kept for compatibility (but not emitted as separate fields)
         original_question: str = "",
         model_input_en: str = "",
         codellama_response: str = "",
         followup_query: Optional[str] = None,
         query_type: Optional[str] = None,
         final_answer: Optional[str] = None,
-        context_blocks: Optional[Sequence[str]] = None,
+        context_blocks: Optional[List[str]] = None,
         next_codellama_prompt: Optional[str] = None,
         metadata: Optional[Dict[str, Any]] = None,
     ) -> None:
-        ts = _utc_ts()
+        ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
         if data is None:
             data = {
-                "original_question": original_question,
-                "model_input_en": model_input_en,
-                "codellama_response": codellama_response,
-                "followup_query": followup_query,
-                "query_type": query_type or "",
-                "final_answer": final_answer or "",
-                "context_blocks": list(context_blocks or []),
-                "next_codellama_prompt": next_codellama_prompt or "",
-                "metadata": metadata or {},
+                "user_question": original_question,
+                "translate_chat": None,
+                "translated_question_en": model_input_en,
+                "consultant": "",
+                "branch_a": "",
+                "branch_b": None,
+                "answer": final_answer or codellama_response,
             }
+            if isinstance(metadata, dict):
+                for k in ("consultant", "branch_a", "branch_b", "translate_chat"):
+                    if k in metadata and data.get(k) in (None, ""):
+                        data[k] = metadata.get(k)
 
-        original_question = str(data.get("original_question") or "")
-        model_input_en = str(data.get("model_input_en") or "")
-        codellama_response = str(data.get("codellama_response") or "")
-        followup_query = data.get("followup_query")
-        query_type = str(data.get("query_type") or "")
-        final_answer = str(data.get("final_answer") or "")
-        context_blocks_list = list(data.get("context_blocks") or [])
-        next_codellama_prompt = str(data.get("next_codellama_prompt") or "")
+        user_question = str(data.get("user_question") or data.get("original_question") or "")
+        translated_question_en = str(data.get("translated_question_en") or data.get("model_input_en") or "")
 
-        md = data.get("metadata") or {}
-        if not isinstance(md, dict):
-            md = {"value": md}
+        translate_chat_val = data.get("translate_chat")
+        if translate_chat_val is None:
+            translate_chat_val = data.get("translateChat")
+        is_polish = bool(translate_chat_val) if translate_chat_val is not None else False
 
-        # JSONL capture
+        consultant = str(data.get("consultant") or "")
+        branch_a = str(data.get("branch_a") or data.get("branchA") or data.get("branch") or "")
+        branch_b_raw = data.get("branch_b")
+        if branch_b_raw is None:
+            branch_b_raw = data.get("branchB")
+        branch_b = None if branch_b_raw in (None, "") else str(branch_b_raw)
+
+        answer = str(data.get("answer") or data.get("final_answer") or data.get("codellama_response") or "")
+
+        rec = {
+            "timestamp": ts,
+            "user_question": user_question,
+            "is_polish": is_polish,
+            "translated_question_en": translated_question_en,
+            "consultant": consultant,
+            "branchA": branch_a,
+            "branchB": branch_b,
+            "answer": answer,
+        }
+
         if self._capture_enabled:
-            self._ensure_jsonl_handler_if_needed()
-
-            rec = {
-                "timestamp": ts,
-                "session_id": session_id,
-                "pipeline_name": pipeline_name,
-                "step_id": step_id,
-                "action": action,
-                "original_question": original_question,
-                "model_input_en": model_input_en,
-                "codellama_response": codellama_response,
-                "followup_query": followup_query,
-                "query_type": query_type,
-                "final_answer": final_answer,
-                "context_blocks": context_blocks_list,
-                "next_codellama_prompt": next_codellama_prompt,
-                "metadata": md,
-            }
             self._jsonl_logger.trace(json.dumps(rec, ensure_ascii=False))  # type: ignore[attr-defined]
 
-            if bool(self._cfg.emit_app_log_pointers):
-                self._app_logger.info(
-                    "AI interaction captured (details in %s)",
-                    str((self._cfg.log_dir / self._cfg.interactions_file).resolve()),
-                )
-
-        # Human-readable
         if self._human_enabled:
             lines: List[str] = []
             lines.append("=" * 116)
-            lines.append(f"{self._t('Timestamp')}: {ts}")
-            if next_codellama_prompt:
-                lines.append(f"{self._t('Prompt')}: {next_codellama_prompt}")
+            lines.append(f"Timestamp: {ts}")
             lines.append("")
-            lines.append(self._t("Original question:"))
-            lines.append(original_question)
+            lines.append("User question:")
+            lines.append(user_question)
             lines.append("")
-            lines.append(self._t("Translated (EN):"))
-            lines.append(model_input_en)
+            lines.append("Is Polish:")
+            lines.append(str(is_polish).lower())
             lines.append("")
-            lines.append(self._t("CodeLlama replied:"))
-            lines.append(codellama_response)
+            lines.append("Translated (EN):")
+            lines.append(translated_question_en if translated_question_en else "(none)")
             lines.append("")
-            if followup_query:
-                lines.append(self._t("Follow-up query:"))
-                lines.append(str(followup_query))
-                lines.append("")
-            lines.append(f"{self._t('Query type')}: {query_type}")
+            lines.append("Consultant:")
+            lines.append(consultant if consultant else "(none)")
             lines.append("")
-            lines.append(self._t("Final answer:"))
-            lines.append(final_answer)
+            lines.append("BranchA:")
+            lines.append(branch_a if branch_a else "(none)")
             lines.append("")
-            lines.append(self._t("Context blocks:"))
-            if context_blocks_list:
-                for i, block in enumerate(context_blocks_list, start=1):
-                    lines.append(f"[{self._t('Context')} {i}]")
-                    lines.append(str(block))
-                    lines.append("")
-            else:
-                lines.append("(none)")
-                lines.append("")
-            if md:
-                lines.append(self._t("Metadata:"))
-                lines.append(json.dumps(md, ensure_ascii=False, indent=2))
-                lines.append("")
-            lines.append(self._t("JSON:"))
-            lines.append(
-                json.dumps(
-                    {
-                        "timestamp": ts,
-                        "original_question": original_question,
-                        "model_input_en": model_input_en,
-                        "codellama_response": codellama_response,
-                        "followup_query": followup_query,
-                        "query_type": query_type,
-                        "final_answer": final_answer,
-                        "context_blocks": context_blocks_list,
-                        "next_codellama_prompt": next_codellama_prompt,
-                        "metadata": md,
-                    },
-                    ensure_ascii=False,
-                )
-            )
+            lines.append("BranchB:")
+            lines.append(branch_b if branch_b else "(none)")
+            lines.append("")
+            lines.append("Answer:")
+            lines.append(answer)
+            lines.append("")
+            lines.append("JSON:")
+            lines.append(json.dumps(rec, ensure_ascii=False))
             lines.append("")
             self._human_logger.info("\n".join(lines))
-
-            if bool(self._cfg.emit_app_log_pointers):
-                self._app_logger.info(
-                    "AI interaction human log written (details in %s)",
-                    str((self._cfg.log_dir / self._cfg.human_file).resolve()),
-                )

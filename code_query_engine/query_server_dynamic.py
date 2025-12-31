@@ -199,11 +199,13 @@ def _ensure_limits(payload: dict) -> tuple[bool, str]:
     q = str(payload.get("query") or payload.get("question") or payload.get("text") or "")
     if len(q) > MAX_QUERY_LEN:
         return False, f"query too long (>{MAX_QUERY_LEN})"
+
     for k in (
         "repository",
         "branch",
         "branchA",
         "branchB",
+        "branches",  # NEW contract: list[0..2]
         "pipelineName",
         "templateId",
         "language",
@@ -211,9 +213,23 @@ def _ensure_limits(payload: dict) -> tuple[bool, str]:
         "session_id",
         "user_id",
     ):
+        if k == "branches":
+            raw = payload.get("branches")
+            if isinstance(raw, list):
+                for i, item in enumerate(raw):
+                    v = str(item or "")
+                    if len(v) > MAX_FIELD_LEN:
+                        return False, f"field 'branches[{i}]' too long (>{MAX_FIELD_LEN})"
+            else:
+                v = str(raw or "")
+                if len(v) > MAX_FIELD_LEN:
+                    return False, f"field 'branches' too long (>{MAX_FIELD_LEN})"
+            continue
+
         v = str(payload.get(k) or "")
         if len(v) > MAX_FIELD_LEN:
             return False, f"field '{k}' too long (>{MAX_FIELD_LEN})"
+
     return True, ""
 
 
@@ -403,7 +419,8 @@ def app_config():
 
 
 # ------------------------------------------------------------
-# Query endpoint (contract: query/consultant/pipelineName/branchA/branchB)
+# Query endpoint (contract: query/consultant/pipelineName/branches[0..2])
+# Backward-compat: still accept legacy branchA/branchB.
 # ------------------------------------------------------------
 
 @app.route("/query", methods=["POST"])
@@ -427,8 +444,33 @@ def query():
 
     translate_chat = _get_bool_field(payload, "translateChat", False)
 
-    branch_a = _get_str_field(payload, "branchA", _get_str_field(payload, "branch", ""))
-    branch_b = _get_str_field(payload, "branchB", "")
+    # NEW contract: "branches": [] | ["A"] | ["A","B"]
+    # Backward-compat: accept legacy branchA/branchB/branch.
+    branches_raw = payload.get("branches")
+    branch_a = ""
+    branch_b = ""
+
+    if isinstance(branches_raw, list):
+        cleaned: List[str] = []
+        for item in branches_raw:
+            s = str(item or "").strip()
+            if s:
+                cleaned.append(s)
+
+        if len(cleaned) > 2:
+            return jsonify({"ok": False, "error": "too many branches (max 2)"}), 400
+
+        if len(cleaned) == 2 and cleaned[0] == cleaned[1]:
+            return jsonify({"ok": False, "error": "compare requires two different branches"}), 400
+
+        if len(cleaned) >= 1:
+            branch_a = cleaned[0]
+        if len(cleaned) == 2:
+            branch_b = cleaned[1]
+    else:
+        branch_a = _get_str_field(payload, "branchA", _get_str_field(payload, "branch", ""))
+        branch_b = _get_str_field(payload, "branchB", "")
+
     branch = branch_a
 
     pipeline_name = _get_str_field(payload, "pipelineName", "")
@@ -477,11 +519,19 @@ def query():
     out["consultant"] = consultant_id
     if pipeline_name:
         out["pipelineName"] = pipeline_name
+    if repository:
+        out["repository"] = repository
+
+    # Keep legacy fields (safe for older UI)
     if branch_a:
         out["branchA"] = branch_a
     if branch_b:
         out["branchB"] = branch_b
-    if repository:
-        out["repository"] = repository
+
+    # New field (preferred by new UI)
+    if branch_a and branch_b:
+        out["branches"] = [branch_a, branch_b]
+    elif branch_a:
+        out["branches"] = [branch_a]
 
     return jsonify(out)

@@ -65,8 +65,8 @@ def test_e2e_smoke_direct_answer(tmp_path: Path) -> None:
     assert model_input_en == "E2E: smoke"
 
     content = log_file.read_text(encoding="utf-8", errors="replace")
-    assert "Original question" in content
-    assert "Final answer" in content
+    assert "User question:" in content
+    assert "Answer:" in content
 
 
 def test_e2e_test_pipeline_is_blocked_without_opt_in(tmp_path: Path) -> None:

@@ -11,45 +11,56 @@ from ..engine import PipelineRuntime
 class PersistTurnAndFinalizeAction:
     def execute(self, step: StepDef, state: PipelineState, runtime: PipelineRuntime) -> Optional[str]:
         # In the assessment pipeline, the last model response may be the assessor routing line.
-        codellama_response = state.draft_answer_en or state.last_model_response or ""
+        last_model_response = state.draft_answer_en or state.last_model_response or ""
+
+        answer_out = state.answer_en or last_model_response
+        try:
+            if bool(getattr(state, "translate_chat", False)) and getattr(state, "answer_pl", None):
+                answer_out = state.answer_pl or answer_out
+        except Exception:
+            pass
 
         logger = getattr(runtime, "logger", None)
         log_fn = getattr(logger, "log_interaction", None)
 
         if callable(log_fn):
             # Prefer the "ports" logger signature if available, fall back to legacy kwargs.
+            data = {
+                "user_question": state.user_query,
+                "translate_chat": bool(getattr(state, "translate_chat", False)),
+                "translated_question_en": state.model_input_en_or_fallback(),
+                "consultant": getattr(state, "consultant", "") or "",
+                "branch_a": getattr(state, "branch", "") or "",
+                "branch_b": getattr(state, "branch_b", None),
+                "answer": answer_out,
+            }
+
             try:
                 log_fn(
                     session_id=state.session_id,
                     pipeline_name=getattr(state, "pipeline_name", "") or "",
                     step_id=step.id,
                     action=step.action,
-                    data={
-                        "original_question": state.user_query,
-                        "model_input_en": state.model_input_en_or_fallback(),
-                        "codellama_response": codellama_response,
-                        "followup_query": state.followup_query,
-                        "query_type": state.query_type,
-                        "final_answer": state.answer_en,
-                        "context_blocks": list(state.history_blocks) + list(state.context_blocks),
-                        "next_codellama_prompt": state.next_codellama_prompt,
-                    },
+                    data=data,
                 )
             except TypeError:
+                # Legacy fallback (older runtime/tests). New InteractionLogger can pick up missing
+                # fields from metadata even in this mode.
                 try:
                     log_fn(
                         original_question=state.user_query,
                         model_input_en=state.model_input_en_or_fallback(),
-                        codellama_response=codellama_response,
-                        followup_query=state.followup_query,
-                        query_type=state.query_type,
-                        final_answer=state.answer_en,
-                        context_blocks=list(state.history_blocks) + list(state.context_blocks),
-                        next_codellama_prompt=state.next_codellama_prompt,
+                        codellama_response=last_model_response,
+                        final_answer=answer_out,
+                        metadata={
+                            "consultant": data["consultant"],
+                            "branch_a": data["branch_a"],
+                            "branch_b": data["branch_b"],
+                            "translate_chat": data["translate_chat"],
+                        },
                     )
                 except TypeError:
                     pass
-
 
         # Persist final answer in history (best-effort)
         try:

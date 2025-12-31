@@ -269,6 +269,20 @@
       flex: 0 0 auto;
     }
 
+    .branch-none-hint {
+      display: inline-flex;
+      align-items: center;
+      height: 40px;
+      padding: 0 0.75rem;
+      border-radius: 0.75rem;
+      background: #f3f4f6;
+      border: 1px dashed #e5e7eb;
+      color: #374151;
+      font-weight: 700;
+      white-space: nowrap;
+      flex: 0 0 auto;
+    }
+
     .actions-controls {
       display: flex;
       align-items: center;
@@ -473,7 +487,11 @@
       copy: "Kopiuj",
       copied: "Skopiowano!",
       branchLabel: "Branch",
-      vs: "vs"
+      branchDisabled: "no retrieval",
+      vs: "vs",
+      compareChooseTwo: "Wybierz dwa branche do porównania.",
+      compareChooseDifferent: "W trybie porównania wybierz dwa różne branche.",
+      queryTooLong: "Za długie zapytanie"
     },
     en: {
       send: "Send",
@@ -487,7 +505,11 @@
       copy: "Copy",
       copied: "Copied!",
       branchLabel: "Branch",
-      vs: "vs"
+      branchDisabled: "no retrieval",
+      vs: "vs",
+      compareChooseTwo: "Choose two branches to compare.",
+      compareChooseDifferent: "In compare mode, choose two different branches.",
+      queryTooLong: "Query is too long"
     }
   };
 
@@ -770,6 +792,35 @@
     setAllOptionsToFull(selectEl);
   }
 
+  function updateSendButtonState() {
+    const lang = getCurrentLang();
+    const t = getTexts(lang);
+
+    const c = consultantsById[selectedConsultant];
+    const mode = (c && c.branchPickerMode) ? c.branchPickerMode : "single";
+
+    if (!submitButton) return;
+
+    // Default: enabled.
+    submitButton.disabled = false;
+    submitButton.title = "";
+
+    if (mode !== "compare") return;
+
+    // Compare mode: must have 2 different branches.
+    if (!selectedBranchA || !selectedBranchB) {
+      submitButton.disabled = true;
+      submitButton.title = t.compareChooseTwo;
+      return;
+    }
+
+    if (selectedBranchA === selectedBranchB) {
+      submitButton.disabled = true;
+      submitButton.title = t.compareChooseDifferent;
+      return;
+    }
+  }
+
   function renderBranchControls() {
     const lang = getCurrentLang();
     const t = getTexts(lang);
@@ -785,12 +836,27 @@
     const mode = (c && c.branchPickerMode) ? c.branchPickerMode : "single";
     branchControls.classList.toggle("compare", mode === "compare");
 
+    if (mode === "none") {
+      selectedBranchA = null;
+      selectedBranchB = null;
+
+      const hint = document.createElement("div");
+      hint.className = "branch-none-hint";
+      hint.textContent = t.branchDisabled;
+      branchControls.appendChild(hint);
+
+      updateSendButtonState();
+      return;
+    }
+
     if (!selectedBranchA) selectedBranchA = firstBranchOrNull();
     if (mode === "compare") {
       if (!selectedBranchB) selectedBranchB = secondBranchOrFirst();
     } else {
       selectedBranchB = null;
     }
+
+    updateSendButtonState();
 
     const makeSelect = (currentValue, onChange) => {
       const sel = document.createElement("select");
@@ -820,6 +886,7 @@
 
       sel.addEventListener("change", (e) => {
         onChange(e.target.value);
+        updateSendButtonState();
         setTimeout(() => applyClosedLabelToSelected(sel, mode), 0);
       });
 
@@ -882,6 +949,7 @@
 
     renderWelcomeMessage(getCurrentLang());
     renderBranchControls();
+    updateSendButtonState();
   }
 
   function newChat() {
@@ -889,6 +957,7 @@
     localStorage.removeItem("sessionId");
     responseDiv.innerHTML = "";
     updateFormPosition();
+    updateSendButtonState();
   }
 
   function updateFormPosition() {
@@ -948,7 +1017,7 @@
 
     let query = (queryInput.value || "").trim();
     if (!query || query.length > 1000) {
-      if (query.length > 1000) alert(t.error + " (Za długie zapytanie)");
+      if (query.length > 1000) alert(t.error + " (" + t.queryTooLong + ")");
       return;
     }
 
@@ -958,13 +1027,32 @@
     const c = consultantsById[selectedConsultant];
     const mode = (c && c.branchPickerMode) ? c.branchPickerMode : "single";
 
+    // Build branches payload (0/1/2). In "none" mode we omit branches completely.
+    const branchesPayload = [];
+    if (mode === "single") {
+      if (selectedBranchA) branchesPayload.push(selectedBranchA);
+    } else if (mode === "compare") {
+      if (selectedBranchA) branchesPayload.push(selectedBranchA);
+      if (selectedBranchB) branchesPayload.push(selectedBranchB);
+
+      // Guard: prevent compare with the same branch on both sides.
+      if (branchesPayload.length === 2 && branchesPayload[0] === branchesPayload[1]) {
+        alert(t.compareChooseDifferent);
+        submitButton.disabled = false;
+        submitButton.innerText = t.send;
+        return;
+      }
+    }
+
     const body = {
       query: query,
       consultant: selectedConsultant,
       translateChat: (lang === "pl"),
-      branchA: selectedBranchA,
-      branchB: (mode === "compare") ? selectedBranchB : null
     };
+
+    if (branchesPayload.length > 0) {
+      body.branches = branchesPayload;
+    }
 
     try {
       const res = await fetch(`${API_BASE}/search`, {
@@ -1009,6 +1097,7 @@
       submitButton.innerText = t.send;
       updateFormPosition();
       localStorage.setItem("lang", lang);
+      updateSendButtonState();
     }
   }
 
@@ -1039,6 +1128,7 @@
 
       updateFormPosition();
       queryInput.focus();
+      updateSendButtonState();
     } catch (e) {
       console.error("bootstrapUi:", e);
       showUiError(

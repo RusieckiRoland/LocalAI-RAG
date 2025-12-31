@@ -14,38 +14,55 @@ def _flush_handlers(logger: InteractionLogger) -> None:
             pass
 
 
-def test_interaction_logger_writes_expected_sections(tmp_path: Path) -> None:
+def test_interaction_logger_writes_minimal_sections(tmp_path: Path) -> None:
     log_file = tmp_path / "ai_interaction.log"
     logger = InteractionLogger(log_file)
 
     logger.log_interaction(
-        original_question="Q_PL: ile to kosztuje?",
-        model_input_en="Q_EN: how much does it cost?",
-        codellama_response="ANSWER: It costs 10.",
-        followup_query=None,
-        query_type="ANSWER",
-        final_answer="It costs 10.",
-        context_blocks=[
-            "File: a.py\nprint('hello')",
-            "File: b.py\nprint('world')",
-        ],
-        next_codellama_prompt="prompts/rejewski/answerer_v1.txt",
+        session_id="s1",
+        pipeline_name="p1",
+        step_id="finalize",
+        action="persist_turn_and_finalize",
+        data={
+            "user_question": "Q_PL: ile to kosztuje?",
+            "translate_chat": True,
+            "translated_question_en": "Q_EN: how much does it cost?",
+            "consultant": "rejewski",
+            "branch_a": "2025-12-14__release_4_90",
+            "branch_b": "2025-12-14__release_4_60",
+            "answer": "A_PL: kosztuje 10.",
+        },
     )
 
     _flush_handlers(logger)
 
     content = log_file.read_text(encoding="utf-8", errors="replace")
 
-    assert "Translated (EN)" in content
-    assert "CodeLlama replied" in content
-    assert "Query type:" in content
-    assert "Final answer" in content
+    assert "User question:" in content
+    assert "Q_PL: ile to kosztuje?" in content
 
-    assert "[Context 1]" in content
-    assert "[Context 2]" in content
+    assert "Is Polish:" in content
+    assert "true" in content  # serialized boolean
 
-    assert "File: a.py" in content
-    assert "print('hello')" in content
+    assert "Translated (EN):" in content
+    assert "Q_EN: how much does it cost?" in content
+
+    assert "Consultant:" in content
+    assert "rejewski" in content
+
+    assert "BranchA:" in content
+    assert "2025-12-14__release_4_90" in content
+
+    assert "BranchB:" in content
+    assert "2025-12-14__release_4_60" in content
+
+    assert "Answer:" in content
+    assert "A_PL: kosztuje 10." in content
+
+    # Legacy sections must NOT be emitted by the minimal logger.
+    assert "CodeLlama replied" not in content
+    assert "Context blocks" not in content
+    assert "[Context 1]" not in content
 
 
 def test_interaction_logger_does_not_duplicate_handlers(tmp_path: Path) -> None:
@@ -55,24 +72,26 @@ def test_interaction_logger_does_not_duplicate_handlers(tmp_path: Path) -> None:
     handlers_before = len(logger.logger.handlers)
 
     logger.log_interaction(
-        original_question="Q1",
-        model_input_en="Q1_EN",
-        codellama_response="R1",
-        followup_query="FU1",
-        query_type="FOLLOWUP",
-        final_answer=None,
-        context_blocks=["ctx1"],
-        next_codellama_prompt=None,
+        data={
+            "user_question": "Q1",
+            "translate_chat": False,
+            "translated_question_en": "Q1",
+            "consultant": "rejewski",
+            "branch_a": "b1",
+            "branch_b": None,
+            "answer": "A1",
+        }
     )
     logger.log_interaction(
-        original_question="Q2",
-        model_input_en="Q2_EN",
-        codellama_response="R2",
-        followup_query=None,
-        query_type="ANSWER",
-        final_answer="A2",
-        context_blocks=["ctx2"],
-        next_codellama_prompt=None,
+        data={
+            "user_question": "Q2",
+            "translate_chat": False,
+            "translated_question_en": "Q2",
+            "consultant": "rejewski",
+            "branch_a": "b1",
+            "branch_b": None,
+            "answer": "A2",
+        }
     )
 
     handlers_after = len(logger.logger.handlers)

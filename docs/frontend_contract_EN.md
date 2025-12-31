@@ -66,6 +66,7 @@ Frontend does not know YAML details; it only sends the pipeline name.
 Minimal UI control mechanism for branch selection.
 
 Values:
+- `none` — show no branch selects (assume no retrieval or retrieval not needed)
 - `single` — show 1 branch select
 - `compare` — show 2 branch selects + “vs” separator
 
@@ -85,6 +86,14 @@ Examples:
   "id": "shannon",
   "pipelineName": "branch_compare_base",
   "branchPickerMode": "compare"
+}
+```
+
+```json
+{
+  "id": "direct",
+  "pipelineName": "direct_answer_base",
+  "branchPickerMode": "none"
 }
 ```
 
@@ -129,16 +138,39 @@ Note:
 ## Frontend: request payload
 Frontend sends:
 - `pipelineName` from the selected consultant,
-- always two branches: `branchA`, `branchB` (in `single` mode the second can be `null`),
+- `branches` as a list of 0..2 items,
 - `X-Session-ID` (if present; otherwise backend generates and returns it).
 
-Logical payload:
+Rules for `branches`:
+- missing or empty list = no branch selected (assume no retrieval)
+- 1 item = single branch
+- 2 items = compare mode; branches must be different
+
+Logical payload (no retrieval / `branchPickerMode: none`):
+```json
+{
+  "query": "...",
+  "pipelineName": "direct_answer_base",
+  "translateChat": true
+}
+```
+
+Logical payload (single branch):
+```json
+{
+  "query": "...",
+  "pipelineName": "marian_rejewski_code_analysis_base",
+  "branches": ["2025-12-14__release_4_90"],
+  "translateChat": true
+}
+```
+
+Logical payload (compare):
 ```json
 {
   "query": "...",
   "pipelineName": "branch_compare_base",
-  "branchA": "2025-12-14__release_4_90",
-  "branchB": "2025-12-14__release_4_60",
+  "branches": ["2025-12-14__release_4_90", "2025-12-14__release_4_60"],
   "translateChat": true
 }
 ```
