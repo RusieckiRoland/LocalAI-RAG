@@ -7,7 +7,8 @@ from typing import Optional
 from ..definitions import StepDef
 from ..engine import PipelineRuntime
 from ..state import PipelineState
-
+from typing import Any, Dict
+from .base_action import PipelineActionBase 
 
 class TranslateOutIfNeededAction:
     def execute(self, step: StepDef, state: PipelineState, runtime: PipelineRuntime) -> Optional[str]:

@@ -6,10 +6,37 @@ from typing import Optional
 from ..definitions import StepDef
 from ..state import PipelineState
 from ..engine import PipelineRuntime
+from typing import Any, Dict
+from .base_action import PipelineActionBase
 
+class FinalizeAction(PipelineActionBase):
+    @property
+    def action_id(self) -> str:
+        return "finalize"
 
-class FinalizeAction:
-    def execute(self, step: StepDef, state: PipelineState, runtime: PipelineRuntime) -> Optional[str]:
+    def log_in(self, step: StepDef, state: PipelineState, runtime: PipelineRuntime) -> Dict[str, Any]:
+        return {
+            "translate_chat": bool(getattr(state, "translate_chat", False)),
+            "consultant": getattr(state, "consultant", None),
+            "answer_en": getattr(state, "answer_en", None),
+        }
+
+    def log_out(
+        self,
+        step: StepDef,
+        state: PipelineState,
+        runtime: PipelineRuntime,
+        *,
+        next_step_id: Optional[str],
+        error: Optional[Dict[str, Any]],
+    ) -> Dict[str, Any]:
+        return {
+            "next_step_id": next_step_id,
+            "final_answer": getattr(state, "final_answer", None),
+            "answer_pl": getattr(state, "answer_pl", None),
+        }
+
+    def do_execute(self, step: StepDef, state: PipelineState, runtime: PipelineRuntime) -> Optional[str]:
         answer = state.answer_en or "Error: No valid response generated."
 
         # Translate only when requested and not for UML consultant

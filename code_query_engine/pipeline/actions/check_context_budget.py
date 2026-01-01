@@ -6,6 +6,8 @@ from typing import Optional, Any, Dict
 from ..definitions import StepDef
 from ..state import PipelineState
 from ..engine import PipelineRuntime
+from .base_action import PipelineActionBase
+
 
 
 def _approx_tokens(text: str) -> int:
@@ -13,8 +15,37 @@ def _approx_tokens(text: str) -> int:
     return len((text or "").split())
 
 
-class CheckContextBudgetAction:
-    def execute(self, step: StepDef, state: PipelineState, runtime: PipelineRuntime) -> Optional[str]:
+class CheckContextBudgetAction(PipelineActionBase):
+    @property
+    def action_id(self) -> str:
+        return "check_context_budget"
+
+    def log_in(self, step: StepDef, state: PipelineState, runtime: PipelineRuntime) -> Dict[str, Any]:
+        input_key = (step.raw.get("input") or "").strip() or "composed_context_for_prompt"
+        max_key = (step.raw.get("max_tokens_from_settings") or "").strip() or "context_budget_tokens"
+        settings: Dict[str, Any] = runtime.pipeline_settings or {}
+        return {
+            "input_key": input_key,
+            "max_key": max_key,
+            "max_tokens": settings.get(max_key),
+            "token_counter_present": bool(runtime.token_counter),
+        }
+
+    def log_out(
+        self,
+        step: StepDef,
+        state: PipelineState,
+        runtime: PipelineRuntime,
+        *,
+        next_step_id: Optional[str],
+        error: Optional[Dict[str, Any]],
+    ) -> Dict[str, Any]:
+        return {
+            "next_step_id": next_step_id,
+            "budget_debug": getattr(state, "budget_debug", None),
+        }
+
+    def do_execute(self, step: StepDef, state: PipelineState, runtime: PipelineRuntime) -> Optional[str]:
         input_key = (step.raw.get("input") or "").strip()
         max_key = (step.raw.get("max_tokens_from_settings") or "").strip()
 

@@ -8,6 +8,7 @@ from ..definitions import StepDef
 from ..engine import PipelineRuntime
 from ..providers.retrieval import RetrievalDecision
 from ..state import PipelineState
+from .base_action import PipelineActionBase
 
 
 def _merge_filters(settings: Dict[str, Any], state: PipelineState) -> Dict[str, Any]:
@@ -83,8 +84,42 @@ def _extract_seed_nodes(results: List[Dict[str, Any]]) -> List[str]:
     return out
 
 
-class FetchMoreContextAction:
-    def execute(self, step: StepDef, state: PipelineState, runtime: PipelineRuntime) -> Optional[str]:
+class FetchMoreContextAction(PipelineActionBase):
+    @property
+    def action_id(self) -> str:
+        return "fetch_more_context"
+
+    def log_in(self, step: StepDef, state: PipelineState, runtime: PipelineRuntime) -> Dict[str, Any]:
+        settings = runtime.pipeline_settings or {}
+        mode = (state.retrieval_mode or "semantic").strip().lower()
+        query = (state.followup_query or state.retrieval_query or "").strip()
+
+        top_k = int(settings.get("top_k", 12))
+        filters = _merge_filters(settings, state) if settings else dict(state.retrieval_filters or {})
+
+        return {
+            "mode": mode,
+            "query": query,
+            "top_k": top_k,
+            "filters": filters,
+        }
+
+    def log_out(
+        self,
+        step: StepDef,
+        state: PipelineState,
+        runtime: PipelineRuntime,
+        *,
+        next_step_id: Optional[str],
+        error: Optional[Dict[str, Any]],
+    ) -> Dict[str, Any]:
+        return {
+            "next_step_id": next_step_id,
+            "retrieval_seed_nodes": list(getattr(state, "retrieval_seed_nodes", []) or []),
+            "context_blocks_count": len(getattr(state, "context_blocks", []) or []),
+        }
+
+    def do_execute(self, step: StepDef, state: PipelineState, runtime: PipelineRuntime) -> Optional[str]:
         settings = runtime.pipeline_settings or {}
 
         mode = (state.retrieval_mode or "semantic").strip().lower()

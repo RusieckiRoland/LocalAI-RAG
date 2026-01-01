@@ -1,11 +1,12 @@
 # code_query_engine/pipeline/actions/handle_prefix.py
 from __future__ import annotations
 
-from typing import List, Optional, Tuple, Dict
+from typing import List, Optional, Tuple, Dict, Any
 
 from ..definitions import StepDef
 from ..state import PipelineState
 from ..engine import PipelineRuntime
+from .base_action import PipelineActionBase
 
 
 def _match_prefix(text: str, prefixes: Dict[str, str]) -> Tuple[Optional[str], str]:
@@ -49,8 +50,51 @@ def _scope_to_data_types(scope: Optional[str]) -> Optional[List[str]]:
     return None
 
 
-class HandlePrefixAction:
-    def execute(self, step: StepDef, state: PipelineState, runtime: PipelineRuntime) -> Optional[str]:
+class HandlePrefixAction(PipelineActionBase):
+    @property
+    def action_id(self) -> str:
+        return "handle_prefix"
+
+    def log_in(self, step: StepDef, state: PipelineState, runtime: PipelineRuntime) -> Dict[str, Any]:
+        raw = step.raw or {}
+        text = getattr(runtime, "last_model_output", None) or state.last_model_response or ""
+        text = (text or "").strip()
+        return {
+            "text": text,
+            "raw_prefix_config": {
+                "semantic_prefix": raw.get("semantic_prefix"),
+                "bm25_prefix": raw.get("bm25_prefix"),
+                "hybrid_prefix": raw.get("hybrid_prefix"),
+                "semantic_rerank_prefix": raw.get("semantic_rerank_prefix"),
+                "direct_prefix": raw.get("direct_prefix"),
+                "answer_prefix": raw.get("answer_prefix"),
+                "followup_prefix": raw.get("followup_prefix"),
+                "ready_prefix": raw.get("ready_prefix"),
+            },
+        }
+
+    def log_out(
+        self,
+        step: StepDef,
+        state: PipelineState,
+        runtime: PipelineRuntime,
+        *,
+        next_step_id: Optional[str],
+        error: Optional[Dict[str, Any]],
+    ) -> Dict[str, Any]:
+        return {
+            "next_step_id": next_step_id,
+            "query_type": state.query_type,
+            "retrieval_mode": state.retrieval_mode,
+            "retrieval_scope": state.retrieval_scope,
+            "retrieval_query": state.retrieval_query,
+            "retrieval_filters": state.retrieval_filters,
+            "followup_query": state.followup_query,
+            "answer_en": state.answer_en,
+            "router_raw": state.router_raw,
+        }
+
+    def do_execute(self, step: StepDef, state: PipelineState, runtime: PipelineRuntime) -> Optional[str]:
         raw = step.raw or {}
 
         # Support older tests that pass runtime.last_model_output,

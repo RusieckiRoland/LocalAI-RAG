@@ -7,10 +7,45 @@ from typing import Optional
 from ..definitions import StepDef
 from ..state import PipelineState
 from ..engine import PipelineRuntime
+from typing import Optional, Any, Dict
+from .base_action import PipelineActionBase
 
 
-class CallModelAction:
-    def execute(self, step: StepDef, state: PipelineState, runtime: PipelineRuntime) -> Optional[str]:
+class CallModelAction(PipelineActionBase):
+    @property
+    def action_id(self) -> str:
+        return "call_model"
+
+    def log_in(self, step: StepDef, state: PipelineState, runtime: PipelineRuntime) -> Dict[str, Any]:
+        raw = step.raw or {}
+        prompt_key = (raw.get("prompt_key") or "").strip()
+        consultant_for_prompt = prompt_key or state.consultant
+
+        context = state.history_for_prompt()
+        model_input_en = state.model_input_en_or_fallback()
+        prompt = "\n\n".join([p for p in [context.strip(), model_input_en.strip()] if p])
+
+        return {
+            "prompt_key": prompt_key,
+            "consultant_for_prompt": consultant_for_prompt,
+            "prompt": prompt,
+        }
+
+    def log_out(
+        self,
+        step: StepDef,
+        state: PipelineState,
+        runtime: PipelineRuntime,
+        *,
+        next_step_id: Optional[str],
+        error: Optional[Dict[str, Any]],
+    ) -> Dict[str, Any]:
+        return {
+            "next_step_id": next_step_id,
+            "last_model_response": state.last_model_response,
+        }
+
+    def do_execute(self, step: StepDef, state: PipelineState, runtime: PipelineRuntime) -> Optional[str]:
         raw = step.raw or {}
         prompt_key = (raw.get("prompt_key") or "").strip()
         consultant_for_prompt = prompt_key or state.consultant

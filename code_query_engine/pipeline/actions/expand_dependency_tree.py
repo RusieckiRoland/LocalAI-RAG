@@ -5,9 +5,13 @@ from typing import Any, Dict, List, Optional
 from ..definitions import StepDef
 from ..engine import PipelineRuntime
 from ..state import PipelineState
+from .base_action import PipelineActionBase
 
 
-class ExpandDependencyTreeAction:
+
+
+ 
+class ExpandDependencyTreeAction(PipelineActionBase):
     """
     Expands a dependency graph starting from `state.retrieval_seed_nodes`.
 
@@ -16,8 +20,59 @@ class ExpandDependencyTreeAction:
                               repository=str|None, branch=str|None, active_index=str|None)
         -> {"nodes": [...], "edges": [...]}
     """
+    @property
+    def action_id(self) -> str:
+        return "expand_dependency_tree"
 
-    def execute(self, step: StepDef, state: PipelineState, runtime: PipelineRuntime) -> Optional[str]:
+    def log_in(self, step: StepDef, state: PipelineState, runtime: PipelineRuntime) -> Dict[str, Any]:
+        raw = step.raw or {}
+        settings = runtime.pipeline_settings or {}
+        seed_nodes = list(getattr(state, "retrieval_seed_nodes", []) or [])
+
+        def _read_int_setting(key: str, default: int) -> int:
+            name = (raw.get(key) or "").strip()
+            if not name:
+                return default
+            v = settings.get(name, default)
+            try:
+                return int(v)
+            except Exception:
+                return default
+
+        def _read_list_setting(key: str) -> Optional[list[str]]:
+            name = (raw.get(key) or "").strip()
+            if not name:
+                return None
+            v = settings.get(name)
+            return list(v) if isinstance(v, list) else None
+
+        return {
+            "seed_nodes": seed_nodes,
+            "max_depth": _read_int_setting("max_depth_from_settings", 2),
+            "max_nodes": _read_int_setting("max_nodes_from_settings", 200),
+            "edge_allowlist": _read_list_setting("edge_allowlist_from_settings"),
+            "repository_from_settings": bool(raw.get("repository_from_settings")),
+            "active_index_from_settings": bool(raw.get("active_index_from_settings")),
+        }
+
+    def log_out(
+        self,
+        step: StepDef,
+        state: PipelineState,
+        runtime: PipelineRuntime,
+        *,
+        next_step_id: Optional[str],
+        error: Optional[Dict[str, Any]],
+    ) -> Dict[str, Any]:
+        return {
+            "next_step_id": next_step_id,
+            "graph_seed_nodes_count": len(getattr(state, "graph_seed_nodes", []) or []),
+            "graph_expanded_nodes_count": len(getattr(state, "graph_expanded_nodes", []) or []),
+            "graph_edges_count": len(getattr(state, "graph_edges", []) or []),
+            "graph_debug": getattr(state, "graph_debug", None),
+        }
+
+    def do_execute(self, step: StepDef, state: PipelineState, runtime: PipelineRuntime) -> Optional[str]:
         raw: Dict[str, Any] = step.raw or {}
         settings: Dict[str, Any] = getattr(runtime, "pipeline_settings", None) or {}
 

@@ -6,10 +6,42 @@ from typing import Optional
 from ..definitions import StepDef
 from ..state import PipelineState
 from ..engine import PipelineRuntime
+from typing import Any, Dict
+from .base_action import PipelineActionBase
 
 
-class PersistTurnAndFinalizeAction:
-    def execute(self, step: StepDef, state: PipelineState, runtime: PipelineRuntime) -> Optional[str]:
+
+class PersistTurnAndFinalizeAction(PipelineActionBase):
+    @property
+    def action_id(self) -> str:
+        return "persist_turn_and_finalize"
+
+    def log_in(self, step: StepDef, state: PipelineState, runtime: PipelineRuntime) -> Dict[str, Any]:
+        return {
+            "user_query": state.user_query,
+            "model_input_en": state.model_input_en_or_fallback(),
+            "answer_en": getattr(state, "answer_en", None),
+            "answer_pl": getattr(state, "answer_pl", None),
+            "last_model_response": getattr(state, "last_model_response", None),
+            "draft_answer_en": getattr(state, "draft_answer_en", None),
+        }
+
+    def log_out(
+        self,
+        step: StepDef,
+        state: PipelineState,
+        runtime: PipelineRuntime,
+        *,
+        next_step_id: Optional[str],
+        error: Optional[Dict[str, Any]],
+    ) -> Dict[str, Any]:
+        # Persist step is terminal usually, but keep next for completeness.
+        return {
+            "next_step_id": next_step_id,
+            "final_answer": getattr(state, "final_answer", None),
+        }
+
+    def do_execute(self, step: StepDef, state: PipelineState, runtime: PipelineRuntime) -> Optional[str]:
         # In the assessment pipeline, the last model response may be the assessor routing line.
         last_model_response = state.draft_answer_en or state.last_model_response or ""
 
