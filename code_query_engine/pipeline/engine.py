@@ -17,6 +17,11 @@ from .providers.ports import (
     ITranslatorPlEn,
 )
 from .providers.retrieval import RetrievalDispatcher
+import json
+import os
+import time
+from pathlib import Path
+
 
 
 @dataclass
@@ -124,53 +129,126 @@ class PipelineEngine:
         state.steps_used = 0
         state.step_trace = []
 
-        while current_step_id:
-            step: StepDef = steps_by_id.get(current_step_id)  # type: ignore[assignment]
-            if step is None:
-                raise KeyError(f"Unknown step id: '{current_step_id}'")
+        # Enable per-interaction trace file in dev via env flag.
+        # This flag also enables in-memory step events produced by actions.
+        trace_file_enabled = (os.getenv("RAG_PIPELINE_TRACE_FILE") or "").strip().lower() in ("1", "true", "yes", "on")
+        if trace_file_enabled:
+            # Some actions may check runtime.pipeline_trace_enabled to decide if they should record events.
+            # We set it dynamically to avoid changing PipelineRuntime signature.
+            setattr(runtime, "pipeline_trace_enabled", True)
 
-            state.steps_used += 1
-            state.step_trace.append(current_step_id)
+            # Ensure the event list exists even if some actions don't append anything.
+            if getattr(state, "pipeline_trace_events", None) is None:
+                setattr(state, "pipeline_trace_events", [])
 
-            action = self._actions.get(step.action)
+        # We want to write a JSON file even if the pipeline raises.
+        trace_error: Optional[Dict[str, Any]] = None
+        final_answer: str = ""
+        result: Optional[PipelineResult] = None
 
-            # Actions in repo are mixed: some use positional, some keyword-only.
-            next_step_id: Optional[str]
-            try:
-                next_step_id = action.execute(step, state, runtime)  # type: ignore[attr-defined]
-            except TypeError:
-                next_step_id = action.execute(step=step, state=state, runtime=runtime)  # type: ignore[attr-defined]
+        try:
+            while current_step_id:
+                step: StepDef = steps_by_id.get(current_step_id)  # type: ignore[assignment]
+                if step is None:
+                    raise KeyError(f"Unknown step id: '{current_step_id}'")
 
-            # stop if this step is terminal
-            if bool(step.end):
+                state.steps_used += 1
+                state.step_trace.append(current_step_id)
+
+                action = self._actions.get(step.action)
+
+                # Actions in repo are mixed: some use positional, some keyword-only.
+                next_step_id: Optional[str]
+                try:
+                    next_step_id = action.execute(step, state, runtime)  # type: ignore[attr-defined]
+                except TypeError:
+                    next_step_id = action.execute(step=step, state=state, runtime=runtime)  # type: ignore[attr-defined]
+
+                # stop if this step is terminal
+                if bool(step.end):
+                    break
+
+                # action override
+                if next_step_id:
+                    current_step_id = next_step_id
+                    continue
+
+                # default next from YAML
+                if step.next:
+                    current_step_id = step.next
+                    continue
+
                 break
 
-            # action override
-            if next_step_id:
-                current_step_id = next_step_id
-                continue
+            # Resolve final answer (what the caller sees)
+            final_answer = state.answer_en or ""
+            if getattr(state, "translate_chat", False) and state.answer_pl:
+                final_answer = state.answer_pl
 
-            # default next from YAML
-            if step.next:
-                current_step_id = step.next
-                continue
+            state.final_answer = final_answer
 
-            break
+            result = PipelineResult(
+                steps_used=state.steps_used,
+                step_trace=list(state.step_trace),
+                answer_en=state.answer_en,
+                answer_pl=state.answer_pl,
+                final_answer=final_answer,
+                query_type=state.query_type or "",
+                followup_query=state.followup_query,
+                model_input_en=state.model_input_en_or_fallback(),
+            )
+            return result
 
-        # Resolve final answer (what the caller sees)
-        final_answer = state.answer_en or ""
-        if getattr(state, "translate_chat", False) and state.answer_pl:
-            final_answer = state.answer_pl
+        except Exception as ex:
+            # Capture the error for trace file, then re-raise.
+            trace_error = {
+                "type": ex.__class__.__name__,
+                "message": str(ex),
+            }
+            raise
 
-        state.final_answer = final_answer
+        finally:
+            if trace_file_enabled:
+                # Write one JSON file per interaction (per PipelineEngine.run()).
+                trace_dir = (os.getenv("RAG_PIPELINE_TRACE_DIR") or "logs/pipeline_traces").strip()
+                Path(trace_dir).mkdir(parents=True, exist_ok=True)
 
-        return PipelineResult(
-            steps_used=state.steps_used,
-            step_trace=list(state.step_trace),
-            answer_en=state.answer_en,
-            answer_pl=state.answer_pl,
-            final_answer=final_answer,
-            query_type=state.query_type or "",
-            followup_query=state.followup_query,
-            model_input_en=state.model_input_en_or_fallback(),
-        )
+                ts_ms = int(time.time() * 1000)
+                ts_utc = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+
+                # Make filename safe for filesystem.
+                session_id = getattr(state, "session_id", None) or "no-session"
+                pipeline_name = getattr(state, "pipeline_name", None) or pipeline.name or "no-pipeline"
+                safe_session = str(session_id).replace("/", "_").replace("\\", "_").replace(" ", "_")
+                safe_pipeline = str(pipeline_name).replace("/", "_").replace("\\", "_").replace(" ", "_")
+
+                filename = f"interaction_{safe_session}_{safe_pipeline}_{ts_ms}.json"
+                path = Path(trace_dir) / filename
+
+                payload: Dict[str, Any] = {
+                    "ts_utc": ts_utc,
+                    "ts_ms": ts_ms,
+                    "session_id": getattr(state, "session_id", None),
+                    "pipeline_name": getattr(state, "pipeline_name", None),
+                    "entry_step_id": (settings.get("entry_step_id") or "").strip(),
+                    "steps_used": getattr(state, "steps_used", None),
+                    "step_trace": list(getattr(state, "step_trace", []) or []),
+                    "user_query": getattr(state, "user_query", None),
+                    "translate_chat": bool(getattr(state, "translate_chat", False)),
+                    "model_input_en": (result.model_input_en if result is not None else state.model_input_en_or_fallback()),
+                    "answer_en": getattr(state, "answer_en", None),
+                    "answer_pl": getattr(state, "answer_pl", None),
+                    "final_answer": (result.final_answer if result is not None else (getattr(state, "final_answer", None) or final_answer)),
+                    "query_type": getattr(state, "query_type", None),
+                    "followup_query": getattr(state, "followup_query", None),
+                    "error": trace_error,
+                    # This is populated by actions via their log_in/log_out hooks.
+                    "events": list(getattr(state, "pipeline_trace_events", []) or []),
+                }
+
+                # Atomic write: temp file + replace.
+                tmp_path = str(path) + ".tmp"
+                with open(tmp_path, "w", encoding="utf-8") as f:
+                    json.dump(payload, f, ensure_ascii=False, indent=2)
+                os.replace(tmp_path, path)
+

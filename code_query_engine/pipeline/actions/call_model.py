@@ -2,12 +2,11 @@
 
 from __future__ import annotations
 
-from typing import Optional
+from typing import Optional, Any, Dict
 
 from ..definitions import StepDef
 from ..state import PipelineState
 from ..engine import PipelineRuntime
-from typing import Optional, Any, Dict
 from .base_action import PipelineActionBase
 
 
@@ -21,14 +20,24 @@ class CallModelAction(PipelineActionBase):
         prompt_key = (raw.get("prompt_key") or "").strip()
         consultant_for_prompt = prompt_key or state.consultant
 
-        context = state.history_for_prompt()
+        history_context = state.history_for_prompt()
         model_input_en = state.model_input_en_or_fallback()
-        prompt = "\n\n".join([p for p in [context.strip(), model_input_en.strip()] if p])
+
+        # This must match what do_execute sends to the model (same stripping + join rules).
+        prompt = "\n\n".join([p for p in [history_context.strip(), model_input_en.strip()] if p])
 
         return {
             "prompt_key": prompt_key,
             "consultant_for_prompt": consultant_for_prompt,
+            # Final prompt string passed into runtime.main_model.ask(prompt=...)
             "prompt": prompt,
+            # Extra debug: prompt parts
+            "history_context": history_context,
+            "model_input_en": model_input_en,
+            "prompt_parts": {
+                "history_context": history_context,
+                "model_input_en": model_input_en,
+            },
         }
 
     def log_out(
@@ -50,12 +59,12 @@ class CallModelAction(PipelineActionBase):
         prompt_key = (raw.get("prompt_key") or "").strip()
         consultant_for_prompt = prompt_key or state.consultant
 
-        context = state.history_for_prompt()
+        history_context = state.history_for_prompt()
         model_input_en = state.model_input_en_or_fallback()
 
         state.next_codellama_prompt = consultant_for_prompt
 
-        prompt = "\n\n".join([p for p in [context.strip(), model_input_en.strip()] if p])
+        prompt = "\n\n".join([p for p in [history_context.strip(), model_input_en.strip()] if p])
 
         # Prefer the new IModelClient API (prompt-based),
         # but remain backward-compatible with the legacy Model.ask(context, question, consultant).
@@ -66,7 +75,7 @@ class CallModelAction(PipelineActionBase):
             )
         except TypeError:
             response = runtime.main_model.ask(
-                context=context,
+                context=history_context,
                 question=model_input_en,
                 consultant=consultant_for_prompt,
             )
