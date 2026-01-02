@@ -1,11 +1,9 @@
-# File: inference/model.py
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 from llama_cpp import Llama
-from prompt_builder.factory import get_prompt_builder
 
 
 logger = logging.getLogger(__name__)
@@ -13,32 +11,36 @@ logger = logging.getLogger(__name__)
 
 class Model:
     """
-    Thin wrapper around llama-cpp to:
-      - build prompts via a pluggable prompt builder,
-      - run a single completion call,
-      - guard against obvious hallucination loops.
+    Thin wrapper around llama-cpp.
 
-    Notes
-    -----
-    - Default llama parameters mirror your previous setup.
-    - A GPU→CPU fallback is attempted if GPU init fails.
-    - Some llama-cpp flags (e.g., flash_attn, offload_kqv, low_vram) may be
-      version-dependent; if unsupported by your build they are ignored by the
-      fallback path.
+    Responsibility:
+    - Accept a fully built prompt (string),
+    - Run a single completion call,
+    - Guard against obvious hallucination loops.
+
+    NOTE:
+    Prompt construction is NOT done here. It must be done by the pipeline step (call_model).
     """
 
     def __init__(self, model_path: str):
         self.modelPath = model_path  # keep original attribute name for compatibility
         self.llm = self._create_llama(self.modelPath)
-        self.promptBuilder = get_prompt_builder(model_path=self.modelPath)
 
     # --------------------------------------------------------------------- #
     # Public API
     # --------------------------------------------------------------------- #
 
-    def ask(self, context: str, question: str, consultant: str) -> str:
+    def ask(
+        self,
+        *,
+        prompt: str,
+        max_tokens: int = 1500,
+        temperature: float = 0.1,
+        repeat_penalty: float = 1.2,
+        top_k: int = 40,
+    ) -> str:
         """
-        Build a prompt and query the model.
+        Query the model using a ready prompt.
 
         Returns
         -------
@@ -46,14 +48,13 @@ class Model:
             Model's text output (trimmed). If a severe error or a suspected
             hallucination loop occurs, a short error marker is returned.
         """
-        prompt = self.promptBuilder.build_prompt(context, question, consultant)
         try:
             res = self.llm(
                 prompt=prompt,
-                max_tokens=1500,
-                temperature=0.1,
-                repeat_penalty=1.2,
-                top_k=40,
+                max_tokens=max_tokens,
+                temperature=temperature,
+                repeat_penalty=repeat_penalty,
+                top_k=top_k,
             )
             output = (res.get("choices") or [{}])[0].get("text", "").strip()
 
@@ -100,8 +101,6 @@ class Model:
         if not t:
             return False
 
-        # Common bad patterns:
-        # - Same short phrase repeated
         if len(t) > 200 and len(set(t.split())) < 10:
             return True
 
