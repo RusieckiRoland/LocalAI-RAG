@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import csv
 import json
 import os
@@ -8,6 +9,9 @@ from dataclasses import dataclass
 from typing import Any, DefaultDict, Deque, Dict, Iterable, List, Optional, Sequence, Set, Tuple
 
 from .ports import IGraphProvider
+
+py_logger = logging.getLogger(__name__)
+
 
 
 def _dedupe_preserve_order(items: Iterable[str]) -> List[str]:
@@ -154,6 +158,12 @@ class FileSystemGraphProvider(IGraphProvider):
                             continue
                         chunks_by_id[str(cid)] = c
             except Exception:
+                py_logger.exception(
+                    "soft-failure: failed to load chunks.json (repository=%s branch=%s path=%s)",
+                    repository,
+                    branch,
+                    paths.chunks_json,
+                )
                 # Stay resilient; return empty mapping on any parsing error.
                 chunks_by_id = {}
 
@@ -185,6 +195,12 @@ class FileSystemGraphProvider(IGraphProvider):
                             continue
                         by_key[str(k)] = obj
             except Exception:
+                py_logger.exception(
+                    "soft-failure: failed to load sql_bodies.jsonl (repository=%s branch=%s path=%s)",
+                    repository,
+                    branch,
+                    paths.sql_bodies_jsonl,
+                )
                 by_key = {}
 
         self._sql_cache[key] = by_key
@@ -216,6 +232,12 @@ class FileSystemGraphProvider(IGraphProvider):
                                 # Make it undirected by default (useful for "what references this?")
                                 adj[to_id].append(("code_dep", frm_id))
             except Exception:
+                py_logger.exception(
+                    "soft-failure: failed to load dependencies.json (repository=%s branch=%s path=%s)",
+                    repository,
+                    branch,
+                    paths.dependencies_json,
+                )
                 pass
 
         # 2) SQL graph edges (Key -> Key) + potentially cross edges
@@ -233,6 +255,12 @@ class FileSystemGraphProvider(IGraphProvider):
                         # Include reverse link (helps traversing "used by")
                         adj[to].append((rel, frm))
             except Exception:
+                py_logger.exception(
+                    "soft-failure: failed to load sql_edges.csv (repository=%s branch=%s path=%s)",
+                    repository,
+                    branch,
+                    paths.sql_edges_csv,
+                )
                 pass
 
         self._adj_cache[key] = dict(adj)

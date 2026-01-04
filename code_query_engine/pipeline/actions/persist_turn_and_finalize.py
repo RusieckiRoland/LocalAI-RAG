@@ -1,6 +1,7 @@
 # code_query_engine/pipeline/actions/persist_turn_and_finalize.py
 from __future__ import annotations
 
+import logging
 from typing import Optional
 
 from ..definitions import StepDef
@@ -8,6 +9,9 @@ from ..state import PipelineState
 from ..engine import PipelineRuntime
 from typing import Any, Dict
 from .base_action import PipelineActionBase
+
+py_logger = logging.getLogger(__name__)
+
 
 
 
@@ -50,6 +54,7 @@ class PersistTurnAndFinalizeAction(PipelineActionBase):
             if bool(getattr(state, "translate_chat", False)) and getattr(state, "answer_pl", None):
                 answer_out = state.answer_pl or answer_out
         except Exception:
+            py_logger.exception("soft-failure: translate_chat/answer_pl check failed; continuing")
             pass
 
         logger = getattr(runtime, "logger", None)
@@ -98,6 +103,7 @@ class PersistTurnAndFinalizeAction(PipelineActionBase):
         try:
             runtime.history_manager.set_final_answer(state.answer_en or "", state.answer_pl)
         except Exception:
+            py_logger.exception("soft-failure: history_manager.set_final_answer failed; continuing")
             pass
 
         return None

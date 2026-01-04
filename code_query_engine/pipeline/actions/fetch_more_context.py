@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Any, Dict, List, Optional
 
 from ..definitions import StepDef
@@ -9,6 +10,9 @@ from ..engine import PipelineRuntime
 from ..providers.retrieval import RetrievalDecision
 from ..state import PipelineState
 from .base_action import PipelineActionBase
+
+py_logger = logging.getLogger(__name__)
+
 
 
 def _merge_filters(settings: Dict[str, Any], state: PipelineState) -> Dict[str, Any]:
@@ -173,6 +177,7 @@ class FetchMoreContextAction(PipelineActionBase):
         try:
             runtime.history_manager.add_iteration(query, results)
         except Exception:
+            py_logger.exception("soft-failure: history_manager.add_iteration failed; continuing")
             pass
 
         return None

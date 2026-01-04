@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import os
 from typing import Any, Optional
 
@@ -13,6 +14,9 @@ from .pipeline.loader import PipelineLoader
 from .pipeline.providers.retrieval import RetrievalDispatcher
 from .pipeline.state import PipelineState
 from .pipeline.validator import PipelineValidator
+
+py_logger = logging.getLogger(__name__)
+
 
 
 def _create_history_manager(*, mock_redis: Any, session_id: str, consultant: str, user_id: Optional[str]):
@@ -74,6 +78,7 @@ class DynamicPipelineRunner:
 
                 graph_provider = GraphProvider()
             except Exception:
+                py_logger.exception("soft-failure: default GraphProvider init failed; graph features disabled")
                 graph_provider = None
 
         self.graph_provider = graph_provider

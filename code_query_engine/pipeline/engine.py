@@ -1,12 +1,16 @@
 # code_query_engine/pipeline/engine.py
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
 from .action_registry import ActionRegistry
 from .definitions import PipelineDef, StepDef
 from .providers.ports import (
+
+py_logger = logging.getLogger(__name__)
+
     IGraphProvider,
     IHistoryManager,
     IInteractionLogger,
@@ -95,6 +99,7 @@ class PipelineRuntime:
                 from common.semantic_rerank_wrapper import SemanticRerankWrapper
                 semantic_rerank = SemanticRerankWrapper(self.searcher)
             except Exception:
+                py_logger.exception("soft-failure: SemanticRerankWrapper init failed; semantic_rerank disabled")
                 semantic_rerank = None
 
         return RetrievalDispatcher(

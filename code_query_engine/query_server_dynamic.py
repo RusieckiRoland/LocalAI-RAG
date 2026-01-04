@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import ast
 import json
 import os
@@ -24,6 +25,11 @@ from .dynamic_pipeline import DynamicPipelineRunner
 from history.redis_backend import RedisBackend
 from history.mock_redis import InMemoryMockRedis
 from .log_utils import InteractionLogger
+
+py_logger = logging.getLogger(__name__)
+
+_logged_branch_literal_eval_error = False
+
 
 
 # ------------------------------------------------------------
@@ -74,6 +80,7 @@ def _load_json_file(path: str) -> dict:
         try:
             data = json.loads(Path(path).read_text(encoding="utf-8"))
         except Exception:
+            py_logger.exception("soft-failure: failed to load/parse JSON file: %s", path)
             data = {}
 
         _json_cache[path] = (mtime, data)
@@ -119,6 +126,7 @@ _searcher_error: Optional[str] = None
 try:
     _searcher = load_unified_search(_runtime_cfg)
 except Exception as e:
+    py_logger.exception("soft-failure: load_unified_search failed; search will be disabled (fallback mode)")
     _searcher = None
     _searcher_error = str(e)
 
@@ -309,6 +317,7 @@ def _list_repositories() -> List[str]:
                 out.append(name)
         return out
     except Exception:
+        py_logger.exception("soft-failure: failed to list repositories under %s", REPOSITORIES_ROOT)
         return []
 
 
@@ -355,6 +364,10 @@ def _read_active_index_branches(cfg: dict) -> List[str]:
                             if bn2:
                                 return bn2
                     except Exception:
+                        global _logged_branch_literal_eval_error
+                        if not _logged_branch_literal_eval_error:
+                            _logged_branch_literal_eval_error = True
+                            py_logger.exception("soft-failure: failed to parse branch literal via ast.literal_eval; value=%r", s)
                         pass
 
                 # already a plain branch string
@@ -377,6 +390,7 @@ def _read_active_index_branches(cfg: dict) -> List[str]:
                 uniq.append(b)
         return uniq
     except Exception:
+        py_logger.exception("soft-failure: failed to resolve branches list; returning empty list")
         return []
 
 
@@ -484,6 +498,7 @@ def query():
                         pipeline_name = str(t.get("pipelineName") or "").strip()
                         break
         except Exception:
+            py_logger.exception("soft-failure: failed to resolve pipelineName from templates; consultant_id=%s", consultant_id)
             pipeline_name = ""
 
     repository = _get_str_field(payload, "repository", str(_runtime_cfg.get("repo_name") or ""))
@@ -510,6 +525,7 @@ def query():
             mock_redis=_history_backend,
         )
     except Exception as e:
+        py_logger.exception("Unhandled exception in /query")
         return jsonify({"ok": False, "error": str(e)}), 500
 
     out = _normalize_runner_result(runner_result)

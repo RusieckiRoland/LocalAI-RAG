@@ -1,6 +1,7 @@
 # code_query_engine/pipeline/actions/finalize.py
 from __future__ import annotations
 
+import logging
 from typing import Optional
 
 from ..definitions import StepDef
@@ -8,6 +9,9 @@ from ..state import PipelineState
 from ..engine import PipelineRuntime
 from typing import Any, Dict
 from .base_action import PipelineActionBase
+
+py_logger = logging.getLogger(__name__)
+
 
 class FinalizeAction(PipelineActionBase):
     @property
@@ -45,6 +49,7 @@ class FinalizeAction(PipelineActionBase):
                 state.answer_pl = runtime.markdown_translator.translate_markdown(answer)
                 state.final_answer = state.answer_pl
             except Exception:
+                py_logger.exception("soft-failure: markdown translation failed; using English answer")
                 state.final_answer = answer
         else:
             state.final_answer = answer
@@ -53,6 +58,7 @@ class FinalizeAction(PipelineActionBase):
         try:
             state.final_answer = runtime.add_plant_link(state.final_answer, state.consultant)
         except Exception:
+            py_logger.exception("soft-failure: add_plant_link failed; continuing without PlantUML link")
             pass
 
         return None

@@ -1,6 +1,7 @@
 # code_query_engine/pipeline/actions/base_action.py
 from __future__ import annotations
 
+import logging
 import os
 import time
 from abc import ABC, abstractmethod
@@ -10,6 +11,9 @@ from typing import Any, Dict, Optional
 from ..definitions import StepDef
 from ..engine import PipelineRuntime
 from ..state import PipelineState
+
+py_logger = logging.getLogger(__name__)
+
 
 
 class PipelineActionBase(ABC):
@@ -136,6 +140,7 @@ class PipelineActionBase(ABC):
             data = self.log_in(step, state, runtime) or {}
             return self._jsonable(data)
         except Exception as ex:
+            py_logger.exception("soft-failure: log_in failed; returning minimal trace event")
             return {"_log_in_error": {"type": ex.__class__.__name__, "message": str(ex)}}
 
     def _safe_call_log_out(
@@ -151,6 +156,7 @@ class PipelineActionBase(ABC):
             data = self.log_out(step, state, runtime, next_step_id=next_step_id, error=error) or {}
             return self._jsonable(data)
         except Exception as ex:
+            py_logger.exception("soft-failure: log_out failed; returning minimal trace event")
             return {"_log_out_error": {"type": ex.__class__.__name__, "message": str(ex)}}
 
     def _utc_ts(self) -> str:

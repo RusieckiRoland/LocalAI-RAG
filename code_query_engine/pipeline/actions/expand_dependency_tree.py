@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+import logging
 from typing import Any, Dict, List, Optional
 
 from ..definitions import StepDef
 from ..engine import PipelineRuntime
 from ..state import PipelineState
 from .base_action import PipelineActionBase
+
+py_logger = logging.getLogger(__name__)
+
 
 
 
@@ -37,6 +41,7 @@ class ExpandDependencyTreeAction(PipelineActionBase):
             try:
                 return int(v)
             except Exception:
+                py_logger.warning("Invalid int setting %s=%r; using default=%d", name, v, default, exc_info=True)
                 return default
 
         def _read_list_setting(key: str) -> Optional[list[str]]:
@@ -95,6 +100,7 @@ class ExpandDependencyTreeAction(PipelineActionBase):
             try:
                 return int(settings[key])
             except Exception:
+                py_logger.warning("Invalid int setting %s=%r; using default=%d", key, settings.get(key), default, exc_info=True)
                 return default
 
         def _read_list_setting(key_name: str) -> Optional[List[str]]:

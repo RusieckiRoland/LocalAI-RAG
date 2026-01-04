@@ -1,8 +1,14 @@
 # common/semantic_rerank_wrapper.py
 from __future__ import annotations
 
+import logging
 import re
 from typing import Any, Dict, List, Optional
+
+py_logger = logging.getLogger(__name__)
+
+_logged_bad_distance = False
+
 
 
 class SemanticRerankWrapper:
@@ -63,6 +69,10 @@ class SemanticRerankWrapper:
         try:
             return float(d)
         except Exception:
+            global _logged_bad_distance
+            if not _logged_bad_distance:
+                _logged_bad_distance = True
+                py_logger.exception("soft-failure: failed to parse distance value: %r; using 1.0", d)
             return 1.0
 
     @staticmethod
