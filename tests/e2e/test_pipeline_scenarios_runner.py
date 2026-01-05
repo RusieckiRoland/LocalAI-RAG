@@ -55,8 +55,12 @@ class FakeModelWithAsk:
         idx = self._counters.get(consultant, 0)
         self._counters[consultant] = idx + 1
         if idx >= len(outs):
-            return ""
+         raise AssertionError(
+        f"FakeModelWithAsk: missing output for consultant='{consultant}' "
+        f"call_index={idx} available={len(outs)}"
+          )
         return outs[idx]
+
 
 
 class FakeRetriever:
@@ -240,8 +244,77 @@ def test_pipeline_scenarios_runner(scenario_name: str) -> None:
         graph_node_texts=raw.get("graph_node_texts", []),
         expected=raw.get("expected", {}),
     )
+    def _flatten_outputs_by_prompt_key(pipe, outputs_by_key: dict) -> list:
+        # Build a single queue exactly in the order call_model steps appear.
+        # Supports repeated prompt_key by consuming outputs sequentially per key.
+        #
+        # Important: some pipelines can loop (followups) and call the same prompt_key
+        # more times than it appears statically in pipe.steps. We therefore append
+        # any remaining outputs for prompt_keys we already encountered.
+        cursors: dict[str, int] = {}
+        flat: list[str] = []
+        pk_order: list[str] = []
 
-    model = FakeModelWithAsk(outputs_by_consultant=sc.model_outputs)
+        for s in getattr(pipe, "steps", []) or []:
+            if getattr(s, "action", None) != "call_model":
+                continue
+
+            raw = getattr(s, "raw", None) or {}
+            pk = str(raw.get("prompt_key") or "").strip()
+            if not pk:
+                continue
+
+            if pk not in cursors:
+                cursors[pk] = 0
+                pk_order.append(pk)
+
+            outs = list(outputs_by_key.get(pk) or [])
+            idx = int(cursors.get(pk, 0))
+
+            # Fail fast with a clear message instead of producing "Unrecognized response".
+            assert idx < len(outs), f"Scenario missing model output for prompt_key='{pk}' (call index {idx})"
+
+            flat.append(str(outs[idx]))
+            cursors[pk] = idx + 1
+
+        # Append remaining outputs for any prompt_keys that have more entries than
+        # the static call_model steps (e.g. followup loops calling answer multiple times).
+        for pk in pk_order:
+            outs = list(outputs_by_key.get(pk) or [])
+            idx = int(cursors.get(pk, 0))
+            if idx < len(outs):
+                flat.extend([str(x) for x in outs[idx:]])
+                cursors[pk] = len(outs)
+
+        return flat
+
+
+    pipeline_consultant = "e2e_scenarios_runner"
+
+        # Scenario outputs are usually keyed by prompt_key (e.g. "e2e/router_v1", "e2e/answer_v1").
+        # FakeModelWithAsk consumes a single queue per consultant, so we flatten prompt_key outputs
+        # into one ordered queue matching the order of call_model steps in the pipeline.
+    outputs_by_key = dict(sc.model_outputs or {})
+
+        # Some scenarios (e.g. budget_*) don't define router output. Provide a sensible default.
+    outputs_by_key.setdefault("e2e/router_v1", ["[DIRECT:]"])
+
+        # If scenario provides a ready queue under the pipeline consultant -> use it.
+    outs = outputs_by_key.get(pipeline_consultant)
+    if isinstance(outs, list) and outs:
+        outputs_by_consultant = {pipeline_consultant: outs}
+    else:
+        outputs_by_consultant = {pipeline_consultant: _flatten_outputs_by_prompt_key(pipe, outputs_by_key)}
+
+    model = FakeModelWithAsk(outputs_by_consultant=outputs_by_consultant)
+   
+    
+
+
+    
+
+    
+    
     retriever = FakeRetriever(results=sc.retriever_results)
     dispatcher = DummyRetrievalDispatcher(retriever=retriever)
     graph = FakeGraphProvider(expand_result=sc.graph_expand_result, node_texts=sc.graph_node_texts)

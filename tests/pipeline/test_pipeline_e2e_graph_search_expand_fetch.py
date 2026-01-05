@@ -188,14 +188,15 @@ def test_e2e_graph_search_expand_fetch_followup_then_answer() -> None:
     pipe = _load_pipeline()
 
     model = FakeModelWithAsk(
-        outputs_by_consultant={
-            "e2e/router_v1": ["[BM25:] entry point"],
-            "e2e/answer_v1": [
-                "[Requesting data on:] Program.cs Main",
-                f"{constants.ANSWER_PREFIX} E2E OK (after followup)",
-            ],
-        }
+    outputs_by_consultant={
+        "e2e_graph_search_expand_fetch": [
+            "[BM25:] entry point",
+            "[Requesting data on:] Program.cs Main",
+            f"{constants.ANSWER_PREFIX} E2E OK (after followup)",
+        ],
+    }
     )
+
 
     retriever = FakeRetriever(
         results=[
@@ -236,9 +237,12 @@ def test_e2e_graph_search_expand_fetch_direct_answer() -> None:
 
     model = FakeModelWithAsk(
         outputs_by_consultant={
-            "e2e/router_v1": ["[DIRECT:]"],
-            "e2e/answer_v1": [f"{constants.ANSWER_PREFIX} E2E OK (direct)"],
-        }
+         "e2e_graph_search_expand_fetch": [
+            "[DIRECT:]",
+        f"{constants.ANSWER_PREFIX} E2E OK (direct)",
+  ],
+}
+
     )
 
     retriever = FakeRetriever(results=[{"Id": "A", "File": "a.cs", "Content": "class A {}"}])

@@ -34,20 +34,27 @@ class Model:
         self,
         *,
         prompt: str,
-        max_tokens: int = 1500,
-        temperature: float = 0.1,
+        consultant: str,
+        system_prompt: Optional[str] = None,
+        max_tokens: Optional[int] = None,
+        temperature: Optional[float] = None,
         repeat_penalty: float = 1.2,
         top_k: int = 40,
     ) -> str:
         """
-        Query the model using a ready prompt.
-
-        Returns
-        -------
-        str
-            Model's text output (trimmed). If a severe error or a suspected
-            hallucination loop occurs, a short error marker is returned.
+        Pipeline contract:
+        - keyword-only
+        - accepts consultant/system_prompt even if this local model does not use them
         """
+        if max_tokens is None:
+            max_tokens = 1500
+        if temperature is None:
+            temperature = 0.1
+
+        # Optional: prepend system prompt if your renderer doesn't already include it.
+        if system_prompt:
+            prompt = f"{system_prompt}\n\n{prompt}"
+
         try:
             res = self.llm(
                 prompt=prompt,
@@ -67,6 +74,7 @@ class Model:
             logger.error(f"Model error: {e}")
             return "[MODEL_ERROR]"
 
+    
     # --------------------------------------------------------------------- #
     # Internal helpers
     # --------------------------------------------------------------------- #

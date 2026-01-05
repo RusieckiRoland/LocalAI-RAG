@@ -1029,7 +1029,8 @@
         "e2e/answer_v1": [
           "[Requesting data on:] A",
           "[Requesting data on:] B",
-          "[Requesting data on:] C"
+          "[Requesting data on:] C",
+          "[Answer:] [Could not find relevant information.]"
         ]
       },
       "retriever_results": [

@@ -47,16 +47,38 @@ class CodellamaPromptBuilder(BasePromptBuilder):
         return out
 
     def build_prompt(
-        self,
-        context: str,
-        question: str,
-        profile: str,
-        history: str = "",
-        system_prompt: Optional[str] = None,
-        template: Optional[str] = None,
-    ) -> str:
-        # Resolve system prompt
+    self,
+    context: str,
+    question: str,
+    profile: str,
+    history: str = "",
+    system_prompt: Optional[str] = None,
+    template: Optional[str] = None,
+) -> str:
+        def _eval_text(v: object) -> str:
+            # Defensive: callers must pass strings, but we harden against callables.
+            if callable(v):
+                v = v()
+            return str(v or "")
+
+        # Normalize inputs early (also prevents "<bound method ...>" in prompt)
+        context = _eval_text(context)
+        question = _eval_text(question)
+        history = _eval_text(history)
+
+        # Resolve system prompt (primary path)
         sp = (system_prompt or "").strip()
+        tpl = template
+
+        # If system_prompt is empty but template looks like a system prompt blob,
+        # treat it as system prompt and fall back to default user template.
+        if not sp and tpl and str(tpl).strip():
+            tpl_s = str(tpl).strip()
+            has_placeholders = ("{context}" in tpl_s) or ("{question}" in tpl_s) or ("{history}" in tpl_s)
+            if not has_placeholders:
+                sp = tpl_s
+                tpl = None
+
         if not sp:
             sp = self._load_and_prepare_profile(profile)
 
@@ -76,16 +98,16 @@ class CodellamaPromptBuilder(BasePromptBuilder):
         safe_history = safe_history.replace("{", "{{").replace("}", "}}")
 
         # Default user template must contain "### Context:\n" (security tests rely on it)
-        if template is None or not str(template).strip():
-            template = (
-                "### Context:\n{context}\n\n"
-                "### Question:\n{question}\n\n"
-            )
+        if tpl is None or not str(tpl).strip():
+            tpl = "### Context:\n{context}\n\n"
             if safe_history.strip():
-                template += "### History:\n{history}\n\n"
-            template += "### Answer:\n"
+                tpl += "### History:\n{history}\n\n"
+            tpl += (
+                "### User:\n{question}\n\n"
+                "### Answer:\n"
+            )
 
-        user_content = str(template).format(
+        user_content = str(tpl).format(
             context=safe_context.strip() or "(none)",
             question=safe_question.strip(),
             history=safe_history.strip(),
@@ -94,4 +116,3 @@ class CodellamaPromptBuilder(BasePromptBuilder):
 
         sys_block = f"{self.B_SYS}\n{sp}\n{self.E_SYS}\n\n"
         return f"{self.B_INST}{sys_block}{user_content}{self.E_INST}"
-

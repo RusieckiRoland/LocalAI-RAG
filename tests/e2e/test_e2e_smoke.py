@@ -44,11 +44,14 @@ def test_e2e_smoke_direct_answer(tmp_path: Path) -> None:
     log_file = tmp_path / "ai_interaction.log"
 
     model = FakeModelClient(
-        outputs_by_consultant={
-            "e2e/router_v1": ["[DIRECT:]"],
-            "e2e/answer_v1": ["[Answer:] E2E OK"],
-        }
-    )
+    outputs_by_consultant={
+        "e2e_smoke": [
+            "[DIRECT:]",
+            "[Answer:] E2E OK",
+        ],
+    }
+)
+
 
     retriever = FakeRetriever(results=[])
 

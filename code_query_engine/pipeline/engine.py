@@ -228,8 +228,8 @@ class PipelineEngine:
                 pipeline_name = getattr(state, "pipeline_name", None) or pipeline.name or "no-pipeline"
                 safe_session = str(session_id).replace("/", "_").replace("\\", "_").replace(" ", "_")
                 safe_pipeline = str(pipeline_name).replace("/", "_").replace("\\", "_").replace(" ", "_")
-
-                filename = f"interaction_{safe_session}_{safe_pipeline}_{ts_ms}.json"
+                ts_utc_safe = ts_utc.replace("T", "_").replace(":", "-")
+                filename = f"{ts_utc_safe}_{ts_ms}_interaction_{safe_session}_{safe_pipeline}.json"
                 path = Path(trace_dir) / filename
 
                 payload: Dict[str, Any] = {
@@ -258,4 +258,8 @@ class PipelineEngine:
                 with open(tmp_path, "w", encoding="utf-8") as f:
                     json.dump(payload, f, ensure_ascii=False, indent=2)
                 os.replace(tmp_path, path)
-
+                latest_path = Path(trace_dir) / "latest.json"
+                tmp_latest = str(latest_path) + ".tmp"
+                with open(tmp_latest, "w", encoding="utf-8") as f:
+                    json.dump(payload, f, ensure_ascii=False, indent=2)
+                os.replace(tmp_latest, latest_path)

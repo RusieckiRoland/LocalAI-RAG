@@ -101,11 +101,14 @@ def test_pipeline_router_bm25_fetch_then_answer(tmp_path):
     PipelineValidator().validate(pipe)
 
     model = FakeModelClient(
-        outputs_by_consultant={
-            "rejewski_router_v1": ["[BM25:] CS | Program.cs Main entry point"],
-            "rejewski_answer_v1": ["[Answer:] The entry point is Program.Main"],
-        }
+    outputs_by_consultant={
+        "rejewski": [
+            "[BM25:] CS | Program.cs Main entry point",
+            "[Answer:] The entry point is Program.Main",
+        ],
+    }
     )
+
 
     retr = FakeRetriever(
         results=[

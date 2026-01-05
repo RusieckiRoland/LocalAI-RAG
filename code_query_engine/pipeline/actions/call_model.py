@@ -8,40 +8,33 @@ from ..definitions import StepDef
 from ..engine import PipelineRuntime
 from ..state import PipelineState
 from .base_action import PipelineActionBase
+from pathlib import Path
 
 from prompt_builder.factory import PromptRendererFactory
 
+_TRACE_PROMPT_NAME_ATTR = "_pipeline_trace_prompt_name"
+_TRACE_RENDERED_PROMPT_ATTR = "_pipeline_trace_rendered_prompt"
+
 
 def _call_model_ask_with_compat(model: Any, *, prompt: str, context: str, question: str, consultant: str) -> str:
-    """
-    Compatibility shim:
-      - if model.ask(prompt=..., consultant=...) exists -> use it
-      - else if model.ask(context=..., question=..., consultant=...) exists -> use it
-      - else fall back to positional best-effort
-    """
     ask = getattr(model, "ask", None)
     if ask is None:
         raise AttributeError("Model has no .ask(...) method")
 
     try:
-        sig = inspect.signature(ask)
-        params = sig.parameters
-
-        if "prompt" in params:
-            return str(ask(prompt=prompt, consultant=consultant))
-
-        if "context" in params and "question" in params:
-            return str(ask(context=context, question=question, consultant=consultant))
-
-    except Exception:
-        # If signature introspection fails, fall back below.
+        return str(ask(prompt=prompt, consultant=consultant))
+    except TypeError:
         pass
 
-    # Positional fallback
     try:
-        return str(ask(prompt, consultant))
-    except Exception:
-        return str(ask(context, question, consultant))
+        return str(ask(context=context, question=question, consultant=consultant))
+    except TypeError:
+        pass
+
+    raise TypeError(
+        "Model.ask() must support keyword-only signature: "
+        "ask(prompt=..., consultant=...) or ask(context=..., question=..., consultant=...)"
+    )
 
 
 class CallModelAction(PipelineActionBase):
@@ -67,11 +60,33 @@ class CallModelAction(PipelineActionBase):
         error: Optional[Dict[str, Any]],
     ) -> Dict[str, Any]:
         out = getattr(state, "last_model_response", "") or ""
+
+        prompt_name = getattr(runtime, _TRACE_PROMPT_NAME_ATTR, None)
+        rendered_prompt = getattr(runtime, _TRACE_RENDERED_PROMPT_ATTR, None)
+
+        # Cleanup: never leak between steps/runs
+        if hasattr(runtime, _TRACE_PROMPT_NAME_ATTR):
+            try:
+                delattr(runtime, _TRACE_PROMPT_NAME_ATTR)
+            except Exception:
+                pass
+
+        if hasattr(runtime, _TRACE_RENDERED_PROMPT_ATTR):
+            try:
+                delattr(runtime, _TRACE_RENDERED_PROMPT_ATTR)
+            except Exception:
+                pass
+
         return {
             "action": self.action_id,
             "step_id": getattr(step, "id", None),
             "next_step_id": next_step_id,
             "error": error,
+
+            # requested step-level logging
+            "prompt_template_raw": prompt_name,
+            "rendered_prompt": rendered_prompt,
+
             "last_model_response_preview": out[:200],
         }
 
@@ -81,12 +96,19 @@ class CallModelAction(PipelineActionBase):
             raise ValueError("call_model: missing required 'prompt_key' in step")
 
         # What the rest of the pipeline prepares
-        context = str(getattr(state, "composed_context_for_prompt", "") or "")
-        history = str(getattr(state, "history_for_prompt", "") or "")
-        question = str(getattr(state, "model_input_en_or_fallback", "") or "")
+        def _to_text(v: object) -> str:
+            if callable(v):
+                v = v()
+            return str(v or "")
 
-        # Keep existing field (tests/debugging may rely on it)
-        state.consultant = prompt_key
+        context = _to_text(getattr(state, "composed_context_for_prompt", ""))
+        question = _to_text(getattr(state, "model_input_en_or_fallback", getattr(state, "user_query", "")))
+        history = _to_text(getattr(state, "history_for_prompt", ""))
+
+
+
+        # consultant is the pipeline identity; never overwrite it with prompt_key
+        consultant = str(getattr(state, "consultant", "") or "")
 
         model_path = str(getattr(runtime, "model_path", "") or "")
         prompts_dir = str(runtime.pipeline_settings.get("prompts_dir", "prompts"))
@@ -104,15 +126,16 @@ class CallModelAction(PipelineActionBase):
             history=history,
         )
 
-        # Keep old debug field name
-        state.next_codellama_prompt = prompt
+        # Store prompt only for step logging (per-request runtime), NOT in state
+        setattr(runtime, _TRACE_PROMPT_NAME_ATTR, prompt_key)
+        setattr(runtime, _TRACE_RENDERED_PROMPT_ATTR, prompt)
 
         response = _call_model_ask_with_compat(
             runtime.main_model,
             prompt=prompt,
             context=context,
             question=question,
-            consultant=prompt_key,
+            consultant=consultant,
         )
         state.last_model_response = response
 

@@ -124,7 +124,7 @@ _searcher = None
 _searcher_error: Optional[str] = None
 
 try:
-    _searcher = load_unified_search(_runtime_cfg)
+    _searcher = load_unified_search(_runtime_cfg["active_index_id"])
 except Exception as e:
     py_logger.exception("soft-failure: load_unified_search failed; search will be disabled (fallback mode)")
     _searcher = None
