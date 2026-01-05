@@ -9,7 +9,7 @@ from .action_registry import ActionRegistry
 from .definitions import PipelineDef, StepDef
 from .providers.ports import (
 
-py_logger = logging.getLogger(__name__)
+
 
     IGraphProvider,
     IHistoryManager,
@@ -20,12 +20,14 @@ py_logger = logging.getLogger(__name__)
     ITokenCounter,
     ITranslatorPlEn,
 )
+
 from .providers.retrieval import RetrievalDispatcher
 import json
 import os
 import time
 from pathlib import Path
 
+py_logger = logging.getLogger(__name__)
 
 
 @dataclass

@@ -1,13 +1,47 @@
+# code_query_engine/pipeline/actions/call_model.py
 from __future__ import annotations
 
-from pathlib import Path
-import os
-from typing import Optional, Any, Dict, Tuple
+import inspect
+from typing import Any, Dict, Optional
 
 from ..definitions import StepDef
-from ..state import PipelineState
 from ..engine import PipelineRuntime
+from ..state import PipelineState
 from .base_action import PipelineActionBase
+
+from prompt_builder.factory import PromptRendererFactory
+
+
+def _call_model_ask_with_compat(model: Any, *, prompt: str, context: str, question: str, consultant: str) -> str:
+    """
+    Compatibility shim:
+      - if model.ask(prompt=..., consultant=...) exists -> use it
+      - else if model.ask(context=..., question=..., consultant=...) exists -> use it
+      - else fall back to positional best-effort
+    """
+    ask = getattr(model, "ask", None)
+    if ask is None:
+        raise AttributeError("Model has no .ask(...) method")
+
+    try:
+        sig = inspect.signature(ask)
+        params = sig.parameters
+
+        if "prompt" in params:
+            return str(ask(prompt=prompt, consultant=consultant))
+
+        if "context" in params and "question" in params:
+            return str(ask(context=context, question=question, consultant=consultant))
+
+    except Exception:
+        # If signature introspection fails, fall back below.
+        pass
+
+    # Positional fallback
+    try:
+        return str(ask(prompt, consultant))
+    except Exception:
+        return str(ask(context, question, consultant))
 
 
 class CallModelAction(PipelineActionBase):
@@ -15,166 +49,12 @@ class CallModelAction(PipelineActionBase):
     def action_id(self) -> str:
         return "call_model"
 
-    # ------------------------------------------------------------------ #
-    # Prompt building (single source of truth)
-    # ------------------------------------------------------------------ #
-
-    B_INST = "[INST]"
-    E_INST = "[/INST]"
-    B_SYS = "<<SYS>>\n"
-    E_SYS = "\n<</SYS>>\n\n"
-
-    def _escape_control_tokens(self, text: str) -> str:
-        """
-        Escape CodeLlama prompt-template control tokens inside user-controlled text.
-        This prevents a user from closing/opening template blocks or injecting sys blocks.
-        """
-        if not text:
-            return text
-
-        return (
-            text.replace(self.E_INST, "[/I N S T]")
-            .replace(self.B_INST, "[I N S T]")
-            .replace("<<SYS>>", "< <SYS> >")
-            .replace("<</SYS>>", "< </SYS> >")
-        )
-
-    def _inject_constants(self, runtime: PipelineRuntime, template: str) -> str:
-        """
-        Inject placeholders like {ANSWER_PREFIX}/{FOLLOWUP_PREFIX} if present.
-        Uses runtime.constants when available (preferred).
-        """
-        t = template or ""
-
-        constants_obj = getattr(runtime, "constants", None)
-        if constants_obj is not None:
-            answer_prefix = getattr(constants_obj, "ANSWER_PREFIX", None)
-            followup_prefix = getattr(constants_obj, "FOLLOWUP_PREFIX", None)
-
-            if isinstance(answer_prefix, str):
-                t = t.replace("{ANSWER_PREFIX}", answer_prefix)
-            if isinstance(followup_prefix, str):
-                t = t.replace("{FOLLOWUP_PREFIX}", followup_prefix)
-
-        return t
-
-    def _resolve_prompt_template(self, consultant_for_prompt: str) -> Dict[str, Any]:
-        """
-        Resolve prompt template from filesystem: PROMPTS_DIR/<key>.txt
-        Key is typically like: rejewski/router_v1
-        """
-        result: Dict[str, Any] = {
-            "prompt_template_raw": None,
-            "prompt_template": None,
-            "prompt_template_found": False,
-            "prompt_template_source": None,
-            "prompt_template_error": None,
-        }
-
-        key = (consultant_for_prompt or "").strip()
-        if not key:
-            return result
-
-        try:
-            prompts_dir = os.environ.get("PROMPTS_DIR", "prompts")
-            base = Path(prompts_dir)
-
-            rel = Path(*key.split("/"))
-            candidates = [
-                base / (str(rel) + ".txt"),
-                base / rel / "prompt.txt",
-                base / rel,  # allow exact path if user passes extension
-            ]
-
-            for path in candidates:
-                if path.exists() and path.is_file():
-                    raw = path.read_text(encoding="utf-8")
-                    if raw.strip():
-                        result.update(
-                            {
-                                "prompt_template_raw": raw,
-                                "prompt_template_found": True,
-                                "prompt_template_source": f"file:{path.as_posix()}",
-                            }
-                        )
-                        return result
-        except Exception as ex:
-            result["prompt_template_error"] = f"filesystem: {type(ex).__name__}: {ex}"
-
-        return result
-
-    def _build_full_prompt(
-        self,
-        *,
-        runtime: PipelineRuntime,
-        consultant_for_prompt: str,
-        composed_context: str,
-        model_input_en: str,
-    ) -> Tuple[str, Dict[str, Any]]:
-        """
-        Build the exact prompt string that is passed to llama_cpp (truth for logging).
-        """
-        tpl_info = self._resolve_prompt_template(consultant_for_prompt)
-
-        template_raw = tpl_info.get("prompt_template_raw") or ""
-        template_injected = self._inject_constants(runtime, template_raw)
-
-        safe_context = self._escape_control_tokens(composed_context or "")
-        safe_question = self._escape_control_tokens(model_input_en or "")
-
-        sys_block = ""
-        if template_injected.strip():
-            sys_block = self.B_SYS + template_injected.strip() + self.E_SYS
-
-        user_content = (
-            f"### Context:\n{safe_context.strip() or '(none)'}\n\n"
-            f"### User:\n{safe_question.strip()}\n"
-        )
-
-        rendered_prompt = f"{self.B_INST}{sys_block}{user_content}{self.E_INST}"
-
-        log_payload: Dict[str, Any] = {
-            "prompt_template_raw": template_raw if template_raw.strip() else None,
-            "prompt_template": template_injected if template_injected.strip() else None,
-            "prompt_template_found": bool(tpl_info.get("prompt_template_found")),
-            "prompt_template_source": tpl_info.get("prompt_template_source"),
-            "prompt_template_error": tpl_info.get("prompt_template_error"),
-            "rendered_prompt": rendered_prompt,
-        }
-
-        return rendered_prompt, log_payload
-
-    # ------------------------------------------------------------------ #
-    # Logging
-    # ------------------------------------------------------------------ #
-
     def log_in(self, step: StepDef, state: PipelineState, runtime: PipelineRuntime) -> Dict[str, Any]:
-        raw = step.raw or {}
-        prompt_key = (raw.get("prompt_key") or "").strip()
-        consultant_for_prompt = prompt_key or state.consultant
-
-        # This is the real context used for the prompt (history + retrieved context).
-        composed_context = state.composed_context_for_prompt()
-        model_input_en = state.model_input_en_or_fallback()
-
-        rendered_prompt, prompt_log = self._build_full_prompt(
-            runtime=runtime,
-            consultant_for_prompt=consultant_for_prompt,
-            composed_context=composed_context,
-            model_input_en=model_input_en,
-        )
-
-        # Keep raw parts for debugging.
-        history_context = state.history_for_prompt()
-
         return {
-            "prompt_key": prompt_key,
-            "consultant_for_prompt": consultant_for_prompt,
-            "history_context": history_context,
-            "composed_context": composed_context,
-            "model_input_en": model_input_en,
-            # Truth: exact string passed into llama_cpp
-            **prompt_log,
+            "action": self.action_id,
+            "step_id": getattr(step, "id", None),
+            "prompt_key": (step.raw.get("prompt_key") if getattr(step, "raw", None) else None),
+            "consultant": getattr(state, "consultant", None),
         }
 
     def log_out(
@@ -186,34 +66,55 @@ class CallModelAction(PipelineActionBase):
         next_step_id: Optional[str],
         error: Optional[Dict[str, Any]],
     ) -> Dict[str, Any]:
+        out = getattr(state, "last_model_response", "") or ""
         return {
+            "action": self.action_id,
+            "step_id": getattr(step, "id", None),
             "next_step_id": next_step_id,
-            "last_model_response": state.last_model_response,
+            "error": error,
+            "last_model_response_preview": out[:200],
         }
 
-    # ------------------------------------------------------------------ #
-    # Execution
-    # ------------------------------------------------------------------ #
-
     def do_execute(self, step: StepDef, state: PipelineState, runtime: PipelineRuntime) -> Optional[str]:
-        raw = step.raw or {}
-        prompt_key = (raw.get("prompt_key") or "").strip()
-        consultant_for_prompt = prompt_key or state.consultant
+        prompt_key = str((step.raw.get("prompt_key") or "")).strip()
+        if not prompt_key:
+            raise ValueError("call_model: missing required 'prompt_key' in step")
 
-        composed_context = state.composed_context_for_prompt()
-        model_input_en = state.model_input_en_or_fallback()
+        # What the rest of the pipeline prepares
+        context = str(getattr(state, "composed_context_for_prompt", "") or "")
+        history = str(getattr(state, "history_for_prompt", "") or "")
+        question = str(getattr(state, "model_input_en_or_fallback", "") or "")
 
-        state.next_codellama_prompt = consultant_for_prompt
+        # Keep existing field (tests/debugging may rely on it)
+        state.consultant = prompt_key
 
-        rendered_prompt, _ = self._build_full_prompt(
-            runtime=runtime,
-            consultant_for_prompt=consultant_for_prompt,
-            composed_context=composed_context,
-            model_input_en=model_input_en,
+        model_path = str(getattr(runtime, "model_path", "") or "")
+        prompts_dir = str(runtime.pipeline_settings.get("prompts_dir", "prompts"))
+
+        renderer = PromptRendererFactory.create(
+            model_path=model_path,
+            prompts_dir=prompts_dir,
+            system_prompt=str(runtime.pipeline_settings.get("system_prompt", "") or ""),
         )
 
-        # New API: model gets a ready prompt. No backward compatibility.
-        response = runtime.main_model.ask(prompt=rendered_prompt)
+        prompt = renderer.render(
+            profile=prompt_key,
+            context=context,
+            question=question,
+            history=history,
+        )
 
+        # Keep old debug field name
+        state.next_codellama_prompt = prompt
+
+        response = _call_model_ask_with_compat(
+            runtime.main_model,
+            prompt=prompt,
+            context=context,
+            question=question,
+            consultant=prompt_key,
+        )
         state.last_model_response = response
-        return None
+
+        # Keep old behavior: return explicit next if present (engine would also handle step.next)
+        return getattr(step, "next", None) or (step.raw.get("next") if getattr(step, "raw", None) else None)
