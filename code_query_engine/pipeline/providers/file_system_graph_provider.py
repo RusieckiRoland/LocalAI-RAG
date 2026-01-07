@@ -228,9 +228,9 @@ class FileSystemGraphProvider(IGraphProvider):
                                 to_id = str(to)
                                 if not to_id:
                                     continue
-                                adj[frm_id].append(("code_dep", to_id))
+                                adj[frm_id].append(("calls", to_id))
                                 # Make it undirected by default (useful for "what references this?")
-                                adj[to_id].append(("code_dep", frm_id))
+                                adj[to_id].append(("calls", frm_id))
             except Exception:
                 py_logger.exception(
                     "soft-failure: failed to load dependencies.json (repository=%s branch=%s path=%s)",

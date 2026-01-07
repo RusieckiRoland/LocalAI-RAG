@@ -49,7 +49,7 @@ def test_filesystem_graph_provider_expands_code_dependencies_from_regular_bundle
     assert out["edges"]
     assert out["edges"][0]["from"] == "A"
     assert out["edges"][0]["to"] == "B"
-    assert out["edges"][0]["type"] == "code_dep"
+    assert out["edges"][0]["type"] == "calls"
 
 
 def test_filesystem_graph_provider_expands_sql_edges_from_sql_bundle(tmp_path: Path) -> None:

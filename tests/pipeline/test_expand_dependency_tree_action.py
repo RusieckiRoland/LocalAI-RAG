@@ -64,9 +64,7 @@ def test_expand_dependency_tree_calls_provider_and_updates_state():
         action="expand_dependency_tree",
         raw={
             "id": "expand",
-            "action": "expand_dependency_tree",
-            "repository_from_settings": True,
-            "active_index_from_settings": True,
+            "action": "expand_dependency_tree",          
             "max_depth_from_settings": "graph_max_depth",
             "max_nodes_from_settings": "graph_max_nodes",
             "edge_allowlist_from_settings": "graph_edge_allowlist",

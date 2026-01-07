@@ -19,7 +19,8 @@ from common.logging_setup import LoggingConfig, configure_logging, logging_confi
 from common.markdown_translator_en_pl import MarkdownTranslator
 from common.translator_pl_en import Translator
 
-from vector_db.unified_index_loader import load_unified_search
+from vector_db.semantic_searcher import load_semantic_search
+from vector_db.bm25_searcher import load_bm25_search
 
 from .dynamic_pipeline import DynamicPipelineRunner
 from history.redis_backend import RedisBackend
@@ -29,7 +30,6 @@ from .log_utils import InteractionLogger
 py_logger = logging.getLogger(__name__)
 
 _logged_branch_literal_eval_error = False
-
 
 
 # ------------------------------------------------------------
@@ -117,18 +117,34 @@ _history_backend = _make_history_backend()
 
 
 # ------------------------------------------------------------
-# Searcher (unified index)
+# Searchers (Semantic + BM25)
 # ------------------------------------------------------------
 
-_searcher = None
-_searcher_error: Optional[str] = None
+_active_index_id = str(_runtime_cfg.get("active_index_id") or "").strip()
+
+_semantic_searcher = None
+_semantic_searcher_error: Optional[str] = None
+
+_bm25_searcher = None
+_bm25_searcher_error: Optional[str] = None
 
 try:
-    _searcher = load_unified_search(_runtime_cfg["active_index_id"])
+    # SemanticSearcher implements IRetriever-like contract:
+    #   search(query, top_k, filters=...)
+    _semantic_searcher = load_semantic_search(_active_index_id or None)
 except Exception as e:
-    py_logger.exception("soft-failure: load_unified_search failed; search will be disabled (fallback mode)")
-    _searcher = None
-    _searcher_error = str(e)
+    py_logger.exception("soft-failure: load_semantic_search failed; semantic retrieval will be disabled (fallback mode)")
+    _semantic_searcher = None
+    _semantic_searcher_error = str(e)
+
+try:
+    # BM25Searcher implements IRetriever-like contract:
+    #   search(query, top_k, filters=...)
+    _bm25_searcher = load_bm25_search(_active_index_id or None)
+except Exception as e:
+    py_logger.exception("soft-failure: load_bm25_search failed; bm25 retrieval will be disabled (fallback mode)")
+    _bm25_searcher = None
+    _bm25_searcher_error = str(e)
 
 
 # ------------------------------------------------------------
@@ -154,12 +170,11 @@ _translator_pl_en = Translator(_resolve_cfg_path(str(_runtime_cfg.get("model_tra
 
 _interaction_logger = InteractionLogger(cfg=_logging_cfg)
 
-_active_index_id = str(_runtime_cfg.get("active_index_id") or "").strip()
-
 _runner = DynamicPipelineRunner(
     pipelines_root=os.path.join(PROJECT_ROOT, "pipelines"),
     main_model=_main_model,
-    searcher=_searcher,
+    searcher=_semantic_searcher,
+    bm25_searcher=_bm25_searcher,
     markdown_translator=_markdown_translator,
     translator_pl_en=_translator_pl_en,
     logger=_interaction_logger,
@@ -183,11 +198,20 @@ def _auth_ok() -> bool:
 
 @app.route("/health", methods=["GET"])
 def health():
+    # Keep backward-compatible keys for existing tests/UI:
+    # - searcher_ok/searcher_error reflect the semantic searcher (the "default" retriever).
     return jsonify(
         {
             "ok": True,
-            "searcher_ok": _searcher is not None,
-            "searcher_error": _searcher_error,
+            "active_index_id": _active_index_id,
+            # Backward-compat (tests expect these keys)
+            "searcher_ok": _semantic_searcher is not None,
+            "searcher_error": _semantic_searcher_error,
+            # Clearer, explicit status
+            "semantic_ok": _semantic_searcher is not None,
+            "semantic_error": _semantic_searcher_error,
+            "bm25_ok": _bm25_searcher is not None,
+            "bm25_error": _bm25_searcher_error,
         }
     )
 
@@ -367,7 +391,9 @@ def _read_active_index_branches(cfg: dict) -> List[str]:
                         global _logged_branch_literal_eval_error
                         if not _logged_branch_literal_eval_error:
                             _logged_branch_literal_eval_error = True
-                            py_logger.exception("soft-failure: failed to parse branch literal via ast.literal_eval; value=%r", s)
+                            py_logger.exception(
+                                "soft-failure: failed to parse branch literal via ast.literal_eval; value=%r", s
+                            )
                         pass
 
                 # already a plain branch string

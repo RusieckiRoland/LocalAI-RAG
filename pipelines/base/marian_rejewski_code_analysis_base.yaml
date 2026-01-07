@@ -87,8 +87,7 @@ YAMLpipeline:
       next: expand_dependency_tree
 
     - id: expand_dependency_tree
-      action: expand_dependency_tree
-      repository_from_settings: true
+      action: expand_dependency_tree      
       active_index_from_settings: true
       max_depth_from_settings: "graph_max_depth"
       max_nodes_from_settings: "graph_max_nodes"

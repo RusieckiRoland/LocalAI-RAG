@@ -74,12 +74,12 @@ class DynamicPipelineRunner:
 
         if graph_provider is None:
             try:
-                from .pipeline.providers.graph_provider import GraphProvider
+                from .pipeline.providers.file_system_graph_provider import FileSystemGraphProvider
 
-                graph_provider = GraphProvider()
+                graph_provider = FileSystemGraphProvider()
             except Exception:
-                py_logger.exception("soft-failure: default GraphProvider init failed; graph features disabled")
-                graph_provider = None
+              py_logger.exception("soft-failure: default FileSystemGraphProvider init failed; graph features disabled")
+              graph_provider = None
 
         self.graph_provider = graph_provider
         self.token_counter = token_counter

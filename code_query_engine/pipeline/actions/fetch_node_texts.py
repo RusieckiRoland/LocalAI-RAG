@@ -7,7 +7,7 @@ from ..engine import PipelineRuntime
 from ..state import PipelineState
 from .base_action import PipelineActionBase
 
-    
+
 class FetchNodeTextsAction(PipelineActionBase):
     """
     Fetches text payloads for nodes from the graph provider.
@@ -23,6 +23,7 @@ class FetchNodeTextsAction(PipelineActionBase):
       - fetch_node_texts(node_ids=[...], repository=str|None, branch=str|None, active_index=str|None)
         -> [{"id": "...", "text": "..."}, ...]
     """
+
     @property
     def action_id(self) -> str:
         return "fetch_node_texts"
@@ -67,36 +68,62 @@ class FetchNodeTextsAction(PipelineActionBase):
             node_ids = list(getattr(state, "graph_seed_nodes", None) or [])
         if not node_ids:
             setattr(state, "graph_debug", {"reason": "no_nodes"})
+            setattr(state, "graph_node_texts", [])
             return None
 
-        repository: Optional[str] = None
-        if bool(raw.get("repository_from_settings")):
-            repository = settings.get("repository") or getattr(state, "repository", None) or None
+        repository: Optional[str] = settings.get("repository") or getattr(state, "repository", None) or None
+        active_index: Optional[str] = (
+            settings.get("active_index")
+            or settings.get("index")
+            or getattr(state, "active_index", None)
+            or None
+        )
 
-        active_index: Optional[str] = None
-        if bool(raw.get("active_index_from_settings")):
-            active_index = (
-                settings.get("active_index")
-                or settings.get("index")
-                or getattr(state, "active_index", None)
-                or None
-            )
+        # If repository is missing we still *try* to fetch (test harnesses/providers may not require it).
+        # If the provider rejects repository=None, we soft-fail below.
+        if not repository:
+            debug = dict(getattr(state, "graph_debug", None) or {})
+            debug.update({"reason": "missing_repository_for_fetch_node_texts"})
+            setattr(state, "graph_debug", debug)
+
 
         branch: Optional[str] = getattr(state, "branch", None) or (
             settings.get("branch") if isinstance(settings.get("branch"), str) else None
         )
+        if not branch:
+            setattr(state, "graph_debug", {"reason": "missing_branch_for_fetch_node_texts"})
+            setattr(state, "graph_node_texts", [])
+            return None
 
         fetch_fn = getattr(provider, "fetch_node_texts", None)
         if fetch_fn is None:
             setattr(state, "graph_debug", {"reason": "graph_provider_missing_fetch_node_texts"})
+            setattr(state, "graph_node_texts", [])
             return None
 
-        texts = fetch_fn(
-            node_ids=node_ids,
-            repository=repository,
-            branch=branch,
-            active_index=active_index,
-        ) or []
+        max_chars = int(raw.get("max_chars", 50_000))
+
+        try:
+            texts = fetch_fn(
+                node_ids=node_ids,
+                repository=repository,
+                branch=branch,
+                active_index=active_index,
+                max_chars=max_chars,
+            ) or []
+        except Exception as ex:
+            debug = dict(getattr(state, "graph_debug", None) or {})
+            debug.update(
+                {
+                    "reason": "fetch_node_texts_failed",
+                    "error_type": ex.__class__.__name__,
+                    "error": str(ex)[:200],
+                }
+            )
+            setattr(state, "graph_debug", debug)
+            setattr(state, "graph_node_texts", [])
+            return None
+
 
         setattr(state, "graph_node_texts", list(texts))
 

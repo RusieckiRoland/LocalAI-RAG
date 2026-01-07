@@ -39,9 +39,7 @@ def test_fetch_node_texts_calls_provider_and_stores_result():
         action="fetch_node_texts",
         raw={
             "id": "fetch_texts",
-            "action": "fetch_node_texts",
-            "repository_from_settings": True,
-            "active_index_from_settings": True,
+            "action": "fetch_node_texts",           
         },
     )
     state = PipelineState(user_query="q", session_id="s", consultant="c", branch="develop", translate_chat=False)
