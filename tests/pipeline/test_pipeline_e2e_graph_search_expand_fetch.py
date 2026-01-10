@@ -40,16 +40,35 @@ class DummyLogger:
 
 class FakeModelWithAsk:
     """
-    Minimal model stub that matches CallModelAction expectations:
-      runtime.main_model.ask(context=..., question=..., consultant=...)
+    Minimal model stub that matches CallModelAction expectations.
+
+    The production code historically used different call shapes:
+      - ask(context=..., question=..., consultant=...)
+      - ask(prompt=..., consultant=...)
+    This test double supports both to stay aligned with the current pipeline.
     """
 
     def __init__(self, *, outputs_by_consultant: Dict[str, List[str]]) -> None:
         self._outputs_by_consultant = {k: list(v) for k, v in (outputs_by_consultant or {}).items()}
         self.calls: List[Dict[str, str]] = []
 
-    def ask(self, *, context: str, question: str, consultant: str) -> str:
-        self.calls.append({"consultant": consultant, "context": context, "question": question})
+    def ask(
+        self,
+        *,
+        consultant: str,
+        prompt: str | None = None,
+        context: str | None = None,
+        question: str | None = None,
+        **kwargs: Any,
+    ) -> str:
+        self.calls.append(
+            {
+                "consultant": consultant,
+                "prompt": prompt or "",
+                "context": context or "",
+                "question": question or "",
+            }
+        )
         q = self._outputs_by_consultant.get(consultant, [])
         if not q:
             return ""
@@ -75,6 +94,7 @@ class RetrievalDecision:
 class DummyInteractionLogger:
     def log_interaction(self, *args, **kwargs) -> None:
         return None
+
 
 class DummyRetrievalDispatcher:
     def __init__(self, *, retriever: FakeRetriever) -> None:
@@ -180,7 +200,7 @@ def _runtime(*, pipe_settings: Dict[str, Any], model: FakeModelWithAsk, dispatch
         semantic_rerank_searcher=None,
         graph_provider=graph,
         token_counter=None,
-        add_plant_link=lambda x: x,
+        add_plant_link=lambda x, consultant=None: x,
     )
 
 
@@ -188,15 +208,14 @@ def test_e2e_graph_search_expand_fetch_followup_then_answer() -> None:
     pipe = _load_pipeline()
 
     model = FakeModelWithAsk(
-    outputs_by_consultant={
-        "e2e_graph_search_expand_fetch": [
-            "[BM25:] entry point",
-            "[Requesting data on:] Program.cs Main",
-            f"{constants.ANSWER_PREFIX} E2E OK (after followup)",
-        ],
-    }
+        outputs_by_consultant={
+            "e2e_graph_search_expand_fetch": [
+                "[BM25:] entry point",
+                "[Requesting data on:] Program.cs Main",
+                f"[Answer:] E2E OK (after followup)",
+            ],
+        }
     )
-
 
     retriever = FakeRetriever(
         results=[
@@ -237,12 +256,11 @@ def test_e2e_graph_search_expand_fetch_direct_answer() -> None:
 
     model = FakeModelWithAsk(
         outputs_by_consultant={
-         "e2e_graph_search_expand_fetch": [
-            "[DIRECT:]",
-        f"{constants.ANSWER_PREFIX} E2E OK (direct)",
-  ],
-}
-
+            "e2e_graph_search_expand_fetch": [
+                "[DIRECT:]",
+                f"[Answer:] E2E OK (direct)",
+            ],
+        }
     )
 
     retriever = FakeRetriever(results=[{"Id": "A", "File": "a.cs", "Content": "class A {}"}])

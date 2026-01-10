@@ -39,9 +39,8 @@ def build_default_action_registry() -> ActionRegistry:
     from .actions.fetch_more_context import FetchMoreContextAction
     from .actions.expand_dependency_tree import ExpandDependencyTreeAction
     from .actions.fetch_node_texts import FetchNodeTextsAction
-    from .actions.loop_guard import LoopGuardAction
-    from .actions.finalize_heuristic import FinalizeHeuristicAction
-    from .actions.persist_turn_and_finalize import PersistTurnAndFinalizeAction
+    from .actions.loop_guard import LoopGuardAction    
+    from .actions.persist_turn import PersistTurnAction
     from .actions.finalize import FinalizeAction
 
     r = ActionRegistry()
@@ -55,9 +54,8 @@ def build_default_action_registry() -> ActionRegistry:
     r.register("fetch_more_context", FetchMoreContextAction())
     r.register("expand_dependency_tree", ExpandDependencyTreeAction())
     r.register("fetch_node_texts", FetchNodeTextsAction())
-    r.register("loop_guard", LoopGuardAction())
-    r.register("finalize_heuristic", FinalizeHeuristicAction())
-    r.register("persist_turn_and_finalize", PersistTurnAndFinalizeAction())
+    r.register("loop_guard", LoopGuardAction())    
+    r.register("persist_turn", PersistTurnAction())
     r.register("finalize", FinalizeAction())
 
     return r

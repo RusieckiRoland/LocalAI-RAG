@@ -53,11 +53,11 @@ YAMLpipelines:
         next: finalize
 
       - id: finalize
-        action: finalize_heuristic
+        action: finalize
         next: persist
 
       - id: persist
-        action: persist_turn_and_finalize
+        action: persist_turn
         end: true
 
   - name: P1
@@ -121,11 +121,11 @@ YAMLpipelines:
         next: finalize
 
       - id: finalize
-        action: finalize_heuristic
+        action: finalize
         next: persist
 
       - id: persist
-        action: persist_turn_and_finalize
+        action: persist_turn
         end: true
 
   - name: P2
@@ -189,11 +189,11 @@ YAMLpipelines:
         next: finalize
 
       - id: finalize
-        action: finalize_heuristic
+        action: finalize
         next: persist
 
       - id: persist
-        action: persist_turn_and_finalize
+        action: persist_turn
         end: true
 
   - name: P3
@@ -226,11 +226,11 @@ YAMLpipelines:
         next: finalize
 
       - id: finalize
-        action: finalize_heuristic
+        action: finalize
         next: persist
 
       - id: persist
-        action: persist_turn_and_finalize
+        action: persist_turn
         end: true
 
   - name: P4
@@ -281,9 +281,9 @@ YAMLpipelines:
         next: finalize
 
       - id: finalize
-        action: finalize_heuristic
+        action: finalize
         next: persist
 
       - id: persist
-        action: persist_turn_and_finalize
+        action: persist_turn
         end: true

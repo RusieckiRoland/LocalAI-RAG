@@ -57,19 +57,16 @@ YAMLpipeline:
       action: handle_prefix
       answer_prefix: "[Answer:]"
       followup_prefix: "[Requesting data on:]"
-      on_answer: finalize_heuristic
+      on_answer: finalize
       on_followup: loop_guard
-      on_other: finalize_heuristic
-      next: finalize_heuristic
+      on_other: finalize
+      next: finalize
 
     - id: loop_guard
       action: loop_guard
       on_allow: search
-      on_deny: finalize_heuristic
+      on_deny: finalize
 
-    - id: finalize_heuristic
-      action: finalize_heuristic
-      next: finalize
 
     # finalize robi tłumaczenie na PL, jeśli translate_chat=True
     - id: finalize
@@ -77,5 +74,5 @@ YAMLpipeline:
       next: persist
 
     - id: persist
-      action: persist_turn_and_finalize
+      action: persist_turn
       end: true

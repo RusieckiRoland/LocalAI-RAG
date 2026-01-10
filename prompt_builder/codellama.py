@@ -29,12 +29,7 @@ class CodellamaPromptBuilder(BasePromptBuilder):
         """
         return ""
 
-    def _inject_required_prefix_constants(self, system_prompt: str) -> str:
-        return (
-            (system_prompt or "")
-            .replace("{ANSWER_PREFIX}", constants.ANSWER_PREFIX)
-            .replace("{FOLLOWUP_PREFIX}", constants.FOLLOWUP_PREFIX)
-        )
+ 
 
     def _escape_control_tokens(self, text: str) -> str:
         # Escape template control tokens in user-controlled payload.
@@ -82,8 +77,7 @@ class CodellamaPromptBuilder(BasePromptBuilder):
         if not sp:
             sp = self._load_and_prepare_profile(profile)
 
-        sp = self._inject_required_prefix_constants(sp)
-
+        
         # Ensure we keep a single SYS block even if profile contains SYS markers
         sp = sp.replace(self.B_SYS.strip(), "").replace(self.E_SYS.strip(), "").strip()
 

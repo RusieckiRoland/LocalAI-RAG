@@ -7,7 +7,7 @@
 
 ## Context and problem statement
 
-LocalAI-RAG uses YAML-defined pipelines composed of existing actions (e.g., `call_model`, `handle_prefix`, `fetch_more_context`, `expand_dependency_tree`, `fetch_node_texts`, `persist_turn_and_finalize`, etc.).
+LocalAI-RAG uses YAML-defined pipelines composed of existing actions (e.g., `call_model`, `handle_prefix`, `fetch_more_context`, `expand_dependency_tree`, `fetch_node_texts`, `persist_turn`, etc.).
 
 We already validate basic structural correctness (e.g., `entry_step_id` exists, referenced `next` steps exist). We also run E2E “scenario runner” tests that exercise a handful of standard pipelines.
 

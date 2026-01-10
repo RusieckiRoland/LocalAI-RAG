@@ -39,20 +39,45 @@ class FetchNodeTextsAction(PipelineActionBase):
         }
 
     def log_out(
-        self,
-        step: StepDef,
-        state: PipelineState,
-        runtime: PipelineRuntime,
-        *,
-        next_step_id: Optional[str],
-        error: Optional[Dict[str, Any]],
-    ) -> Dict[str, Any]:
+    self,
+    step: StepDef,
+    state: PipelineState,
+    runtime: PipelineRuntime,
+    *,
+    next_step_id: Optional[str],
+    error: Optional[Dict[str, Any]],
+) -> Dict[str, Any]:
+        raw = step.raw or {}
+
         texts = getattr(state, "graph_node_texts", None)
+        texts_list: List[Dict[str, Any]] = texts if isinstance(texts, list) else []
+
+        # Keep logs bounded: preview only (configurable from YAML step.raw).
+        max_items = int(raw.get("log_texts_max_items", 5))
+        max_chars = int(raw.get("log_texts_max_chars", 800))
+
+        preview: List[Dict[str, Any]] = []
+        for item in texts_list[:max_items]:
+            nid = (item.get("id") or item.get("Id") or "").strip()
+            t = item.get("text") or item.get("Text") or ""
+            if not isinstance(t, str):
+                t = str(t)
+            t = t.strip()
+
+            if len(t) > max_chars:
+                t = t[:max_chars] + "…"
+
+            preview.append({"id": nid, "text": t})
+
         return {
             "next_step_id": next_step_id,
-            "node_texts_count": len(texts or []) if isinstance(texts, list) else None,
+            "node_texts_count": len(texts_list),
+            "node_texts_preview": preview,
+            "node_texts_preview_max_items": max_items,
+            "node_texts_preview_max_chars": max_chars,
             "graph_debug": getattr(state, "graph_debug", None),
         }
+
 
     def do_execute(self, step: StepDef, state: PipelineState, runtime: PipelineRuntime) -> Optional[str]:
         raw: Dict[str, Any] = step.raw or {}

@@ -84,6 +84,7 @@ YAMLpipeline:
 
     - id: fetch_more_context
       action: fetch_more_context
+      query_parser: JsonishQueryParser
       next: expand_dependency_tree
 
     - id: expand_dependency_tree
@@ -120,22 +121,19 @@ YAMLpipeline:
       action: handle_prefix
       answer_prefix: "[Answer:]"
       followup_prefix: "[Requesting data on:]"
-      on_answer: persist_turn_and_finalize
+      on_answer: persist_turn
       on_followup: loop_guard
-      on_other: finalize_heuristic
+      on_other: finalize
 
     - id: loop_guard
       action: loop_guard
       max_turn_loops_from_settings: "max_turn_loops"
       on_allow: fetch_more_context
-      on_deny: finalize_heuristic
+      on_deny: finalize
 
-    - id: finalize_heuristic
-      action: finalize_heuristic
-      next: persist_turn_and_finalize
 
-    - id: persist_turn_and_finalize
-      action: persist_turn_and_finalize
+    - id: persist_turn
+      action: persist_turn
       next: finalize
 
     - id: finalize

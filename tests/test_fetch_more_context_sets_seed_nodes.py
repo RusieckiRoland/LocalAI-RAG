@@ -26,7 +26,7 @@ class DummyHistory:
     def get_context_blocks(self):
         return []
 
-    def add_iteration(self, followup, faiss_results):
+    def add_iteration(self, meta, faiss_results):
         return None
 
     def set_final_answer(self, answer_en, answer_pl):
@@ -82,7 +82,7 @@ def test_fetch_more_context_sets_retrieval_seed_nodes_from_ids(tmp_path: Path) -
         translate_chat=False,
     )
     state.retrieval_mode = "semantic"
-    state.followup_query = "what"
+    state.retrieval_query = "what"
     state.context_blocks = []
 
     action.execute(step, state, runtime)

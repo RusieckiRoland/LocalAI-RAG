@@ -7,6 +7,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from vector_db.build_vector_index import load_config, resolve_path
 from vector_db.tf_index import bm25_search, load_tf_index
+import numpy as np
 
 py_logger = logging.getLogger(__name__)
 
@@ -108,12 +109,23 @@ class Bm25Searcher:
         if doc_count <= 0:
             return []
 
-        # Oversample to survive post-filtering (branch/repository/data_type/etc.).
-        oversample = int(kwargs.get("oversample_factor") or 5)
-        raw_k = max(int(top_k or 1), 1) * max(oversample, 1)
-        raw_k = min(raw_k, doc_count)
+        # --- NEW: build allowed_mask FIRST (pre-filter) ---
+        allowed_mask = None
+        if filters:
+            allowed_mask = np.zeros((doc_count,), dtype=np.bool_)
 
-        hits: List[Tuple[int, float]] = bm25_search(self._tf, q, top_k=raw_k)
+            # Iterate only over metadata rows we actually have.
+            limit = min(len(self._meta), doc_count)
+            for doc_id in range(limit):
+                meta = self._meta[doc_id] or {}
+                if _passes_filters(meta, filters):
+                    allowed_mask[doc_id] = True
+
+            # If nothing matches filters, don't run BM25 at all.
+            if not bool(allowed_mask.any()):
+                return []
+
+        hits: List[Tuple[int, float]] = bm25_search(self._tf, q, top_k=max(int(top_k or 1), 1), allowed_mask=allowed_mask)
 
         out: List[Dict[str, Any]] = []
         for doc_id, score in hits:
@@ -121,8 +133,6 @@ class Bm25Searcher:
                 continue
 
             meta = self._meta[int(doc_id)] or {}
-            if not _passes_filters(meta, filters):
-                continue
 
             # Match "UnifiedSearch-ish" shape so other pipeline normalization code can digest it.
             file_path = meta.get("source_file") or meta.get("File") or meta.get("file") or ""

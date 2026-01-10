@@ -22,7 +22,7 @@ def test_interaction_logger_writes_minimal_sections(tmp_path: Path) -> None:
         session_id="s1",
         pipeline_name="p1",
         step_id="finalize",
-        action="persist_turn_and_finalize",
+        action="persist_turn",
         data={
             "user_question": "Q_PL: ile to kosztuje?",
             "translate_chat": True,

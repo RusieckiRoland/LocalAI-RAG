@@ -21,7 +21,7 @@ class DummyHistory:
     def get_context_blocks(self):
         return []
 
-    def add_iteration(self, followup, faiss_results):
+    def add_iteration(self, meta, faiss_results):
         return None
 
     def set_final_answer(self, answer_en, answer_pl):
@@ -72,7 +72,7 @@ def test_fetch_more_context_merges_branch_and_repo_filters():
         translate_chat=False,
     )
     state.retrieval_mode = "bm25"
-    state.followup_query = "Main entry point"
+    state.retrieval_query = "Main entry point"
     state.retrieval_filters = {"data_type": ["regular_code"]}
 
     FetchMoreContextAction().execute(step, state, rt)
@@ -117,7 +117,7 @@ def test_fetch_more_context_returns_gracefully_when_missing_dispatcher():
         translate_chat=False,
     )
     state.retrieval_mode = "semantic"
-    state.followup_query = "something"
+    state.retrieval_query = "something"
 
     # Should not throw
     FetchMoreContextAction().execute(step, state, rt)

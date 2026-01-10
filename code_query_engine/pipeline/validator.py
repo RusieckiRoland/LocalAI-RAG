@@ -25,9 +25,8 @@ class PipelineValidator:
         "fetch_more_context",
         "expand_dependency_tree",
         "fetch_node_texts",
-        "persist_turn_and_finalize",
-        "finalize",
-        "finalize_heuristic",
+        "persist_turn",
+        "finalize",      
         "loop_guard",
     }
 

@@ -273,7 +273,7 @@ fetch_more_context (per retrieval mode)
 expand_dependency_tree (graph traversal)
 fetch_node_texts (targeted lookup by identity)
 loop_guard (enforce max_turn_loops)
-persist_turn_and_finalize
+persist_turn
 finalize (translate out + UI formatting)
 
 

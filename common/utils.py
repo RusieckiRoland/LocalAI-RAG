@@ -33,7 +33,6 @@ MD_LINK_RE  = re.compile(r"\[[^\]]*\]\(https?://[^\)]*\)")
 # Bare http(s) lines (often added by models as references)
 HTTP_LINE_RE= re.compile(r"^\(?https?://[^\s)]+.*\)?$", re.MULTILINE)
 
-FOLLOWUP_PREFIX = constants.FOLLOWUP_PREFIX
 
 
 # --- Generic helpers ----------------------------------------------------------
@@ -134,35 +133,3 @@ def _extract_plantuml_code(md: str) -> str | None:
     return None
 
 
-# --- FOLLOWUP extraction ------------------------------------------------------
-
-def extract_followup(text: str, followup_prefix: str = constants.FOLLOWUP_PREFIX) -> Optional[str]:
-    """
-    Extract follow-up query text after the given prefix.
-
-    Examples
-    --------
-    "[Requesting data on:] SELECT * FROM T" -> "SELECT * FROM T"
-    ' [Requesting data on:]  "[orders by date]" ' -> "orders by date"
-    "no prefix here" -> None
-    """
-    if not text:
-        return None
-
-    marker = followup_prefix or ""
-    idx = text.find(marker)
-    if idx == -1:
-        # When there is no prefix at all, we return None
-        return None
-
-    candidate = text[idx + len(marker):].strip()
-
-    # Strip optional surrounding quotes: "..." or '...'
-    if len(candidate) >= 2 and candidate[0] == candidate[-1] and candidate[0] in ("'", '"'):
-        candidate = candidate[1:-1].strip()
-
-    # Strip optional surrounding square brackets: [...]
-    if len(candidate) >= 2 and candidate[0] == "[" and candidate[-1] == "]":
-        candidate = candidate[1:-1].strip()
-
-    return candidate or None

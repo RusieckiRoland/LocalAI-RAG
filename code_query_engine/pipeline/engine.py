@@ -42,8 +42,7 @@ class PipelineResult:
 
     # Final view
     final_answer: str
-    query_type: str
-    followup_query: Optional[str]
+    query_type: str    
     model_input_en: str
 
 
@@ -200,8 +199,7 @@ class PipelineEngine:
                 answer_en=state.answer_en,
                 answer_pl=state.answer_pl,
                 final_answer=final_answer,
-                query_type=state.query_type or "",
-                followup_query=state.followup_query,
+                query_type=state.query_type or "",               
                 model_input_en=state.model_input_en_or_fallback(),
             )
             return result
@@ -246,8 +244,7 @@ class PipelineEngine:
                     "answer_en": getattr(state, "answer_en", None),
                     "answer_pl": getattr(state, "answer_pl", None),
                     "final_answer": (result.final_answer if result is not None else (getattr(state, "final_answer", None) or final_answer)),
-                    "query_type": getattr(state, "query_type", None),
-                    "followup_query": getattr(state, "followup_query", None),
+                    "query_type": getattr(state, "query_type", None),                    
                     "error": trace_error,
                     # This is populated by actions via their log_in/log_out hooks.
                     "events": list(getattr(state, "pipeline_trace_events", []) or []),

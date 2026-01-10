@@ -23,8 +23,7 @@ class PipelineState:
     retrieval_mode: str = ""
     retrieval_scope: Optional[str] = None
     retrieval_query: str = ""
-    retrieval_filters: Dict[str, Any] = field(default_factory=dict)
-    followup_query: Optional[str] = None
+    retrieval_filters: Dict[str, Any] = field(default_factory=dict)   
     query_type: Optional[str] = None
 
     # Context

@@ -32,9 +32,9 @@ YAMLpipeline:
       bm25_prefix: "[BM25:]"
       hybrid_prefix: "[HYBRID:]"
       semantic_rerank_prefix: "[SEMANTIC_RERANK:]"
-      on_ready: persist_turn_and_finalize
+      on_ready: persist_turn
       on_semantic: loop_guard
       on_bm25: loop_guard
       on_hybrid: loop_guard
       on_semantic_rerank: loop_guard
-      on_other: finalize_heuristic
+      on_other: finalize

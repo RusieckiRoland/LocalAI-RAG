@@ -110,7 +110,7 @@ Interaction logs are “per turn” (one request/conversation turn = one record)
 - It is the **source for analytics, pipeline debugging, evaluation, and replays**.
 
 #### When a record is written
-- A record is emitted **when the pipeline finalizes a turn** (e.g. a `persist_turn_and_finalize` step).
+- A record is emitted **when the pipeline finalizes a turn** (e.g. a `persist_turn` step).
 - A record is written only if:
   - `logging.ai_interaction.capture_jsonl == true`
 
@@ -126,8 +126,8 @@ Example record:
   "timestamp": "2025-12-30T19:39:20Z",
   "session_id": "569a2b21-458a-4b85-924a-2fb66ef2e0e9",
   "pipeline_name": "marian_rejewski_code_analysis_base",
-  "step_id": "persist_turn_and_finalize",
-  "action": "persist_turn_and_finalize",
+  "step_id": "persist_turn",
+  "action": "persist_turn",
   "original_question": "…",
   "model_input_en": "…",
   "codellama_response": "…",

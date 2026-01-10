@@ -125,10 +125,21 @@ def load_tf_index(index_dir: str) -> Dict[str, Any]:
     }
 
 
-def bm25_search(tf_index: Dict[str, Any], query: str, top_k: int = 20, *, k1: float = 1.2, b: float = 0.75) -> List[Tuple[int, float]]:
+def bm25_search(
+    tf_index: Dict[str, Any],
+    query: str,
+    top_k: int = 20,
+    *,
+    k1: float = 1.2,
+    b: float = 0.75,
+    allowed_mask: Any = None,
+) -> List[Tuple[int, float]]:
     """
     Returns: list of (doc_id, score) sorted desc.
     doc_id is FAISS row index => maps 1:1 to unified_metadata[doc_id].
+
+    If allowed_mask is provided (np.ndarray[bool] of shape (N,)),
+    BM25 will score ONLY documents where allowed_mask[doc_id] == True.
     """
     vocab = tf_index["vocab"]
     offsets = tf_index["offsets"]
@@ -144,8 +155,6 @@ def bm25_search(tf_index: Dict[str, Any], query: str, top_k: int = 20, *, k1: fl
     if not q_terms or N <= 0:
         return []
 
-    # Use unique terms to avoid double-work (classic BM25 sums terms anyway;
-    # if you want query term frequency impact, you can multiply by q_tf).
     q_counts = Counter(q_terms)
 
     scores = np.zeros((N,), dtype=np.float32)
@@ -156,7 +165,6 @@ def bm25_search(tf_index: Dict[str, Any], query: str, top_k: int = 20, *, k1: fl
             continue
 
         df = float(df_arr[int(tid)])
-        # Common BM25 idf variant
         idf = np.log(1.0 + (N - df + 0.5) / (df + 0.5))
 
         start = int(offsets[int(tid)])
@@ -167,11 +175,18 @@ def bm25_search(tf_index: Dict[str, Any], query: str, top_k: int = 20, *, k1: fl
         docs = doc_ids[start:end]
         tf = tfs[start:end]
 
+        # --- NEW: pre-filter docs by allowed_mask ---
+        if allowed_mask is not None:
+            keep = allowed_mask[docs]
+            if not np.any(keep):
+                continue
+            docs = docs[keep]
+            tf = tf[keep]
+
         dl = doc_len[docs]
         denom = tf + k1 * (1.0 - b + b * (dl / avgdl))
         contrib = idf * (tf * (k1 + 1.0) / denom)
 
-        # Optional: apply query term frequency
         if q_tf > 1:
             contrib = contrib * float(q_tf)
 
@@ -181,7 +196,6 @@ def bm25_search(tf_index: Dict[str, Any], query: str, top_k: int = 20, *, k1: fl
         top_k = 1
     top_k = min(int(top_k), N)
 
-    # Fast top-k
     idx = np.argpartition(scores, -top_k)[-top_k:]
     idx = idx[np.argsort(scores[idx])[::-1]]
 

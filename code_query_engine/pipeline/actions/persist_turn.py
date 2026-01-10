@@ -1,4 +1,4 @@
-# code_query_engine/pipeline/actions/persist_turn_and_finalize.py
+# code_query_engine/pipeline/actions/persist_turn.py
 from __future__ import annotations
 
 import logging
@@ -15,10 +15,10 @@ py_logger = logging.getLogger(__name__)
 
 
 
-class PersistTurnAndFinalizeAction(PipelineActionBase):
+class PersistTurnAction(PipelineActionBase):
     @property
     def action_id(self) -> str:
-        return "persist_turn_and_finalize"
+        return "persist_turn"
 
     def log_in(self, step: StepDef, state: PipelineState, runtime: PipelineRuntime) -> Dict[str, Any]:
         return {
