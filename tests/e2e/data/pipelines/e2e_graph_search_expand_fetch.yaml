@@ -1,5 +1,3 @@
-# tests/e2e/data/pipelines/e2e_graph_search_expand_fetch.yaml
-
 YAMLpipeline:
   name: e2e_graph_search_expand_fetch
 
@@ -24,23 +22,25 @@ YAMLpipeline:
       next: handle_router
 
     - id: handle_router
-      action: handle_prefix
+      action: prefix_router
       bm25_prefix: "[BM25:]"
       semantic_prefix: "[SEMANTIC:]"
       hybrid_prefix: "[HYBRID:]"
       semantic_rerank_prefix: "[SEMANTIC_RERANK:]"
       direct_prefix: "[DIRECT:]"
       on_bm25: search
-      on_other: search
-      next: search
+      on_semantic: search
+      on_hybrid: search
+      on_semantic_rerank: search
+      on_direct: call_answer
+      on_other: call_answer
+      next: call_answer
 
-    # NOTE: na teraz "search" to nadal fetch_more_context (czyli: query -> wyniki + context_blocks + seed_nodes).
-    # W następnym kroku rozdzielimy to na osobne Search i osobne Fetch-by-Id.
     - id: search
       action: fetch_more_context
-      next: expand_graph
+      next: expand
 
-    - id: expand_graph
+    - id: expand
       action: expand_dependency_tree
       next: fetch_texts
 
@@ -54,7 +54,7 @@ YAMLpipeline:
       next: handle_answer
 
     - id: handle_answer
-      action: handle_prefix
+      action: prefix_router
       answer_prefix: "[Answer:]"
       followup_prefix: "[Requesting data on:]"
       on_answer: finalize
@@ -67,12 +67,7 @@ YAMLpipeline:
       on_allow: search
       on_deny: finalize
 
-
-    # finalize robi tłumaczenie na PL, jeśli translate_chat=True
+    # finalize ustawia state.final_answer (bez tłumaczenia)
     - id: finalize
       action: finalize
-      next: persist
-
-    - id: persist
-      action: persist_turn
       end: true

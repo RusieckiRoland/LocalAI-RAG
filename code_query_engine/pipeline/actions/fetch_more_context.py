@@ -277,7 +277,7 @@ class FetchMoreContextAction(PipelineActionBase):
         settings = runtime.pipeline_settings or {}
         raw = step.raw or {}
 
-        # Search type comes from HandlePrefixAction (state.last_prefix),
+        # Search type comes from PrefixRouterAction (state.last_prefix),
         # but we also persist it in state.search_type for telemetry/other steps.
         search_type = (getattr(state, "search_type", None) or getattr(state, "last_prefix", None) or "semantic")
         search_type = str(search_type or "").strip().lower()

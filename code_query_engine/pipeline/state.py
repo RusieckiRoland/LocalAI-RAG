@@ -35,8 +35,7 @@ class PipelineState:
     last_model_response: Optional[str] = None
 
     # Answer fields expected by multiple actions/engine
-    draft_answer_en: Optional[str] = None
-    draft_answer_pl: Optional[str] = None
+    draft_answer_en: Optional[str] = None  
     answer_en: Optional[str] = None
     answer_pl: Optional[str] = None
 

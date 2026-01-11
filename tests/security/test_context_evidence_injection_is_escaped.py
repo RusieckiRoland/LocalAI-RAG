@@ -3,6 +3,19 @@ import pytest
 from prompt_builder.codellama import CodellamaPromptBuilder
 
 
+def _compose_model_formatted_text(*, context: str, question: str) -> str:
+    ctx = context.strip()
+    if not ctx:
+        ctx = "(none)"
+
+    # This is the *user-controlled* payload that gets wrapped by CodeLlama [INST]...[/INST].
+    return (
+        f"### Context:\n{ctx}\n\n"
+        f"### User:\n{question}\n\n"
+        f"### Answer:\n"
+    )
+
+
 def _extract_user_payload(prompt: str) -> str:
     start = prompt.find("### Context:\n")
     if start < 0:
@@ -13,16 +26,9 @@ def _extract_user_payload(prompt: str) -> str:
     return prompt[start:end]
 
 
-@pytest.fixture()
-def builder(monkeypatch: pytest.MonkeyPatch) -> CodellamaPromptBuilder:
-    def fake_load_and_prepare_profile(self, profile: str) -> str:  # noqa: ARG001
-        return "SYSTEM {ANSWER_PREFIX} {FOLLOWUP_PREFIX}"
+def test_context_evidence_header_cannot_inject_sys_or_inst():
+    b = CodellamaPromptBuilder()
 
-    monkeypatch.setattr(CodellamaPromptBuilder, "_load_and_prepare_profile", fake_load_and_prepare_profile)
-    return CodellamaPromptBuilder()
-
-
-def test_context_evidence_header_cannot_inject_sys_or_inst(builder: CodellamaPromptBuilder):
     # Simulates a retrieved snippet/header coming from repo/index metadata.
     evidence_like_context = (
         "file: src/SomeFile.cs\n"
@@ -37,7 +43,17 @@ def test_context_evidence_header_cannot_inject_sys_or_inst(builder: CodellamaPro
         "more\n"
     )
 
-    prompt = builder.build_prompt(evidence_like_context, "normal question", profile="anything")
+    model_formatted_text = _compose_model_formatted_text(
+        context=evidence_like_context,
+        question="normal question",
+    )
+
+    prompt = b.build_prompt(
+        modelFormatedText=model_formatted_text,
+        history=[],
+        system_prompt="SYSTEM {ANSWER_PREFIX} {FOLLOWUP_PREFIX}",
+    )
+
     payload = _extract_user_payload(prompt)
 
     assert "[/INST]" not in payload

@@ -133,7 +133,7 @@ def _runtime(
 
 
 def _run_engine(pipe: Any, state: PipelineState, rt: PipelineRuntime) -> Any:
-    # HistoryManager requires start_user_query before set_final_answer() is called in persist_turn.
+    # HistoryManager requires start_user_query before set_final_answer() is called (finalize persists history).
     try:
         rt.history_manager.start_user_query(state.user_query, None)
     except Exception:
@@ -170,14 +170,17 @@ def test_e2e_budget_over_limit_fallback_summarizes(tmp_path: Path) -> None:
         - id: call_answer
           action: call_model
           prompt_key: "e2e/answer_v1"
+          next: handle_answer
+
+        - id: handle_answer
+          action: prefix_router
+          answer_prefix: "[Answer:]"
+          on_answer: finalize
+          on_other: finalize
           next: finalize
 
         - id: finalize
           action: finalize
-          next: persist
-
-        - id: persist
-          action: persist_turn
           end: true
     """
 
@@ -232,7 +235,7 @@ def test_e2e_router_direct_answer_path(tmp_path: Path) -> None:
           next: handle_router
 
         - id: handle_router
-          action: handle_prefix
+          action: prefix_router
           bm25_prefix: "[BM25:]"
           semantic_prefix: "[SEMANTIC:]"
           hybrid_prefix: "[HYBRID:]"
@@ -253,14 +256,17 @@ def test_e2e_router_direct_answer_path(tmp_path: Path) -> None:
         - id: call_answer
           action: call_model
           prompt_key: "e2e/answer_v1"
+          next: handle_answer
+
+        - id: handle_answer
+          action: prefix_router
+          answer_prefix: "[Answer:]"
+          on_answer: finalize
+          on_other: finalize
           next: finalize
 
         - id: finalize
           action: finalize
-          next: persist
-
-        - id: persist
-          action: persist_turn
           end: true
     """
 
@@ -311,13 +317,17 @@ def test_e2e_router_bm25_fetch_more_context_path(tmp_path: Path) -> None:
           next: handle_router
 
         - id: handle_router
-          action: handle_prefix
+          action: prefix_router
           bm25_prefix: "[BM25:]"
           semantic_prefix: "[SEMANTIC:]"
           hybrid_prefix: "[HYBRID:]"
           semantic_rerank_prefix: "[SEMANTIC_RERANK:]"
           direct_prefix: "[DIRECT:]"
           on_bm25: fetch
+          on_semantic: fetch
+          on_hybrid: fetch
+          on_semantic_rerank: fetch
+          on_direct: call_answer
           on_other: call_answer
           next: call_answer
 
@@ -328,14 +338,17 @@ def test_e2e_router_bm25_fetch_more_context_path(tmp_path: Path) -> None:
         - id: call_answer
           action: call_model
           prompt_key: "e2e/answer_v1"
+          next: handle_answer
+
+        - id: handle_answer
+          action: prefix_router
+          answer_prefix: "[Answer:]"
+          on_answer: finalize
+          on_other: finalize
           next: finalize
 
         - id: finalize
           action: finalize
-          next: persist
-
-        - id: persist
-          action: persist_turn
           end: true
     """
 
@@ -387,14 +400,17 @@ def test_e2e_dependency_expand_then_fetch_node_texts(tmp_path: Path) -> None:
         - id: call_answer
           action: call_model
           prompt_key: "e2e/answer_v1"
+          next: handle_answer
+
+        - id: handle_answer
+          action: prefix_router
+          answer_prefix: "[Answer:]"
+          on_answer: finalize
+          on_other: finalize
           next: finalize
 
         - id: finalize
           action: finalize
-          next: persist
-
-        - id: persist
-          action: persist_turn
           end: true
     """
 

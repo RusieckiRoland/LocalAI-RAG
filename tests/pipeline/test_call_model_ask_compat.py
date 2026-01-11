@@ -61,6 +61,7 @@ def test_call_model_compat_uses_keywords_when_signature_introspection_fails_prom
         context="C",
         question="Q",
         consultant="router_v1",
+        system_prompt="",
     )
 
     assert out == "OK_PROMPT"
@@ -80,12 +81,14 @@ def test_call_model_compat_uses_keywords_when_signature_introspection_fails_cont
     monkeypatch.setattr(cm.inspect, "signature", _boom)
 
     out = cm._call_model_ask_with_compat(
-        m,
-        prompt="P",
-        context="C",
-        question="Q",
-        consultant="router_v1",
-    )
+    m,
+    prompt="P",
+    context="C",
+    question="Q",
+    consultant="router_v1",
+    system_prompt="",
+)
+
 
     assert out == "OK_CTXQ"
     assert m.calls == [{"context": "C", "question": "Q", "consultant": "router_v1"}]

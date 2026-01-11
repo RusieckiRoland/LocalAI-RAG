@@ -58,7 +58,7 @@ def test_pipeline_router_bm25_fetch_then_answer(tmp_path):
                   next: handle_router
 
                 - id: handle_router
-                  action: handle_prefix
+                  action: prefix_router
                   bm25_prefix: "[BM25:]"
                   semantic_prefix: "[SEMANTIC:]"
                   hybrid_prefix: "[HYBRID:]"
@@ -82,7 +82,7 @@ def test_pipeline_router_bm25_fetch_then_answer(tmp_path):
                   next: handle_answer
 
                 - id: handle_answer
-                  action: handle_prefix
+                  action: prefix_router
                   answer_prefix: "[Answer:]"
                   followup_prefix: "[Requesting data on:]"
                   on_answer: finalize

@@ -3,42 +3,53 @@ import pytest
 from prompt_builder.codellama import CodellamaPromptBuilder
 
 
+def _compose_model_formatted_text(*, context: str, question: str) -> str:
+    ctx = context.strip() if str(context or "").strip() else "(none)"
+    # This mimics "pipeline composed text" (builder must not invent sections).
+    return (
+        "### Context:\n"
+        f"{ctx}\n\n"
+        "### User:\n"
+        f"{question}\n\n"
+        "### Answer:"
+    )
+
+
 @pytest.mark.parametrize(
-    "context,history,question,template,expected",
+    "context,history_pairs,question,expected",
     [
-        # 1) no context, no history
+        # 1) no context, no history -> SYS is attached to the current user message
         (
             "",
-            "",
+            [],
             "Where is the entry point?",
-            "### Context:\n{context}\n\n### User:\n{question}\n\n### Answer:\n",
-            "[INST]<<SYS>>\n\nSYS\n\n<</SYS>>\n\n"
+            "<s>[INST]\n"
+            "<<SYS>>\nSYS\n<</SYS>>\n\n"
             "### Context:\n(none)\n\n"
             "### User:\nWhere is the entry point?\n\n"
             "### Answer:\n"
             "[/INST]",
         ),
-        # 2) context present, no history
+        # 2) context present, no history (braces must be escaped in user payload)
         (
             "File: Program.cs\nstatic void Main() {}",
-            "",
+            [],
             "Where is the entry point?",
-            "### Context:\n{context}\n\n### User:\n{question}\n\n### Answer:\n",
-            "[INST]<<SYS>>\n\nSYS\n\n<</SYS>>\n\n"
+            "<s>[INST]\n"
+            "<<SYS>>\nSYS\n<</SYS>>\n\n"
             "### Context:\nFile: Program.cs\nstatic void Main() {{}}\n\n"
             "### User:\nWhere is the entry point?\n\n"
             "### Answer:\n"
             "[/INST]",
         ),
-        # 3) no context, history present
+        # 3) no context, history present -> SYS goes into the FIRST history user turn
         (
             "",
-            "User: hi\nAssistant: hello",
+            [("hi", "hello")],
             "Where is the entry point?",
-            "### Context:\n{context}\n\n### History:\n{history}\n\n### User:\n{question}\n\n### Answer:\n",
-            "[INST]<<SYS>>\n\nSYS\n\n<</SYS>>\n\n"
+            "<s>[INST] <<SYS>>\nSYS\n<</SYS>>\n\nhi [/INST] hello </s>\n"
+            "<s>[INST]\n"
             "### Context:\n(none)\n\n"
-            "### History:\nUser: hi\nAssistant: hello\n\n"
             "### User:\nWhere is the entry point?\n\n"
             "### Answer:\n"
             "[/INST]",
@@ -46,28 +57,26 @@ from prompt_builder.codellama import CodellamaPromptBuilder
         # 4) context + history present
         (
             "File: Program.cs\nstatic void Main() {}",
-            "User: hi\nAssistant: hello",
+            [("hi", "hello")],
             "Where is the entry point?",
-            "### Context:\n{context}\n\n### History:\n{history}\n\n### User:\n{question}\n\n### Answer:\n",
-            "[INST]<<SYS>>\n\nSYS\n\n<</SYS>>\n\n"
+            "<s>[INST] <<SYS>>\nSYS\n<</SYS>>\n\nhi [/INST] hello </s>\n"
+            "<s>[INST]\n"
             "### Context:\nFile: Program.cs\nstatic void Main() {{}}\n\n"
-            "### History:\nUser: hi\nAssistant: hello\n\n"
             "### User:\nWhere is the entry point?\n\n"
             "### Answer:\n"
             "[/INST]",
         ),
     ],
 )
-def test_codellama_prompt_contract_variants(context, history, question, template, expected):
+def test_codellama_prompt_contract_variants(context, history_pairs, question, expected):
     b = CodellamaPromptBuilder()
 
+    model_formatted_text = _compose_model_formatted_text(context=context, question=question)
+
     prompt = b.build_prompt(
-        context=context,
-        question=question,
-        history=history,
-        profile="irrelevant_for_test",
+        modelFormatedText=model_formatted_text,
+        history=history_pairs,
         system_prompt="SYS",
-        template=template,
     )
 
     assert prompt == expected

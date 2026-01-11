@@ -31,7 +31,7 @@ def build_default_action_registry() -> ActionRegistry:
     """
     # Lazy imports (MUST be inside the function)
     from .actions.call_model import CallModelAction
-    from .actions.handle_prefix import HandlePrefixAction
+    from .actions.prefix_router import PrefixRouterAction
     from .actions.translate_in_if_needed import TranslateInIfNeededAction
     from .actions.translate_out_if_needed import TranslateOutIfNeededAction
     from .actions.load_conversation_history import LoadConversationHistoryAction
@@ -40,7 +40,6 @@ def build_default_action_registry() -> ActionRegistry:
     from .actions.expand_dependency_tree import ExpandDependencyTreeAction
     from .actions.fetch_node_texts import FetchNodeTextsAction
     from .actions.loop_guard import LoopGuardAction    
-    from .actions.persist_turn import PersistTurnAction
     from .actions.finalize import FinalizeAction
 
     r = ActionRegistry()
@@ -50,12 +49,11 @@ def build_default_action_registry() -> ActionRegistry:
     r.register("load_conversation_history", LoadConversationHistoryAction())
     r.register("check_context_budget", CheckContextBudgetAction())
     r.register("call_model", CallModelAction())
-    r.register("handle_prefix", HandlePrefixAction())
+    r.register("prefix_router", PrefixRouterAction())
     r.register("fetch_more_context", FetchMoreContextAction())
     r.register("expand_dependency_tree", ExpandDependencyTreeAction())
     r.register("fetch_node_texts", FetchNodeTextsAction())
-    r.register("loop_guard", LoopGuardAction())    
-    r.register("persist_turn", PersistTurnAction())
+    r.register("loop_guard", LoopGuardAction())   
     r.register("finalize", FinalizeAction())
 
     return r

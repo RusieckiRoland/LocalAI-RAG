@@ -21,7 +21,7 @@ YAMLpipeline:
       next: handle_router
 
     - id: handle_router
-      action: handle_prefix
+      action: prefix_router
       bm25_prefix: "[BM25:]"
       semantic_prefix: "[SEMANTIC:]"
       hybrid_prefix: "[HYBRID:]"
@@ -41,16 +41,12 @@ YAMLpipeline:
       next: handle_answer
 
     - id: handle_answer
-      action: handle_prefix
+      action: prefix_router
       answer_prefix: "[Answer:]"
       followup_prefix: "[Requesting data on:]"
-      on_answer: persist
+      on_answer: finalize
       on_other: finalize
-      next: finalize
-
-    - id: persist
-      action: persist_turn
-      next: finalize
+      next: finalize   
 
     - id: finalize
       action: finalize

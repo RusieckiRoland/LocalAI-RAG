@@ -25,14 +25,14 @@ YAMLpipeline:
 
     # Override the prefix handler: READY => accept draft, otherwise route to retrieval loop.
     - id: handle_answer_prefix
-      action: handle_prefix
+      action: prefix_router
       ready_prefix: "[READY:]"
       ready_from_state: "draft_answer_en"
       semantic_prefix: "[SEMANTIC:]"
       bm25_prefix: "[BM25:]"
       hybrid_prefix: "[HYBRID:]"
       semantic_rerank_prefix: "[SEMANTIC_RERANK:]"
-      on_ready: persist_turn
+      on_ready: finalize
       on_semantic: loop_guard
       on_bm25: loop_guard
       on_hybrid: loop_guard

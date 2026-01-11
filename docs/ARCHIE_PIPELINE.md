@@ -268,7 +268,7 @@ translate_in_if_needed
 load_conversation_history
 check_context_budget (budget gate)
 call_model (router, summarizers, answer)
-handle_prefix (router prefixes, answer/follow-up prefixes)
+prefix_router (router prefixes, answer/follow-up prefixes)
 fetch_more_context (per retrieval mode)
 expand_dependency_tree (graph traversal)
 fetch_node_texts (targeted lookup by identity)

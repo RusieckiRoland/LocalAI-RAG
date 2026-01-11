@@ -537,6 +537,12 @@ def query():
         overrides["branch_b"] = branch_b
 
     try:
+        mm = _runner.main_model if hasattr(_runner, "main_model") else None
+        print("main_model type:", type(mm))
+        print("callable:", callable(mm))
+        print("has generate:", hasattr(mm, "generate"))
+        print("has ask:", hasattr(mm, "ask"))
+        
         runner_result = _runner.run(
             user_query=original_query,
             session_id=session_id,

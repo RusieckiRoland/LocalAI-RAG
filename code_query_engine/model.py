@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict, Optional
+from typing import Optional
 
 from llama_cpp import Llama
 
@@ -33,14 +33,14 @@ class Model:
     def ask(
         self,
         *,
-        prompt: str,
-        consultant: str,
+        prompt: str,        
         system_prompt: Optional[str] = None,
         max_tokens: Optional[int] = None,
         temperature: Optional[float] = None,
         repeat_penalty: float = 1.2,
         top_k: int = 40,
-    ) -> str:
+        top_p: Optional[float] = None,
+        ) -> str:
         """
         Pipeline contract:
         - keyword-only
@@ -56,13 +56,17 @@ class Model:
             prompt = f"{system_prompt}\n\n{prompt}"
 
         try:
-            res = self.llm(
-                prompt=prompt,
-                max_tokens=max_tokens,
-                temperature=temperature,
-                repeat_penalty=repeat_penalty,
-                top_k=top_k,
-            )
+            call_kwargs = {
+                "prompt": prompt,
+                "max_tokens": max_tokens,
+                "temperature": temperature,
+                "repeat_penalty": repeat_penalty,
+                "top_k": top_k,
+            }
+            if top_p is not None:
+                call_kwargs["top_p"] = top_p  # llama-cpp-python supports top_p
+
+            res = self.llm(**call_kwargs)
             output = (res.get("choices") or [{}])[0].get("text", "").strip()
 
             if self._looks_like_hallucination(output):
@@ -73,8 +77,39 @@ class Model:
         except Exception as e:
             logger.error(f"Model error: {e}")
             return "[MODEL_ERROR]"
+        
+    
+    
+    def generate(
+        self,
+        prompt: str,
+        consultant: str,
+        system_prompt: Optional[str] = None,
+        max_tokens: Optional[int] = None,
+        temperature: Optional[float] = None,
+        repeat_penalty: float = 1.2,
+        top_k: int = 40,
+        top_p: Optional[float] = None,
+        ) -> str:
+        """
+        Adapter for pipeline call_model contract.
+        """
+        return self.ask(
+            prompt=prompt,
+            consultant=consultant,
+            system_prompt=system_prompt,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            repeat_penalty=repeat_penalty,
+            top_k=top_k,
+            top_p=top_p,
+        )
 
     
+    
+    def __call__(self, prompt: str, consultant: str, system_prompt: Optional[str] = None) -> str:
+        return self.generate(prompt=prompt, consultant=consultant, system_prompt=system_prompt)
+
     # --------------------------------------------------------------------- #
     # Internal helpers
     # --------------------------------------------------------------------- #

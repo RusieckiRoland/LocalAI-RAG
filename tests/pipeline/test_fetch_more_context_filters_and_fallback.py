@@ -73,15 +73,15 @@ def test_fetch_more_context_merges_branch_and_repo_filters():
     )
     state.retrieval_mode = "bm25"
     state.retrieval_query = "Main entry point"
-    state.retrieval_filters = {"data_type": ["regular_code"]}
+    state.retrieval_filters = {"data_type": "regular_code"}
 
     FetchMoreContextAction().execute(step, state, rt)
 
     assert retr.calls
     call = retr.calls[0]
-    assert call["filters"]["data_type"] == ["regular_code"]
     assert call["filters"]["branch"] == "develop"
-    assert call["filters"]["repository"] == "nopCommerce"
+    assert call["filters"]["repo"] == "nopCommerce"
+    assert call["filters"]["data_type"] == "regular_code"
     assert len(state.context_blocks) == 1
 
 

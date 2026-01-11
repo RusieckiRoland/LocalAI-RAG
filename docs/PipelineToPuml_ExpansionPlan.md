@@ -58,8 +58,8 @@ Possible heuristic checks we *might* explore in the future:
 - Optionally verify that referenced prompts exist.
 - Optionally verify that prompt templates match pipeline expectations.
 
-**B) Router / handle_prefix consistency**
-- If `handle_prefix` is used:
+**B) Router / prefix_router consistency**
+- If `prefix_router` is used:
   - verify that prefixes are defined and non-empty,
   - check that routing branches (`on_bm25`, `on_other`, etc.) exist,
   - optionally check whether the router prompt instructs the model to emit expected prefixes.

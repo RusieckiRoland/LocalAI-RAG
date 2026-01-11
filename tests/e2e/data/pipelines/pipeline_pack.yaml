@@ -20,7 +20,7 @@ YAMLpipelines:
         next: handle_router
 
       - id: handle_router
-        action: handle_prefix
+        action: prefix_router
         bm25_prefix: "[BM25:]"
         semantic_prefix: "[SEMANTIC:]"
         hybrid_prefix: "[HYBRID:]"
@@ -36,7 +36,7 @@ YAMLpipelines:
         next: handle_answer
 
       - id: handle_answer
-        action: handle_prefix
+        action: prefix_router
         answer_prefix: "[Answer:]"
         followup_prefix: "[Requesting data on:]"
         on_answer: finalize
@@ -45,11 +45,8 @@ YAMLpipelines:
 
       - id: finalize
         action: finalize
-        next: persist
-
-      - id: persist
-        action: persist_turn
-        end: true
+        persist_turn: true
+      
 
   - name: P1
     settings:
@@ -73,7 +70,7 @@ YAMLpipelines:
         next: handle_router
 
       - id: handle_router
-        action: handle_prefix
+        action: prefix_router
         bm25_prefix: "[BM25:]"
         semantic_prefix: "[SEMANTIC:]"
         hybrid_prefix: "[HYBRID:]"
@@ -93,7 +90,7 @@ YAMLpipelines:
         next: handle_answer
 
       - id: handle_answer
-        action: handle_prefix
+        action: prefix_router
         answer_prefix: "[Answer:]"
         followup_prefix: "[Requesting data on:]"
         on_answer: finalize
@@ -102,11 +99,9 @@ YAMLpipelines:
 
       - id: finalize
         action: finalize
-        next: persist
-
-      - id: persist
-        action: persist_turn
-        end: true
+        persist_turn : true
+        end : true
+      
 
   - name: P2
     settings:
@@ -133,7 +128,7 @@ YAMLpipelines:
         next: handle_router
 
       - id: handle_router
-        action: handle_prefix
+        action: prefix_router
         bm25_prefix: "[BM25:]"
         semantic_prefix: "[SEMANTIC:]"
         hybrid_prefix: "[HYBRID:]"
@@ -161,7 +156,7 @@ YAMLpipelines:
         next: handle_answer
 
       - id: handle_answer
-        action: handle_prefix
+        action: prefix_router
         answer_prefix: "[Answer:]"
         followup_prefix: "[Requesting data on:]"
         on_answer: finalize
@@ -209,7 +204,7 @@ YAMLpipelines:
         next: handle_answer
 
       - id: handle_answer
-        action: handle_prefix
+        action: prefix_router
         answer_prefix: "[Answer:]"
         followup_prefix: "[Requesting data on:]"
         on_answer: finalize
@@ -218,11 +213,8 @@ YAMLpipelines:
 
       - id: finalize
         action: finalize
-        next: persist
-
-      - id: persist
-        action: persist_turn
         end: true
+        
 
   - name: P4
     settings:

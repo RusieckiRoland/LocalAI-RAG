@@ -7,7 +7,7 @@
 
 ## Context and problem statement
 
-LocalAI-RAG uses YAML-defined pipelines composed of existing actions (e.g., `call_model`, `handle_prefix`, `fetch_more_context`, `expand_dependency_tree`, `fetch_node_texts`, `persist_turn`, etc.).
+LocalAI-RAG uses YAML-defined pipelines composed of existing actions (e.g., `call_model`, `prefix_router`, `fetch_more_context`, `expand_dependency_tree`, `fetch_node_texts`, `persist_turn`, etc.).
 
 We already validate basic structural correctness (e.g., `entry_step_id` exists, referenced `next` steps exist). We also run E2E “scenario runner” tests that exercise a handful of standard pipelines.
 
@@ -23,7 +23,7 @@ However, we want stronger guarantees that **arbitrary pipelines authored by othe
 We adopt **Design by Contract (DbC)** for the pipeline system, implemented as:
 
 1. **Action-level contracts**: each action declares its **Requires / Ensures** (preconditions and postconditions) over `PipelineState` and expected step configuration.
-2. **Model Output Contracts** (a specialization of DbC): when `call_model` is used as a router, we define an explicit contract of allowed prefixes and parsing rules; `handle_prefix` must be consistent with those definitions.
+2. **Model Output Contracts** (a specialization of DbC): when `call_model` is used as a router, we define an explicit contract of allowed prefixes and parsing rules; `prefix_router` must be consistent with those definitions.
 3. **Two layers of enforcement**:
    - **Static validation (build-time / load-time)**: `PipelineValidator` checks that a pipeline is contract-consistent (ordering, required inputs, existence of routing targets).
    - **Runtime assertions (execution-time)**: actions may assert their `Requires` (fail fast with actionable error messages) and guarantee `Ensures` where feasible.
@@ -86,7 +86,7 @@ Example (conceptual):
   - Requires: `state.followup_query OR state.retrieval_query` non-empty; `state.retrieval_mode` set to known mode
   - Ensures: `state.context_blocks` updated; `state.seed_nodes` updated (deduped)
 
-- `handle_prefix`:
+- `prefix_router`:
   - Requires: `state.last_model_response` present (router output)
   - Requires: `semantic_prefix`, `bm25_prefix`, ... and matching `on_semantic`, `on_bm25`, ...
   - Ensures: `state.retrieval_mode` set; `state.followup_query` set/trimmed; next step chosen deterministically
@@ -99,13 +99,13 @@ When `call_model` is used as a router:
 
 ### 3) Static validator checks (examples)
 - **Ordering checks**: if an action requires `followup_query`, ensure there exists a predecessor that sets it along all paths.
-- **Routing consistency**: if a `handle_prefix` step defines a prefix, it must define the corresponding `on_*` target; all targets must exist as steps.
-- **Router/handler consistency**: if a pipeline uses a known router prompt (e.g., `router_v1`), verify that the `handle_prefix` step declares matching prefixes.
+- **Routing consistency**: if a `prefix_router` step defines a prefix, it must define the corresponding `on_*` target; all targets must exist as steps.
+- **Router/handler consistency**: if a pipeline uses a known router prompt (e.g., `router_v1`), verify that the `prefix_router` step declares matching prefixes.
 - **End conditions**: ensure pipelines end (e.g., `end: true` reachable, or an action that returns `None` has a defined fallback path).
 
 ### 4) Runtime assertions (examples)
 - If `fetch_more_context` executes with an empty query → raise a clear error (or optionally return `None` and record diagnostics; policy choice).
-- If `handle_prefix` has missing `on_*` for a configured prefix → raise “invalid pipeline configuration” immediately.
+- If `prefix_router` has missing `on_*` for a configured prefix → raise “invalid pipeline configuration” immediately.
 
 ## Notes
 

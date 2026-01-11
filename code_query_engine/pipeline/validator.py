@@ -17,7 +17,7 @@ class PipelineValidator:
     # Keep this list in sync with build_default_action_registry()
     _KNOWN_ACTIONS = {
         "call_model",
-        "handle_prefix",
+        "prefix_router",
         "translate_in_if_needed",
         "translate_out_if_needed",
         "load_conversation_history",
@@ -25,7 +25,6 @@ class PipelineValidator:
         "fetch_more_context",
         "expand_dependency_tree",
         "fetch_node_texts",
-        "persist_turn",
         "finalize",      
         "loop_guard",
     }
@@ -67,8 +66,8 @@ class PipelineValidator:
 
             if action == "call_model":
                 self._validate_call_model(s)
-            elif action == "handle_prefix":
-                self._validate_handle_prefix_contract(s, steps_by_id, warnings)
+            elif action == "prefix_router":
+                self._validate_prefix_router_contract(s, steps_by_id, warnings)
 
         warnings.extend(self._lint_pipeline(steps))
         return warnings
@@ -108,7 +107,7 @@ class PipelineValidator:
         if not (isinstance(prompt_key, str) and prompt_key.strip()):
             raise ValueError(f"step {sid}: call_model requires prompt_key")
 
-    def _validate_handle_prefix_contract(
+    def _validate_prefix_router_contract(
         self,
         step: Any,
         steps_by_id: Dict[str, Any],
@@ -119,10 +118,10 @@ class PipelineValidator:
 
         on_other = raw.get("on_other")
         if not (isinstance(on_other, str) and on_other.strip()):
-            raise ValueError("handle_prefix contract broken: on_other is required")
+            raise ValueError("prefix_router contract broken: on_other is required")
         if on_other.strip() not in steps_by_id:
             raise ValueError(
-                f"handle_prefix contract broken: on_other references unknown step: {on_other}"
+                f"prefix_router contract broken: on_other references unknown step: {on_other}"
             )
 
         prefixes: List[Tuple[str, str]] = []
@@ -131,11 +130,11 @@ class PipelineValidator:
                 prefixes.append((k, v.strip()))
 
         if not prefixes:
-            warnings.append(f"handle_prefix {sid}: no *_prefix keys defined")
+            warnings.append(f"prefix_router {sid}: no *_prefix keys defined")
 
         prefix_values = [v for _, v in prefixes]
         if len(prefix_values) != len(set(prefix_values)):
-            raise ValueError("handle_prefix contract broken: duplicate *_prefix values detected")
+            raise ValueError("prefix_router contract broken: duplicate *_prefix values detected")
 
         required_pairs = [
             ("semantic_prefix", "on_semantic"),
@@ -155,14 +154,14 @@ class PipelineValidator:
                 # Missing branch = warning (backward compatible)
                 if not (isinstance(target, str) and target.strip()):
                     warnings.append(
-                        f"handle_prefix {sid}: {prefix_key} is set but {on_key} is missing"
+                        f"prefix_router {sid}: {prefix_key} is set but {on_key} is missing"
                     )
                     continue
 
                 target_id = target.strip()
                 if target_id not in steps_by_id:
                     raise ValueError(
-                        f"handle_prefix contract broken: {on_key} references unknown step: {target_id}"
+                        f"prefix_router contract broken: {on_key} references unknown step: {target_id}"
                     )
 
         # Validate any explicit on_* keys that exist
@@ -170,7 +169,7 @@ class PipelineValidator:
             if isinstance(k, str) and k.startswith("on_") and isinstance(v, str) and v.strip():
                 if v.strip() not in steps_by_id:
                     raise ValueError(
-                        f"handle_prefix contract broken: {k} references unknown step: {v}"
+                        f"prefix_router contract broken: {k} references unknown step: {v}"
                     )
 
     def _lint_pipeline(self, steps: List[Any]) -> List[str]:

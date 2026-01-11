@@ -66,10 +66,14 @@ YAMLpipeline:
     - id: call_model_router
       action: call_model
       prompt_key: "rejewski/router_v1"
+      input:
+        question_from: model_input
+      prefixes: 
+        question_prefix: "### User:\n{}\n\n"
       next: handle_router_prefix
 
     - id: handle_router_prefix
-      action: handle_prefix
+      action: prefix_router
       semantic_prefix: "[SEMANTIC:]"
       bm25_prefix: "[BM25:]"
       hybrid_prefix: "[HYBRID:]"
@@ -117,11 +121,24 @@ YAMLpipeline:
       prompt_key: "rejewski/answer_v1"
       next: handle_answer_prefix
 
+
+      id: call_model
+      action: call_model
+      prompt_key: "rejewski/answer_v1"
+      inputs:
+       history_from: history_blocks
+       evidence_from: context_blocks 
+       user_from: model_input   
+      prefixes:
+       history_prefix: "### History:\n{}\n\n"
+       evidence_prefix: "### Evidence:\n{}\n\n"
+       question_prefix: "### User:\n{}\n\n"
+
     - id: handle_answer_prefix
-      action: handle_prefix
+      action: prefix_router
       answer_prefix: "[Answer:]"
       followup_prefix: "[Requesting data on:]"
-      on_answer: persist_turn
+      on_answer: finalize
       on_followup: loop_guard
       on_other: finalize
 
@@ -132,9 +149,6 @@ YAMLpipeline:
       on_deny: finalize
 
 
-    - id: persist_turn
-      action: persist_turn
-      next: finalize
 
     - id: finalize
       action: finalize

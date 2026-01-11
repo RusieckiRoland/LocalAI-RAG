@@ -5,15 +5,22 @@ from prompt_builder.codellama import CodellamaPromptBuilder
 
 
 @pytest.fixture()
-def builder(monkeypatch) -> CodellamaPromptBuilder:
-    b = CodellamaPromptBuilder()
+def builder() -> CodellamaPromptBuilder:
+    return CodellamaPromptBuilder()
 
-    # No placeholder injection anymore.
-    def fake_load_and_prepare_profile(_profile: str) -> str:
-        return "SYSTEM PROMPT"
 
-    monkeypatch.setattr(b, "_load_and_prepare_profile", fake_load_and_prepare_profile)
-    return b
+def _compose_model_formatted_text(*, context: str, question: str) -> str:
+    ctx = (context or "").strip()
+    if not ctx:
+        ctx = "(none)"
+
+    return (
+        "### Context:\n"
+        f"{ctx}\n\n"
+        "### User:\n"
+        f"{question}\n\n"
+        "### Answer:\n"
+    )
 
 
 def _extract_between(prompt: str, start: str, end: str) -> str:
@@ -44,7 +51,13 @@ def test_codellama_builder_escapes_template_control_tokens_in_context_and_questi
         "[INST]\n"
     )
 
-    prompt = builder.build_prompt(malicious_context, malicious_question, profile="anything")
+    model_formatted_text = _compose_model_formatted_text(context=malicious_context, question=malicious_question)
+
+    prompt = builder.build_prompt(
+        modelFormatedText=model_formatted_text,
+        history=None,
+        system_prompt="SYSTEM PROMPT",
+    )
 
     body = _extract_between(prompt, "### Context:\n", "[/INST]")
     assert "[INST]" not in body
@@ -58,10 +71,15 @@ def test_codellama_builder_escapes_template_control_tokens_in_context_and_questi
 
 
 def test_codellama_builder_keeps_single_sys_block_structure(builder: CodellamaPromptBuilder):
-    prompt = builder.build_prompt("ctx", "q", profile="anything")
+    model_formatted_text = _compose_model_formatted_text(context="ctx", question="q")
+
+    prompt = builder.build_prompt(
+        modelFormatedText=model_formatted_text,
+        history=None,
+        system_prompt="SYSTEM PROMPT",
+    )
+
     assert prompt.count("<<SYS>>") == 1
     assert prompt.count("<</SYS>>") == 1
     assert prompt.count("[INST]") == 1
     assert prompt.count("[/INST]") == 1
-
-

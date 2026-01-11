@@ -1,4 +1,4 @@
-# code_query_engine/pipeline/actions/handle_prefix.py
+# code_query_engine/pipeline/actions/prefix_router.py
 from __future__ import annotations
 
 from typing import Any, Dict, Optional, Tuple
@@ -58,7 +58,7 @@ def _validate_step_contract(raw: Dict[str, Any], prefixes: Dict[str, str]) -> No
         on_key = f"on_{kind}"
         if not str(raw.get(on_key) or "").strip():
             raise ValueError(
-                f"handle_prefix step is inconsistent: '{kind}_prefix' present but missing '{on_key}'."
+                f"prefix_router step is inconsistent: '{kind}_prefix' present but missing '{on_key}'."
             )
 
     # on_kind -> prefix (except on_other)
@@ -74,22 +74,22 @@ def _validate_step_contract(raw: Dict[str, Any], prefixes: Dict[str, str]) -> No
             continue
         if kind not in prefixes:
             raise ValueError(
-                f"handle_prefix step is inconsistent: '{k}' present but missing '{kind}_prefix'."
+                f"prefix_router step is inconsistent: '{k}' present but missing '{kind}_prefix'."
             )
 
     # require on_other (no implicit next)
     if not str(raw.get("on_other") or "").strip():
-        raise ValueError("handle_prefix step must define 'on_other' (no implicit next fallback).")
+        raise ValueError("prefix_router step must define 'on_other' (no implicit next fallback).")
 
 
-class HandlePrefixAction(PipelineActionBase):
+class PrefixRouterAction(PipelineActionBase):
     @property
     def action_id(self) -> str:
-        return "handle_prefix"
+        return "prefix_router"
 
     def log_in(self, step: StepDef, state: PipelineState, runtime: PipelineRuntime) -> Dict[str, Any]:
         raw = step.raw or {}
-        text = (getattr(runtime, "last_model_output", None) or state.last_model_response or "").strip()
+        text = state.last_model_response.strip()
         prefixes = _collect_prefixes(raw)
         return {
             "text": text,
@@ -116,7 +116,7 @@ class HandlePrefixAction(PipelineActionBase):
         raw = step.raw or {}
 
         # Always route based on the incoming text.
-        text = (getattr(runtime, "last_model_output", None) or state.last_model_response or "").strip()
+        text = (state.last_model_response or "").strip()
 
         prefixes = _collect_prefixes(raw)
         _validate_step_contract(raw, prefixes)
