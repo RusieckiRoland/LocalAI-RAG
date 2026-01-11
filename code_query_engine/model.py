@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Optional
+from typing import Any, Optional
 
 from llama_cpp import Llama
 
@@ -33,19 +33,14 @@ class Model:
     def ask(
         self,
         *,
-        prompt: str,        
+        prompt: str,
         system_prompt: Optional[str] = None,
         max_tokens: Optional[int] = None,
         temperature: Optional[float] = None,
         repeat_penalty: float = 1.2,
         top_k: int = 40,
         top_p: Optional[float] = None,
-        ) -> str:
-        """
-        Pipeline contract:
-        - keyword-only
-        - accepts consultant/system_prompt even if this local model does not use them
-        """
+    ) -> str:
         if max_tokens is None:
             max_tokens = 1500
         if temperature is None:
@@ -56,7 +51,7 @@ class Model:
             prompt = f"{system_prompt}\n\n{prompt}"
 
         try:
-            call_kwargs = {
+            call_kwargs: dict[str, Any] = {
                 "prompt": prompt,
                 "max_tokens": max_tokens,
                 "temperature": temperature,
@@ -77,26 +72,87 @@ class Model:
         except Exception as e:
             logger.error(f"Model error: {e}")
             return "[MODEL_ERROR]"
-        
-    
-    
-    def generate(
+
+    def ask_chat(
         self,
+        *,
         prompt: str,
-        consultant: str,
+        history: Optional[list[tuple[str, str]]] = None,
         system_prompt: Optional[str] = None,
         max_tokens: Optional[int] = None,
         temperature: Optional[float] = None,
         repeat_penalty: float = 1.2,
         top_k: int = 40,
         top_p: Optional[float] = None,
-        ) -> str:
+    ) -> str:
         """
-        Adapter for pipeline call_model contract.
+        Chat mode:
+        - `prompt` is the CURRENT user message content.
+          If your pipeline does RAG, it can embed evidence/context inside this string.
+        - `history` is a list of (user_message, assistant_message) for previous turns.
+          The model does NOT remember history by itself; you must pass it every call.
+        """
+        if max_tokens is None:
+            max_tokens = 1500
+        if temperature is None:
+            temperature = 0.1
+
+        try:
+            messages: list[dict[str, str]] = []
+
+            if system_prompt:
+                messages.append({"role": "system", "content": system_prompt})
+
+            if history:
+                for user_msg, assistant_msg in history:
+                    messages.append({"role": "user", "content": user_msg})
+                    messages.append({"role": "assistant", "content": assistant_msg})
+
+            messages.append({"role": "user", "content": prompt})
+
+            call_kwargs: dict[str, Any] = {
+                "messages": messages,
+                "max_tokens": max_tokens,
+                "temperature": temperature,
+                "repeat_penalty": repeat_penalty,
+                "top_k": top_k,
+            }
+            if top_p is not None:
+                call_kwargs["top_p"] = top_p
+
+            res = self.llm.create_chat_completion(**call_kwargs)
+
+            output = (
+                (res.get("choices") or [{}])[0]
+                .get("message", {})
+                .get("content", "")
+                .strip()
+            )
+
+            if self._looks_like_hallucination(output):
+                raise RuntimeError("Detected hallucination or recursive loop in LLM response.")
+
+            return output
+
+        except Exception as e:
+            logger.error(f"Model chat error: {e}")
+            return "[MODEL_ERROR]"
+
+    def generate(
+        self,
+        prompt: str,
+        system_prompt: Optional[str] = None,
+        max_tokens: Optional[int] = None,
+        temperature: Optional[float] = None,
+        repeat_penalty: float = 1.2,
+        top_k: int = 40,
+        top_p: Optional[float] = None,
+    ) -> str:
+        """
+        Adapter for pipeline call_model contract (text completion).
         """
         return self.ask(
             prompt=prompt,
-            consultant=consultant,
             system_prompt=system_prompt,
             max_tokens=max_tokens,
             temperature=temperature,
@@ -105,10 +161,8 @@ class Model:
             top_p=top_p,
         )
 
-    
-    
-    def __call__(self, prompt: str, consultant: str, system_prompt: Optional[str] = None) -> str:
-        return self.generate(prompt=prompt, consultant=consultant, system_prompt=system_prompt)
+    def __call__(self, prompt: str, system_prompt: Optional[str] = None) -> str:
+        return self.generate(prompt=prompt, system_prompt=system_prompt)
 
     # --------------------------------------------------------------------- #
     # Internal helpers
@@ -137,9 +191,6 @@ class Model:
             )
 
     def _looks_like_hallucination(self, text: str) -> bool:
-        """
-        Very simple loop detection: repeated tokens / obvious recursive patterns.
-        """
         t = (text or "").strip().lower()
         if not t:
             return False
