@@ -161,7 +161,7 @@ def _runtime(*, pipe_settings: Dict[str, Any], model: Any, dispatcher: Any, grap
 
     return PipelineRuntime(
         pipeline_settings=pipe_settings,
-        main_model=model,
+        model=model,
         searcher=None,
         markdown_translator=DummyMarkdownTranslator(),
         translator_pl_en=DummyTranslator(),

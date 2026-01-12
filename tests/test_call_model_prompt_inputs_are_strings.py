@@ -76,7 +76,7 @@ def test_call_model_uses_state_methods_not_bound_methods(monkeypatch):
     runtime = SimpleNamespace(
         pipeline_settings={"prompts_dir": "prompts", "system_prompt": "SYS_FROM_SETTINGS"},
         model_path="some-model",
-        main_model=model,
+        model=model,
     )
 
     # Act

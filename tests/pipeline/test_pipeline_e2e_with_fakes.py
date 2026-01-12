@@ -120,7 +120,7 @@ def test_pipeline_router_bm25_fetch_then_answer(tmp_path):
 
     rt = PipelineRuntime(
         pipeline_settings=pipe.settings,
-        main_model=model,
+        model=model,
         searcher=None,
         markdown_translator=DummyMarkdownTranslator(),
         translator_pl_en=DummyTranslator(),

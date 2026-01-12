@@ -55,7 +55,7 @@ class PipelineRuntime:
         self,
         *,
         pipeline_settings: Dict[str, Any],
-        main_model: IModelClient,
+        model: IModelClient,
         searcher: Optional[IRetriever],
         markdown_translator: Optional[IMarkdownTranslatorEnPl],
         translator_pl_en: Optional[ITranslatorPlEn],
@@ -70,7 +70,7 @@ class PipelineRuntime:
         add_plant_link: Optional[Any] = None,
     ) -> None:
         self.pipeline_settings = pipeline_settings or {}
-        self.main_model = main_model
+        self.model = model
         self.searcher = searcher
         self.markdown_translator = markdown_translator
         self.translator_pl_en = translator_pl_en

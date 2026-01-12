@@ -68,7 +68,7 @@ YAMLpipeline:
 
     rt = PipelineRuntime(
         pipeline_settings=pipe.settings,
-        main_model=model,
+        model=model,
         searcher=None,
         markdown_translator=DummyMarkdownTranslator(),
         translator_pl_en=DummyTranslator(),

@@ -164,7 +164,7 @@ def _resolve_cfg_path(p: str) -> str:
 from .model import Model  # noqa: E402
 
 
-_main_model = Model(_resolve_cfg_path(str(_runtime_cfg.get("model_path_analysis") or "")))
+_model = Model(_resolve_cfg_path(str(_runtime_cfg.get("model_path_analysis") or "")))
 _markdown_translator = MarkdownTranslator(_resolve_cfg_path(str(_runtime_cfg.get("model_translation_en_pl") or "")))
 _translator_pl_en = Translator(_resolve_cfg_path(str(_runtime_cfg.get("model_translation_pl_en") or "")))
 
@@ -172,7 +172,7 @@ _interaction_logger = InteractionLogger(cfg=_logging_cfg)
 
 _runner = DynamicPipelineRunner(
     pipelines_root=os.path.join(PROJECT_ROOT, "pipelines"),
-    main_model=_main_model,
+    model=_model,
     searcher=_semantic_searcher,
     bm25_searcher=_bm25_searcher,
     markdown_translator=_markdown_translator,
@@ -537,8 +537,8 @@ def query():
         overrides["branch_b"] = branch_b
 
     try:
-        mm = _runner.main_model if hasattr(_runner, "main_model") else None
-        print("main_model type:", type(mm))
+        mm = _runner.model if hasattr(_runner, "model") else None
+        print("model type:", type(mm))
         print("callable:", callable(mm))
         print("has generate:", hasattr(mm, "generate"))
         print("has ask:", hasattr(mm, "ask"))

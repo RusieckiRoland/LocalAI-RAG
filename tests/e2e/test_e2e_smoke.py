@@ -13,7 +13,7 @@ from history.mock_redis import InMemoryMockRedis
 def _run_pipeline(*, pipelines_root: Path, model: FakeModelClient, retriever: FakeRetriever, log_file: Path):
     runner = DynamicPipelineRunner(
         pipelines_root=str(pipelines_root),
-        main_model=model,
+        model=model,
         searcher=retriever,  # kept for backward-compat; retrieval dispatcher uses it only in some actions
         markdown_translator=None,
         translator_pl_en=None,
@@ -78,7 +78,7 @@ def test_e2e_test_pipeline_is_blocked_without_opt_in(tmp_path: Path) -> None:
 
     runner = DynamicPipelineRunner(
         pipelines_root=str(pipelines_root),
-        main_model=FakeModelClient(outputs=["[DIRECT:]"]),
+        model=FakeModelClient(outputs=["[DIRECT:]"]),
         searcher=FakeRetriever(results=[]),
         markdown_translator=None,
         translator_pl_en=None,

@@ -1,36 +1,44 @@
+# prompt_builder/base.py
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Optional
+from typing import Optional, Sequence, Tuple
 
 
 class BasePromptBuilder(ABC):
     """
     Model-specific prompt builder (e.g. CodeLlama, DeepSeek).
-    This class is responsible for:
-      - formatting the final prompt string
-      - escaping model control tokens inside user-controlled payload
+
+    Responsibility:
+    - Format the final prompt string for the model.
+    - Escape model control tokens inside user-controlled payload (user text + history).
+
+    Contract (aligned with CodellamaPromptBuilder):
+    - system_prompt is repository-controlled (included verbatim),
+    - modelFormatedText and history are user-controlled (must be escaped for the target chat template).
+
+    NOTE:
+    - PromptRenderer does NOT build modelFormatedText. That is done by the pipeline step (call_model).
     """
 
     @abstractmethod
     def build_prompt(
         self,
-        context: str,
-        question: str,
-        *,
-        profile: str,
-        history: str = "",
-        system_prompt: str = "",
-        template: Optional[str] = None,
+        modelFormatedText: str,
+        history: Optional[Sequence[Tuple[str, str]]] = None,
+        system_prompt: Optional[str] = None,
     ) -> str:
         raise NotImplementedError
 
 
 class PromptRenderer(ABC):
     """
-    Profile-aware renderer that:
-      - loads a prompt template for a given profile
-      - feeds it into a BasePromptBuilder
+    Renders a full prompt string using a builder and a profile key.
+
+    Typical behavior:
+    - load prompts_dir/<profile>.txt (UTF-8),
+    - merge it into system_prompt (verbatim),
+    - delegate final formatting to BasePromptBuilder.build_prompt(...).
     """
 
     @abstractmethod
@@ -38,8 +46,7 @@ class PromptRenderer(ABC):
         self,
         *,
         profile: str,
-        context: str,
-        question: str,
-        history: str = "",
+        modelFormatedText: str,
+        history: Optional[Sequence[Tuple[str, str]]] = None,
     ) -> str:
         raise NotImplementedError

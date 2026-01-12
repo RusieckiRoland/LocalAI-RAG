@@ -36,7 +36,7 @@ class DummyLogger:
 def _runtime(settings, dispatcher):
     return PipelineRuntime(
         pipeline_settings=settings,
-        main_model=FakeModelClient(outputs=[""]),
+        model=FakeModelClient(outputs=[""]),
         searcher=None,
         markdown_translator=DummyMarkdownTranslator(),
         translator_pl_en=DummyTranslator(),
@@ -94,7 +94,7 @@ def test_fetch_more_context_returns_gracefully_when_missing_dispatcher():
 
     rt = PipelineRuntime(
         pipeline_settings={"top_k": 2},
-        main_model=FakeModelClient(outputs=[""]),
+        model=FakeModelClient(outputs=[""]),
         searcher=None,
         markdown_translator=DummyMarkdownTranslator(),
         translator_pl_en=DummyTranslator(),

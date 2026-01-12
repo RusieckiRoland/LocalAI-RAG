@@ -37,7 +37,7 @@ class DummyLogger:
 def _runtime(settings, dispatcher):
     return PipelineRuntime(
         pipeline_settings=settings,
-        main_model=FakeModelClient(outputs=[""]),
+        model=FakeModelClient(outputs=[""]),
         searcher=None,
         markdown_translator=DummyMarkdownTranslator(),
         translator_pl_en=DummyTranslator(),

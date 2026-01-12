@@ -43,7 +43,7 @@ def _runtime(tmp_path: Path, retriever: FakeRetriever) -> PipelineRuntime:
 
     return PipelineRuntime(
         pipeline_settings={"top_k": 3, "test": True},
-        main_model=FakeModelClient(outputs=[""]),
+        model=FakeModelClient(outputs=[""]),
         searcher=None,
         markdown_translator=DummyMarkdownTranslator(),
         translator_pl_en=DummyTranslator(),

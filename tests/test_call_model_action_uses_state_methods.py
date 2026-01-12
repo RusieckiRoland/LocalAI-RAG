@@ -152,7 +152,7 @@ def test_call_model_action_uses_state_methods_not_bound_method_strings(
             "prompts_dir": "dummy-prompts",
             "system_prompt": "SYS",
         },
-        main_model=model,
+        model=model,
         searcher=None,
         markdown_translator=DummyMarkdownTranslator(),
         translator_pl_en=DummyTranslator(),

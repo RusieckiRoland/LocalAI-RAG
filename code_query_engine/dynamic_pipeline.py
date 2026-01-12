@@ -50,7 +50,7 @@ class DynamicPipelineRunner:
         *,
         pipelines_dir: Optional[str] = None,
         pipelines_root: Optional[str] = None,
-        main_model: Any = None,
+        model: Any = None,
         searcher: Any = None,
         markdown_translator: Any = None,
         translator_pl_en: Any = None,
@@ -67,7 +67,7 @@ class DynamicPipelineRunner:
 
         self.pipelines_root = os.fspath(root)
 
-        self.main_model = main_model
+        self.model = model
         self.searcher = searcher
         self.bm25_searcher = bm25_searcher
         self.semantic_rerank_searcher = semantic_rerank_searcher
@@ -164,7 +164,7 @@ class DynamicPipelineRunner:
         # ✅ Match PipelineRuntime signature (no action_registry kwarg here)
         runtime = PipelineRuntime(
             pipeline_settings=effective_settings,
-            main_model=self.main_model,
+            model=self.model,
             searcher=self.searcher,
             markdown_translator=self.markdown_translator,
             translator_pl_en=self.translator_pl_en,

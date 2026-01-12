@@ -49,27 +49,16 @@ YAMLpipeline:
 
     - id: load_history
       action: load_conversation_history
-      next: check_history_budget
-
-    - id: check_history_budget
-      action: check_context_budget
-      input: history_for_prompt
-      max_tokens_from_settings: "max_history_tokens"
-      on_over_limit: call_model_summarize_history
-      on_ok: call_model_router
-
-    - id: call_model_summarize_history
-      action: call_model
-      prompt_key: "rejewski/history_summarizer_v1"
       next: call_model_router
 
     - id: call_model_router
       action: call_model
+      native_chat: true
       prompt_key: "rejewski/router_v1"
-      input:
-        question_from: model_input
+      inputs:
+        question: user_question_en
       prefixes: 
-        question_prefix: "### User:\n{}\n\n"
+        question: "### User:\n{}\n\n"
       next: handle_router_prefix
 
     - id: handle_router_prefix
@@ -106,7 +95,7 @@ YAMLpipeline:
 
     - id: check_context_budget
       action: check_context_budget
-      input: composed_context_for_prompt
+      inputs: composed_context_for_prompt
       max_tokens_from_settings: "max_context_tokens"
       on_over_limit: call_model_summarize_context
       on_ok: call_model_answer
@@ -114,25 +103,24 @@ YAMLpipeline:
     - id: call_model_summarize_context
       action: call_model
       prompt_key: "rejewski/context_summarizer_v1"
+      inputs:
+       evidence: context_blocks
+       user_question: user_question_en
+      prefixes:
+       evidence: "### Evidence:\n{}\n\n"
+       user_question: "### User:\n{}\n\n"
       next: call_model_answer
+    
 
     - id: call_model_answer
       action: call_model
       prompt_key: "rejewski/answer_v1"
-      next: handle_answer_prefix
-
-
-      id: call_model
-      action: call_model
-      prompt_key: "rejewski/answer_v1"
-      inputs:
-       history_from: history_blocks
-       evidence_from: context_blocks 
-       user_from: model_input   
-      prefixes:
-       history_prefix: "### History:\n{}\n\n"
-       evidence_prefix: "### Evidence:\n{}\n\n"
-       question_prefix: "### User:\n{}\n\n"
+      inputs:       
+       evidence: context_blocks 
+       user_question: user_question_en
+      prefixes:       
+       evidence: "### Evidence:\n{}\n\n"
+       user_question: "### User:\n{}\n\n"
 
     - id: handle_answer_prefix
       action: prefix_router
@@ -147,8 +135,6 @@ YAMLpipeline:
       max_turn_loops_from_settings: "max_turn_loops"
       on_allow: fetch_more_context
       on_deny: finalize
-
-
 
     - id: finalize
       action: finalize

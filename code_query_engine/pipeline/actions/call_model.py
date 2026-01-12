@@ -1,7 +1,8 @@
 # code_query_engine/pipeline/actions/call_model.py
 from __future__ import annotations
 
-import inspect
+import os
+import json
 from typing import Any, Dict, Optional
 
 from ..definitions import StepDef
@@ -9,113 +10,21 @@ from ..engine import PipelineRuntime
 from ..state import PipelineState
 from .base_action import PipelineActionBase
 
-from prompt_builder.factory import PromptRendererFactory
+from prompt_builder.factory import get_prompt_builder_by_prompt_format
+from ..utils.step_overrides import get_override, opt_float, opt_int
 
 _TRACE_PROMPT_NAME_ATTR = "_pipeline_trace_prompt_name"
 _TRACE_RENDERED_PROMPT_ATTR = "_pipeline_trace_rendered_prompt"
-
-
-def _call_model_ask_with_compat(
-    model: Any,
-    *,
-    prompt: str,
-    context: str,
-    question: str,
-    consultant: str,
-    system_prompt: str,
-    model_kwargs: Optional[Dict[str, Any]] = None,
-) -> str:
-    """
-    Prefer model.ask(...) to support your Model wrapper (keyword-only signature).
-    Compat modes:
-    - ask(prompt=..., consultant=..., system_prompt=...)
-    - ask(context=..., question=..., consultant=..., system_prompt=...)
-    """
-    ask = getattr(model, "ask", None)
-    if not callable(ask):
-        raise ValueError("call_model: main_model must have callable .ask(...)")
-
-    sig = None
-    try:
-        sig = inspect.signature(ask)
-        params = dict(sig.parameters)
-    except Exception:
-        params = None
-
-    # Optional generation overrides (e.g., max_tokens, temperature, top_k, top_p).
-    extra: Dict[str, Any] = dict(model_kwargs or {})
-    if params is not None:
-        # Only pass supported kwargs unless the model explicitly accepts **kwargs.
-        accepts_var_kw = False
-        if sig is not None:
-            for p in sig.parameters.values():
-                if p.kind == inspect.Parameter.VAR_KEYWORD:
-                    accepts_var_kw = True
-                    break
-        if not accepts_var_kw:
-            extra = {k: v for k, v in extra.items() if k in params}
-
-    def _try_prompt_kw() -> str:
-        bases = (
-            {"prompt": prompt, "consultant": consultant, "system_prompt": system_prompt},
-            {"prompt": prompt, "consultant": consultant},
-            {"prompt": prompt},
-        )
-
-        for base in bases:
-            candidates = []
-            if extra:
-                candidates.append({**base, **extra})
-            candidates.append(base)
-
-            for kw in candidates:
-                try:
-                    return str(ask(**kw))
-                except TypeError:
-                    continue
-
-        raise TypeError("ask(prompt=...) not supported")
-
-    def _try_ctxq_kw() -> str:
-        bases = (
-            {"context": context, "question": question, "consultant": consultant, "system_prompt": system_prompt},
-            {"context": context, "question": question, "consultant": consultant},
-            {"context": context, "question": question},
-        )
-
-        for base in bases:
-            candidates = []
-            if extra:
-                candidates.append({**base, **extra})
-            candidates.append(base)
-
-            for kw in candidates:
-                try:
-                    return str(ask(**kw))
-                except TypeError:
-                    continue
-
-        raise TypeError("ask(context=..., question=...) not supported")
-
-    if params is not None:
-        if "prompt" in params:
-            return _try_prompt_kw()
-        if "context" in params and "question" in params:
-            return _try_ctxq_kw()
-
-    try:
-        return _try_prompt_kw()
-    except TypeError:
-        return _try_ctxq_kw()
+_TRACE_RENDERED_CHAT_MESSAGES_ATTR = "_pipeline_trace_rendered_chat_messages"
 
 
 class CallModelAction(PipelineActionBase):
     """
-    Call the main model using PromptRenderer and store its final output in state.last_model_response.
+    Call the main model using manual prompt builder (default) OR native chat mode.
 
     Notes:
     - We store rendered prompt into a private trace attribute for scenario debugging.
-    - We intentionally keep logs bounded by truncating rendered prompt in log_out (full prompt still available in traces).
+    - We intentionally keep logs bounded by truncating rendered prompt in log_out.
     """
 
     action_id = "call_model"
@@ -137,161 +46,63 @@ class CallModelAction(PipelineActionBase):
         next_step_id: Optional[str],
         error: Optional[Dict[str, Any]],
     ) -> Dict[str, Any]:
-        rendered = str(getattr(state, _TRACE_RENDERED_PROMPT_ATTR, "") or "")
-        preview = rendered[:600] + ("..." if len(rendered) > 600 else "")
-        return {
+        raw = getattr(step, "raw", {}) or {}
+        out = {
             "next_step_id": next_step_id,
             "error": error,
-            "prompt_key": str(getattr(state, _TRACE_PROMPT_NAME_ATTR, "") or ""),
-            "rendered_prompt": preview,
-            "last_model_response_len": len(str(getattr(state, "last_model_response", "") or "")),
         }
 
-    def do_execute(self, step: StepDef, state: PipelineState, runtime: PipelineRuntime) -> None:
+        rendered = getattr(state, _TRACE_RENDERED_PROMPT_ATTR, None)
+        if isinstance(rendered, str) and rendered:
+            # log bounded
+            out["rendered_prompt"] = rendered[:9999]
+
+        rendered_msgs = getattr(state, _TRACE_RENDERED_CHAT_MESSAGES_ATTR, None)
+        if isinstance(rendered_msgs, list) and rendered_msgs:
+            # log bounded (as JSON)
+            out["rendered_chat_messages"] = json.dumps(rendered_msgs, ensure_ascii=False)[:9999]
+
+        out["prompt_key"] = raw.get("prompt_key", "")
+        out["native_chat"] = bool(raw.get("native_chat", False))
+        out["prompt_format"] = str(raw.get("prompt_format", "") or "")
+        return out
+
+    def do_execute(self, step: StepDef, state: PipelineState, runtime: PipelineRuntime) -> Optional[str]:
         raw = getattr(step, "raw", {}) or {}
         prompt_key = str(raw.get("prompt_key") or "").strip()
         if not prompt_key:
-            raise ValueError("call_model: missing 'prompt_key' on step")
+            raise ValueError("call_model: prompt_key is required")
 
-        # Resolve system prompt: prefer pipeline_settings["system_prompt"].
-        system_prompt = str(getattr(runtime, "pipeline_settings", {}).get("system_prompt", "") or "")
+        native_chat = bool(raw.get("native_chat", False))
 
-        # Create renderer (renderer will load prompt_key file into SYS block)
-        model_path = str(getattr(runtime, "model_path", "") or "")
+        prompt_format = str(raw.get("prompt_format") or "").strip()
+        if not prompt_format:
+            prompt_format = "codellama_inst_7_34"
+
         prompts_dir = str(getattr(runtime, "pipeline_settings", {}).get("prompts_dir", "prompts") or "prompts")
-        renderer = PromptRendererFactory.create(model_path=model_path, prompts_dir=prompts_dir, system_prompt=system_prompt)
 
-        def _to_text(v: object) -> str:
-            # IMPORTANT: some state "fields" are methods; we must call them.
-            if callable(v):
-                v = v()
-            return str(v or "")
+        system_prompt = self._load_system_prompt(
+            prompts_dir=prompts_dir,
+            prompt_key=prompt_key,
+        )
 
-        def _join_list(items: object) -> str:
-            # Normalize a source into a single text blob.
-            if items is None:
-                return ""
-            if callable(items):
-                items = items()
-            if items is None:
-                return ""
-            if isinstance(items, list):
-                parts = []
-                for x in items:
-                    if x is None:
-                        continue
-                    if isinstance(x, dict) and "text" in x:
-                        t = str(x.get("text") or "")
-                    else:
-                        t = _to_text(x)
-                    t = str(t or "").strip()
-                    if not t:
-                        continue
-                    parts.append(t)
-                return "\n\n".join(parts)
-            return _to_text(items).strip()
+        system_prompt, user_part, history = self._prepare_call_model_parts(
+            step=step,
+            state=state,
+            runtime=runtime,
+        )
 
-        raw_inputs = raw.get("inputs") if isinstance(raw, dict) else None
-        raw_inputs = raw_inputs if isinstance(raw_inputs, dict) else {}
-
-        prefixes = raw.get("prefixes") if isinstance(raw, dict) else None
-        prefixes = prefixes if isinstance(prefixes, dict) else {}
-
-        def _ensure_fmt(s: str, *, key: str) -> str:
-            txt = str(s or "")
-            if "{}" not in txt:
-                raise ValueError(f"call_model: prefix '{key}' must contain '{{}}' placeholder")
-            return txt
-
-        def _maybe_wrap(prefix_key: str, text: str, default_fmt: str) -> str:
-            if not text.strip():
-                return ""
-            fmt = prefixes.get(prefix_key)
-            if fmt is None:
-                fmt = default_fmt
-            fmt = _ensure_fmt(str(fmt), key=prefix_key)
-            return fmt.format(text)
-
-        if raw_inputs:
-            h_src = str(raw_inputs.get("history_from") or "").strip()
-            e_src = str(raw_inputs.get("evidence_from") or "").strip()
-            q_src = str(raw_inputs.get("user_from") or "").strip()
-
-            history_text = _join_list(getattr(state, h_src, "")) if h_src else _join_list(getattr(state, "history_blocks", ""))
-            evidence_text = _join_list(getattr(state, e_src, "")) if e_src else _join_list(getattr(state, "context_blocks", ""))
-
-            if q_src:
-                q_val = getattr(state, q_src, "")
-            else:
-                q_val = getattr(state, "model_input_en_or_fallback", getattr(state, "user_query", ""))
-            question_text = _to_text(q_val).strip()
-
-            # IMPORTANT: lower prompt is 100% YAML-driven (prefixes + inputs)
-            context = (
-                _maybe_wrap("history_prefix", history_text, "### History:\n{}\n\n")
-                + _maybe_wrap("evidence_prefix", evidence_text, "### Evidence:\n{}\n\n")
-            )
-            question = _maybe_wrap("question_prefix", question_text, "### User:\n{}\n\n")
-            history = ""
-        else:
-            # Legacy/default behavior (no inputs): keep existing state methods/fields.
-            context = _to_text(getattr(state, "composed_context_for_prompt", ""))
-            question = _to_text(getattr(state, "model_input_en_or_fallback", getattr(state, "user_query", "")))
-            history = _to_text(getattr(state, "history_for_prompt", ""))
-
-        rendered_prompt = renderer.render(profile=prompt_key, context=context, question=question, history=history)
-
-        setattr(state, _TRACE_PROMPT_NAME_ATTR, prompt_key)
-        setattr(state, _TRACE_RENDERED_PROMPT_ATTR, rendered_prompt)
-
-        model = getattr(runtime, "main_model", None)
+        model = getattr(runtime, "model", None)
         if model is None:
-            raise ValueError("call_model: runtime.main_model is not set")
-
-        consultant = str(getattr(state, "consultant", "") or "")
-        system_prompt = str(getattr(runtime, "pipeline_settings", {}).get("system_prompt", "") or "")
-
-        # Optional generation overrides (step-level keys override pipeline settings).
-        settings = getattr(runtime, "pipeline_settings", {}) or {}
-
-        def _opt_int(v: object) -> Optional[int]:
-            if v is None:
-                return None
-            if isinstance(v, bool):
-                return None
-            if isinstance(v, int):
-                return v
-            s = str(v or "").strip()
-            if not s:
-                return None
-            return int(s)
-
-        def _opt_float(v: object) -> Optional[float]:
-            if v is None:
-                return None
-            if isinstance(v, bool):
-                return None
-            if isinstance(v, float):
-                return v
-            if isinstance(v, int):
-                return float(v)
-            s = str(v or "").strip()
-            if not s:
-                return None
-            return float(s)
-
-        def _get_override(key: str) -> object:
-            # Step-level value wins if present (even if None is explicitly set).
-            if isinstance(raw, dict) and key in raw:
-                return raw.get(key)
-            return settings.get(key)
+            raise ValueError("call_model: runtime.model is required")
 
         model_kwargs: Dict[str, Any] = {}
 
-        max_tokens = _opt_int(_get_override("max_tokens"))
-        temperature = _opt_float(_get_override("temperature"))
-        top_k = _opt_int(_get_override("top_k"))
-        top_p = _opt_float(_get_override("top_p"))
+        max_tokens = opt_int(get_override(raw=step.raw, settings=runtime.pipeline_settings, key="max_tokens"))
+        temperature = opt_float(get_override(raw=step.raw, settings=runtime.pipeline_settings, key="temperature"))
+        top_k = opt_int(get_override(raw=step.raw, settings=runtime.pipeline_settings, key="top_k"))
+        top_p = opt_float(get_override(raw=step.raw, settings=runtime.pipeline_settings, key="top_p"))
+
 
         if max_tokens is not None:
             model_kwargs["max_tokens"] = max_tokens
@@ -302,24 +113,236 @@ class CallModelAction(PipelineActionBase):
         if top_p is not None:
             model_kwargs["top_p"] = top_p
 
-        ask = getattr(model, "ask", None)
-        if callable(ask):
-            out = _call_model_ask_with_compat(
-                model,
-                prompt=rendered_prompt,
-                context=context,
-                question=question,
-                consultant=consultant,
+        setattr(state, _TRACE_PROMPT_NAME_ATTR, prompt_key)
+
+        if native_chat:
+            out = self.ask_chat_mode_llm(
+                state=state,
+                model=model,
                 system_prompt=system_prompt,
+                user_part=user_part,
+                history=history,
                 model_kwargs=model_kwargs,
             )
         else:
-            gen = getattr(model, "generate", None)
-            if callable(gen):
-                out = gen(rendered_prompt, consultant, system_prompt)
-            elif callable(model):
-                out = model(rendered_prompt, consultant, system_prompt)
-            else:
-                raise ValueError("call_model: main_model must have .ask(...) or be callable or have .generate(...)")
+            rendered_prompt = self._build_manual_prompt_and_trace(
+                state=state,
+                prompt_format=prompt_format,
+                system_prompt=system_prompt,
+                user_part=user_part,
+                history=history,
+            )
 
-        setattr(state, "last_model_response", out)
+            out = self.ask_manual_prompt_llm(
+                model=model,
+                rendered_prompt=rendered_prompt,
+                model_kwargs=model_kwargs,
+            )
+
+        state.last_model_response = str(out or "")
+        return raw.get("next")
+
+    def _load_system_prompt(self, *, prompts_dir: str, prompt_key: str) -> str:
+        rel = f"{prompt_key}.txt"
+        path = os.path.join(prompts_dir, rel)
+        if not os.path.isfile(path):
+            raise ValueError(f"call_model: system prompt file not found: {path}")
+        with open(path, "r", encoding="utf-8") as f:
+            return f.read()
+
+    def _prepare_call_model_parts(
+        self,
+        *,
+        step: StepDef,
+        state: PipelineState,
+        runtime: PipelineRuntime,
+    ) -> tuple[str, str, list[Any]]:
+        raw = getattr(step, "raw", {}) or {}
+
+        prompts_dir = str(getattr(runtime, "pipeline_settings", {}).get("prompts_dir", "prompts") or "prompts")
+        prompt_key = str(raw.get("prompt_key") or "").strip()
+        system_prompt = self._load_system_prompt(prompts_dir=prompts_dir, prompt_key=prompt_key)
+
+        inputs = raw.get("inputs")
+        prefixes = raw.get("prefixes")
+
+        if not isinstance(inputs, dict) or not inputs:
+            raise ValueError("call_model: inputs must be a non-empty dict")
+        if not isinstance(prefixes, dict) or not prefixes:
+            raise ValueError("call_model: prefixes must be a non-empty dict")
+
+        input_keys = list(inputs.keys())
+        prefix_keys = list(prefixes.keys())
+
+        if set(input_keys) != set(prefix_keys):
+            raise ValueError(
+                f"call_model: inputs/prefixes keys mismatch. inputs={sorted(set(input_keys))}, prefixes={sorted(set(prefix_keys))}"
+            )
+
+        for k, fmt in prefixes.items():
+            if not isinstance(fmt, str) or "{}" not in fmt:
+                raise ValueError(f"call_model: prefixes['{k}'] must be a format string containing '{{}}'")
+
+        use_history = bool(raw.get("use_history", False))
+        if use_history and "history" not in inputs:
+            raise ValueError("call_model: use_history=true requires inputs/history and prefixes/history")
+
+        parts: list[str] = input_keys
+
+        user_parts: list[str] = []
+        history: list[Any] = []
+
+        for part in parts:
+            state_attr = str(inputs.get(part) or "").strip()
+            fmt = prefixes.get(part)
+
+            if not state_attr:
+                raise ValueError(f"call_model: inputs['{part}'] must be a non-empty string")
+            if not isinstance(fmt, str):
+                raise ValueError(f"call_model: prefixes['{part}'] must be a string")
+         
+
+            v = getattr(state, state_attr, None)
+            if callable(v):
+                v = v()
+
+            text = self._eval_text(v).strip()
+          
+
+            user_parts.append(fmt.format(text))
+
+        user_part = "".join(user_parts)
+        return system_prompt, user_part, history
+
+    def _eval_text(self, v: Any) -> str:
+        if v is None:
+            return ""
+        if callable(v):
+            v = v()
+
+        if isinstance(v, list):
+            out_parts: list[str] = []
+            for item in v:
+                if isinstance(item, dict) and "text" in item:
+                    out_parts.append(str(item.get("text") or ""))
+                else:
+                    out_parts.append(str(item or ""))
+            return "\n\n".join([p for p in out_parts if (p or "").strip()])
+
+        return str(v or "")
+
+    def _build_manual_prompt_and_trace(
+        self,
+        *,
+        state: PipelineState,
+        prompt_format: str,
+        system_prompt: str,
+        user_part: str,
+        history: list[Any],
+    ) -> str:
+        rendered_prompt = self._build_manual_prompt(
+            prompt_format=prompt_format,
+            system_prompt=system_prompt,
+            user_part=user_part,
+            history=history,
+        )
+        setattr(state, _TRACE_RENDERED_PROMPT_ATTR, rendered_prompt)
+        return rendered_prompt
+
+    def _build_manual_prompt(
+        self,
+        *,
+        prompt_format: str,
+        system_prompt: str,
+        user_part: str,
+        history: list[Any],
+    ) -> str:
+        """
+        Builds the final manual prompt string (e.g. CodeLlama [INST] format).
+
+        Builder selection is delegated to the prompt_builder factory.
+        Unknown prompt_format must fail-fast in the factory (English error message).
+        """
+
+        # Strict validation: history must be list[tuple[str,str]] (or empty).
+        hist_pairs: Optional[list[tuple[str, str]]] = None
+        if history:
+            if not isinstance(history, list):
+                raise ValueError("call_model: history must be a list")
+            for i, item in enumerate(history):
+                if not (isinstance(item, tuple) and len(item) == 2 and all(isinstance(x, str) for x in item)):
+                    raise ValueError(f"call_model: history[{i}] must be tuple[str,str]")
+            hist_pairs = history  # type: ignore[assignment]
+
+        builder = get_prompt_builder_by_prompt_format(prompt_format)
+        return builder.build_prompt(
+            modelFormatedText=user_part,
+            history=hist_pairs,
+            system_prompt=system_prompt,
+        )
+
+    def ask_chat_mode_llm(
+        self,
+        *,
+        state: PipelineState,
+        model: Any,
+        system_prompt: str,
+        user_part: str,
+        history: list[Any],
+        model_kwargs: Dict[str, Any],
+    ) -> str:
+        ask_chat = getattr(model, "ask_chat", None)
+       
+        if not callable(ask_chat):
+            raise ValueError("call_model: native_chat=true requires model.ask_chat(...)")
+
+                # Strict validation: history must be list[tuple[str,str]] (or empty).
+        hist_pairs: Optional[list[tuple[str, str]]] = None
+        if history:
+            if not isinstance(history, list):
+                raise ValueError("call_model: history must be a list")
+            for i, item in enumerate(history):
+                if not (isinstance(item, tuple) and len(item) == 2 and all(isinstance(x, str) for x in item)):
+                    raise ValueError(f"call_model: history[{i}] must be tuple[str,str]")
+            hist_pairs = history  # type: ignore[assignment]
+
+        # Build exact chat payload for tracing (equivalent to rendered_prompt in manual mode).
+        messages: list[dict[str, str]] = [{"role": "system", "content": system_prompt}]
+        if hist_pairs:
+            for u, a in hist_pairs:
+                messages.append({"role": "user", "content": u})
+                messages.append({"role": "assistant", "content": a})
+        messages.append({"role": "user", "content": user_part})
+
+        setattr(state, _TRACE_RENDERED_CHAT_MESSAGES_ATTR, messages)
+
+
+        return str(
+            ask_chat(
+                prompt=user_part,
+                history=hist_pairs,
+                system_prompt=system_prompt,
+                **model_kwargs,
+            )
+            or ""
+        )
+
+    def ask_manual_prompt_llm(
+        self,
+        *,
+        model: Any,
+        rendered_prompt: str,
+        model_kwargs: Dict[str, Any],
+    ) -> str:
+        ask = getattr(model, "ask", None)
+        if not callable(ask):
+            raise ValueError("call_model: model.ask(...) is required")
+
+        return str(
+            ask(
+                prompt=rendered_prompt,
+                system_prompt=None,
+                **model_kwargs,
+            )
+            or ""
+        )
