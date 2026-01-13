@@ -14,6 +14,7 @@ from .base_action import PipelineActionBase
 
 from prompt_builder.factory import get_prompt_builder_by_prompt_format
 from ..utils.step_overrides import get_override, opt_float, opt_int
+import inspect
 
 _TRACE_PROMPT_NAME_ATTR = "_pipeline_trace_prompt_name"
 _TRACE_RENDERED_PROMPT_ATTR = "_pipeline_trace_rendered_prompt"

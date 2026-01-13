@@ -6,7 +6,7 @@ from code_query_engine.pipeline.engine import PipelineEngine, PipelineRuntime
 from code_query_engine.pipeline.loader import PipelineLoader
 from code_query_engine.pipeline.state import PipelineState
 from code_query_engine.pipeline.validator import PipelineValidator
-from code_query_engine.pipeline.providers.fakes import FakeModelClient, FakeRetriever
+from code_query_engine.pipeline.providers.fakes import FakeRetriever
 from code_query_engine.pipeline.providers.retrieval import RetrievalDispatcher
 
 
@@ -40,37 +40,55 @@ class DummyLogger:
 
 
 def test_pipeline_router_bm25_fetch_then_answer(tmp_path):
+    # Test-only prompts dir (do NOT use production prompts/)
+    prompts_dir = tmp_path / "prompts"
+    prompts_dir.mkdir(parents=True, exist_ok=True)
+
+    # call_model loads <prompts_dir>/<prompt_key>.txt
+    (prompts_dir / "rejewski_router_v1.txt").write_text("SYS ROUTER\n", encoding="utf-8")
+    (prompts_dir / "rejewski_answer_v1.txt").write_text("SYS ANSWER\n", encoding="utf-8")
+
     yaml_path = tmp_path / "pipe.yaml"
     yaml_path.write_text(
         textwrap.dedent(
-            """
+            f"""
             YAMLpipeline:
               name: e2e
 
               settings:
                 entry_step_id: call_router
                 top_k: 2
+                prompts_dir: "{str(prompts_dir)}"
 
               steps:
                 - id: call_router
                   action: call_model
                   prompt_key: "rejewski_router_v1"
+                  user_parts:
+                    user_question:
+                      source: user_query
+                      template: "### User:\\n{{}}\\n"
                   next: handle_router
 
                 - id: handle_router
                   action: prefix_router
-                  bm25_prefix: "[BM25:]"
-                  semantic_prefix: "[SEMANTIC:]"
-                  hybrid_prefix: "[HYBRID:]"
-                  semantic_rerank_prefix: "[SEMANTIC_RERANK:]"
-                  direct_prefix: "[DIRECT:]"
-                  on_bm25: fetch
-                  on_semantic: fetch
-                  on_hybrid: fetch
-                  on_semantic_rerank: fetch
-                  on_direct: finalize
+                  routes:
+                    bm25:
+                      prefix: "[BM25:]"
+                      next: fetch
+                    semantic:
+                      prefix: "[SEMANTIC:]"
+                      next: fetch
+                    hybrid:
+                      prefix: "[HYBRID:]"
+                      next: fetch
+                    semantic_rerank:
+                      prefix: "[SEMANTIC_RERANK:]"
+                      next: fetch
+                    direct:
+                      prefix: "[DIRECT:]"
+                      next: finalize
                   on_other: finalize
-                  next: finalize
 
                 - id: fetch
                   action: fetch_more_context
@@ -79,13 +97,24 @@ def test_pipeline_router_bm25_fetch_then_answer(tmp_path):
                 - id: call_answer
                   action: call_model
                   prompt_key: "rejewski_answer_v1"
+                  user_parts:
+                    evidence:
+                      source: context_blocks
+                      template: "### Evidence:\\n{{}}\\n"
+                    user_question:
+                      source: user_query
+                      template: "### User:\\n{{}}\\n"
                   next: handle_answer
 
                 - id: handle_answer
                   action: prefix_router
-                  answer_prefix: "[Answer:]"
-                  followup_prefix: "[Requesting data on:]"
-                  on_answer: finalize
+                  routes:
+                    answer:
+                      prefix: "[Answer:]"
+                      next: finalize
+                    followup:
+                      prefix: "[Requesting data on:]"
+                      next: finalize
                   on_other: finalize
 
                 - id: finalize
@@ -100,15 +129,22 @@ def test_pipeline_router_bm25_fetch_then_answer(tmp_path):
     pipe = loader.load_from_path(str(yaml_path))
     PipelineValidator().validate(pipe)
 
-    model = FakeModelClient(
-    outputs_by_consultant={
-        "rejewski": [
+    # Minimal model stub compatible with current call_model implementation
+    class _PromptModel:
+        def __init__(self, outputs):
+            self._outputs = list(outputs)
+            self.calls = []
+
+        def ask(self, *, prompt: str, system_prompt=None, **kwargs):
+            self.calls.append({"prompt": prompt, "system_prompt": system_prompt, "kwargs": kwargs})
+            return self._outputs.pop(0) if self._outputs else ""
+
+    model = _PromptModel(
+        outputs=[
             "[BM25:] CS | Program.cs Main entry point",
             "[Answer:] The entry point is Program.Main",
-        ],
-    }
+        ]
     )
-
 
     retr = FakeRetriever(
         results=[
@@ -116,7 +152,7 @@ def test_pipeline_router_bm25_fetch_then_answer(tmp_path):
         ]
     )
 
-    dispatcher = RetrievalDispatcher(semantic=retr, bm25=retr, semantic_rerank=retr)
+    dispatcher = RetrievalDispatcher(bm25=retr)
 
     rt = PipelineRuntime(
         pipeline_settings=pipe.settings,
@@ -128,8 +164,8 @@ def test_pipeline_router_bm25_fetch_then_answer(tmp_path):
         logger=DummyLogger(),
         constants=constants,
         retrieval_dispatcher=dispatcher,
-        bm25_searcher=retr,
-        semantic_rerank_searcher=retr,
+        bm25_searcher=None,
+        semantic_rerank_searcher=None,
         graph_provider=None,
         token_counter=None,
         add_plant_link=lambda x: x,
@@ -144,6 +180,10 @@ def test_pipeline_router_bm25_fetch_then_answer(tmp_path):
         translate_chat=False,
     )
 
+    # fetch_more_context requires state.search_type to be set (current contract)
+    state.search_type = "bm25"
+
     out = engine.run(pipe, state, rt)
+
     assert out.answer_en is not None
     assert "Program.Main" in out.answer_en

@@ -85,6 +85,8 @@ def test_fetch_more_context_sets_retrieval_seed_nodes_from_ids(tmp_path: Path) -
     state.retrieval_query = "what"
     state.context_blocks = []
 
+    state.search_type = "semantic"
+
     action.execute(step, state, runtime)
 
     assert state.retrieval_seed_nodes == ["A", "B"]

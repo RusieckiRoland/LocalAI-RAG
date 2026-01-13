@@ -6,7 +6,7 @@ from code_query_engine.pipeline.engine import PipelineEngine, PipelineRuntime
 from code_query_engine.pipeline.loader import PipelineLoader
 from code_query_engine.pipeline.state import PipelineState
 from code_query_engine.pipeline.validator import PipelineValidator
-from code_query_engine.pipeline.providers.fakes import FakeModelClient, FakeRetriever
+from code_query_engine.pipeline.providers.fakes import FakeRetriever
 from code_query_engine.pipeline.providers.retrieval import RetrievalDispatcher
 
 
@@ -37,19 +37,31 @@ class DummyLogger:
 
 
 def test_engine_smoke_runs_to_end(tmp_path):
+    # Arrange: local prompts dir (test-only, no production I/O)
+    prompts_dir = tmp_path / "prompts"
+    prompts_dir.mkdir(parents=True, exist_ok=True)
+
+    # call_model loads <prompts_dir>/<prompt_key>.txt
+    (prompts_dir / "rejewski_router_v1.txt").write_text("SYS\n", encoding="utf-8")
+
     yaml_path = tmp_path / "pipe.yaml"
     yaml_path.write_text(
-        """
+        f"""
 YAMLpipeline:
   name: smoke
 
   settings:
     entry_step_id: call_model
+    prompts_dir: "{str(prompts_dir)}"
 
   steps:
     - id: call_model
       action: call_model
       prompt_key: "rejewski_router_v1"
+      user_parts:
+        user_question:
+          source: user_query
+          template: "Q:{{}}\\n"
       next: finalize
 
     - id: finalize
@@ -63,7 +75,20 @@ YAMLpipeline:
     pipe = loader.load_from_path(str(yaml_path))
     PipelineValidator().validate(pipe)
 
-    model = FakeModelClient(outputs=["[DIRECT:]"])
+    # call_model currently calls model.ask(prompt=..., system_prompt=None, **model_kwargs)
+    # and does NOT pass consultant. Keep the stub permissive but still capture arguments.
+    class _PromptModel:
+        def __init__(self, outputs):
+            self._outputs = list(outputs)
+            self.calls = []
+
+        def ask(self, *, prompt: str, system_prompt=None, consultant: str = "", **kwargs):
+            self.calls.append(
+                {"prompt": prompt, "consultant": consultant, "system_prompt": system_prompt, "kwargs": kwargs}
+            )
+            return self._outputs.pop(0) if self._outputs else ""
+
+    model = _PromptModel(outputs=["[DIRECT:]"])
     dispatcher = RetrievalDispatcher(semantic=FakeRetriever(results=[]))
 
     rt = PipelineRuntime(
@@ -91,5 +116,9 @@ YAMLpipeline:
         branch="develop",
         translate_chat=False,
     )
+
     out = engine.run(pipe, state, rt)
     assert out.steps_used >= 1
+    assert len(model.calls) == 1
+    assert isinstance(model.calls[0]["prompt"], str)
+    assert model.calls[0]["prompt"] != ""

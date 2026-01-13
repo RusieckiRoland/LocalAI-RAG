@@ -1,3 +1,5 @@
+# tests/pipeline/test_handle_prefix_scope_parsing.py
+
 import pytest
 
 from code_query_engine.pipeline.actions.prefix_router import PrefixRouterAction
@@ -10,24 +12,21 @@ class DummyRuntime:
 
 
 def _make_step() -> StepDef:
-    # Strict contract: every <kind>_prefix must have matching on_<kind>,
-    # and on_other must exist (no implicit fallbacks).
+    # New strict contract: step must define non-empty 'routes' dict,
+    # and must define 'on_other' (no implicit fallback to "next").
     return StepDef(
         id="handle_router_prefix",
         action="prefix_router",
         raw={
             "id": "handle_router_prefix",
             "action": "prefix_router",
-            "semantic_prefix": "[SEMANTIC:]",
-            "bm25_prefix": "[BM25:]",
-            "hybrid_prefix": "[HYBRID:]",
-            "semantic_rerank_prefix": "[SEMANTIC_RERANK:]",
-            "direct_prefix": "[DIRECT:]",
-            "on_semantic": "next_sem",
-            "on_bm25": "next_bm25",
-            "on_hybrid": "next_hyb",
-            "on_semantic_rerank": "next_sr",
-            "on_direct": "next_direct",
+            "routes": {
+                "semantic": {"prefix": "[SEMANTIC:]", "next": "next_sem"},
+                "bm25": {"prefix": "[BM25:]", "next": "next_bm25"},
+                "hybrid": {"prefix": "[HYBRID:]", "next": "next_hyb"},
+                "semantic_rerank": {"prefix": "[SEMANTIC_RERANK:]", "next": "next_sr"},
+                "direct": {"prefix": "[DIRECT:]", "next": "next_direct"},
+            },
             "on_other": "next_other",
         },
     )

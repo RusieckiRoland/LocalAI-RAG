@@ -5,7 +5,8 @@ YAMLpipeline:
     test: true
     entry_step_id: translate_in
     top_k: 3
-
+    prompts_dir: "tests/e2e/data/prompts"
+    
   steps:
     - id: translate_in
       action: translate_in_if_needed

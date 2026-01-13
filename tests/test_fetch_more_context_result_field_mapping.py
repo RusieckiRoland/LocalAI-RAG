@@ -83,6 +83,8 @@ def test_fetch_more_context_accepts_File_Content_keys_and_line_range():
     state.retrieval_mode = "semantic"
     state.retrieval_query = "query"
 
+    state.search_type = "semantic"
+
     FetchMoreContextAction().execute(step, state, rt)
 
     assert len(state.context_blocks) == 1

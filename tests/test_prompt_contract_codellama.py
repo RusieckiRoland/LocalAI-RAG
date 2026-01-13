@@ -2,6 +2,14 @@ import pytest
 
 from prompt_builder.codellama import CodellamaPromptBuilder
 
+def _pairs_to_dialog(pairs):
+    dialog = []
+    for u, a in pairs:
+        dialog.append({"role": "user", "content": u})
+        dialog.append({"role": "assistant", "content": a})
+    return dialog
+
+
 
 def _compose_model_formatted_text(*, context: str, question: str) -> str:
     ctx = context.strip() if str(context or "").strip() else "(none)"
@@ -75,9 +83,10 @@ def test_codellama_prompt_contract_variants(context, history_pairs, question, ex
 
     prompt = b.build_prompt(
         modelFormatedText=model_formatted_text,
-        history=history_pairs,
+        history=_pairs_to_dialog(history_pairs),
         system_prompt="SYS",
-    )
+)
+
 
     assert prompt == expected
 

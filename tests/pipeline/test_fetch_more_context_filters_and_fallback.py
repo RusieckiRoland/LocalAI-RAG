@@ -75,6 +75,8 @@ def test_fetch_more_context_merges_branch_and_repo_filters():
     state.retrieval_query = "Main entry point"
     state.retrieval_filters = {"data_type": "regular_code"}
 
+    state.search_type = "bm25"
+
     FetchMoreContextAction().execute(step, state, rt)
 
     assert retr.calls
@@ -119,5 +121,7 @@ def test_fetch_more_context_returns_gracefully_when_missing_dispatcher():
     state.retrieval_mode = "semantic"
     state.retrieval_query = "something"
 
+    state.search_type = "semantic"
+    
     # Should not throw
     FetchMoreContextAction().execute(step, state, rt)

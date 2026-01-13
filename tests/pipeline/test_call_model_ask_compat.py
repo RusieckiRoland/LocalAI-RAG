@@ -1,5 +1,8 @@
+# tests/pipeline/test_call_model_ask_compat.py
+
 import pytest
 
+from code_query_engine.pipeline.actions.call_model import CallModelAction
 from code_query_engine.pipeline.actions import call_model as cm
 
 
@@ -14,12 +17,11 @@ class KeywordOnlyPromptModel:
         self,
         *,
         prompt: str,
-        consultant: str,
         system_prompt=None,
         max_tokens=None,
         temperature=None,
     ) -> str:
-        self.calls.append({"prompt": prompt, "consultant": consultant})
+        self.calls.append({"prompt": prompt})
         return "OK_PROMPT"
 
 
@@ -37,16 +39,17 @@ class KeywordOnlyContextQuestionModel:
         max_tokens=None,
         temperature=None,
     ) -> str:
+        # This signature is no longer supported by CallModelAction.ask_manual_prompt_llm,
+        # which always calls model.ask(prompt=...).
         self.calls.append({"context": context, "question": question, "consultant": consultant})
         return "OK_CTXQ"
 
 
-def test_call_model_compat_uses_keywords_when_signature_introspection_fails_prompt(monkeypatch: pytest.MonkeyPatch):
+def test_call_model_manual_prompt_uses_keywords_even_if_signature_introspection_fails(monkeypatch: pytest.MonkeyPatch):
     """
-    Regression test:
-    If inspect.signature() fails (e.g., some callables / wrappers),
-    _call_model_ask_with_compat must NOT fall back to positional calls
-    for a keyword-only model.
+    Regression test (new contract):
+    Even if inspect.signature() is unavailable, manual prompt calls must still work
+    for a keyword-only prompt model, because we call model.ask(prompt=...) using keywords.
     """
     m = KeywordOnlyPromptModel()
 
@@ -55,40 +58,22 @@ def test_call_model_compat_uses_keywords_when_signature_introspection_fails_prom
 
     monkeypatch.setattr(cm.inspect, "signature", _boom)
 
-    out = cm._call_model_ask_with_compat(
-        m,
-        prompt="P",
-        context="C",
-        question="Q",
-        consultant="router_v1",
-        system_prompt="",
-    )
+    action = CallModelAction()
+    out = action.ask_manual_prompt_llm(model=m, rendered_prompt="P", model_kwargs={})
 
     assert out == "OK_PROMPT"
-    assert m.calls == [{"prompt": "P", "consultant": "router_v1"}]
+    assert m.calls == [{"prompt": "P"}]
 
 
-def test_call_model_compat_uses_keywords_when_signature_introspection_fails_context_question(monkeypatch: pytest.MonkeyPatch):
+def test_call_model_manual_prompt_rejects_context_question_signature(monkeypatch: pytest.MonkeyPatch):
     """
-    Same as above, but for the alternate keyword-only signature:
-      ask(context=..., question=..., consultant=...)
+    New strict behavior:
+    Models that only support ask(context=..., question=...) are NOT compatible with manual prompt mode,
+    because the action calls model.ask(prompt=...).
     """
     m = KeywordOnlyContextQuestionModel()
 
-    def _boom(_obj):
-        raise RuntimeError("signature introspection disabled")
+    action = CallModelAction()
 
-    monkeypatch.setattr(cm.inspect, "signature", _boom)
-
-    out = cm._call_model_ask_with_compat(
-    m,
-    prompt="P",
-    context="C",
-    question="Q",
-    consultant="router_v1",
-    system_prompt="",
-)
-
-
-    assert out == "OK_CTXQ"
-    assert m.calls == [{"context": "C", "question": "Q", "consultant": "router_v1"}]
+    with pytest.raises(TypeError):
+        action.ask_manual_prompt_llm(model=m, rendered_prompt="P", model_kwargs={})
