@@ -55,7 +55,7 @@ def test_codellama_builder_escapes_template_control_tokens_in_context_and_questi
 
     prompt = builder.build_prompt(
         modelFormatedText=model_formatted_text,
-        history=None,
+        history=[],
         system_prompt="SYSTEM PROMPT",
     )
 
@@ -75,7 +75,7 @@ def test_codellama_builder_keeps_single_sys_block_structure(builder: CodellamaPr
 
     prompt = builder.build_prompt(
         modelFormatedText=model_formatted_text,
-        history=None,
+        history=[],
         system_prompt="SYSTEM PROMPT",
     )
 

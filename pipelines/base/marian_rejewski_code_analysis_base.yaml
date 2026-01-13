@@ -54,34 +54,42 @@ YAMLpipeline:
     - id: call_model_router
       action: call_model
       native_chat: true
+      use_history: true
       prompt_key: "rejewski/router_v1"
-      inputs:
-        question: user_question_en
-      prefixes: 
-        question: "### User:\n{}\n\n"
+      user_parts:
+        user_question:
+          source: user_question_en
+          template: "### User:\n{}\n\n"
       next: handle_router_prefix
 
     - id: handle_router_prefix
       action: prefix_router
-      semantic_prefix: "[SEMANTIC:]"
-      bm25_prefix: "[BM25:]"
-      hybrid_prefix: "[HYBRID:]"
-      semantic_rerank_prefix: "[SEMANTIC_RERANK:]"
-      direct_prefix: "[DIRECT:]"
-      on_semantic: fetch_more_context
-      on_bm25: fetch_more_context
-      on_hybrid: fetch_more_context
-      on_semantic_rerank: fetch_more_context
-      on_direct: call_model_answer
+      routes:
+        semantic:
+          prefix: "[SEMANTIC:]"
+          next: fetch_semantic
+        bm25:
+          prefix: "[BM25:]"
+          next: fetch_bm25
+        direct:
+          prefix: "[DIRECT:]"
+          next: call_model_answer
       on_other: call_model_answer
 
-    - id: fetch_more_context
+    - id: fetch_semantic
+      search_type: semantic
+      action: fetch_more_context
+      query_parser: JsonishQueryParser
+      next: expand_dependency_tree
+
+    - id: fetch_bm25
+      search_type: bm25
       action: fetch_more_context
       query_parser: JsonishQueryParser
       next: expand_dependency_tree
 
     - id: expand_dependency_tree
-      action: expand_dependency_tree      
+      action: expand_dependency_tree
       active_index_from_settings: true
       max_depth_from_settings: "graph_max_depth"
       max_nodes_from_settings: "graph_max_nodes"
@@ -103,37 +111,43 @@ YAMLpipeline:
     - id: call_model_summarize_context
       action: call_model
       prompt_key: "rejewski/context_summarizer_v1"
-      inputs:
-       evidence: context_blocks
-       user_question: user_question_en
-      prefixes:
-       evidence: "### Evidence:\n{}\n\n"
-       user_question: "### User:\n{}\n\n"
+      user_parts:
+        evidence:
+          source: context_blocks
+          template: "### Evidence:\n{}\n\n"
+        user_question:
+          source: user_question_en
+          template: "### User:\n{}\n\n"
       next: call_model_answer
-    
 
     - id: call_model_answer
       action: call_model
+      use_history: true
       prompt_key: "rejewski/answer_v1"
-      inputs:       
-       evidence: context_blocks 
-       user_question: user_question_en
-      prefixes:       
-       evidence: "### Evidence:\n{}\n\n"
-       user_question: "### User:\n{}\n\n"
+      user_parts:
+        evidence:
+          source: context_blocks
+          template: "### Evidence:\n{}\n\n"
+        user_question:
+          source: user_question_en
+          template: "### User:\n{}\n\n"
+      next: handle_answer_prefix
 
     - id: handle_answer_prefix
       action: prefix_router
-      answer_prefix: "[Answer:]"
-      followup_prefix: "[Requesting data on:]"
-      on_answer: finalize
-      on_followup: loop_guard
+      routes:
+        answer:
+          prefix: "[Answer:]"
+          next: finalize
+        followup:
+          prefix: "[Requesting data on:]"
+          next: loop_guard
       on_other: finalize
 
     - id: loop_guard
       action: loop_guard
       max_turn_loops_from_settings: "max_turn_loops"
-      on_allow: fetch_more_context
+      on_allow: call_model_router
       on_deny: finalize
 
     - id: finalize

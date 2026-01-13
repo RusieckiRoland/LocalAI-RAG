@@ -1,27 +1,27 @@
 # `call_model` (EN)
 
 ## Purpose
-`call_model` is the **main action of the entire pipeline** — it **invokes the LLM**.
+`call_model` is a pipeline action that **invokes the LLM**.
 
-After the model call, the output is stored in:
-- `state.last_model_response`
+After the model call:
+- the model output text is stored in `state.last_model_response`.
 
-The step returns `next` (when configured in YAML) so the pipeline can continue.
+If the YAML step defines `next`, the pipeline **continues to the step specified by `next`**.
 
 ---
 
 ## `prompt_key` and prompt files
-`prompt_key` points to a text file containing the **system prompt**.
+`prompt_key` points to a text file that contains the **system prompt**.
 
 The action loads the system prompt from:
 - `prompts_dir/<prompt_key>.txt`
 
 Example:
 - `prompts_dir = "prompts"`
-- `prompt_key = "rejewski/context_summarizer_v1"`
+- `prompt_key = "rejewski/context_summarizer_v1"`  
 → file: `prompts/rejewski/context_summarizer_v1.txt`
 
-`prompt_key` may include folders (e.g. `e2e/router_v1`). The `.txt` extension is appended automatically.
+`prompt_key` may include **subfolders** (e.g. `e2e/router_v1`). The `.txt` extension is appended automatically.
 
 Missing file → **fail-fast**:
 - `ValueError: call_model: system prompt file not found: ...`
@@ -30,74 +30,78 @@ Missing file → **fail-fast**:
 
 ## Two model invocation modes
 
-### 1) `native_chat: true` (native chat mode)
-In this mode, **the library formats chat messages** (chat/messages). The pipeline provides:
-- the user message content (it may include a `### Evidence:` section — i.e. retrieval context),
-- the system prompt (from `prompt_key`),
-- optional conversation history.
+### 1) `native_chat: true` (chat/messages mode)
+In this mode, **the model client/library formats chat messages**. The pipeline provides:
+- the system prompt (from the file referenced by `prompt_key`),
+- the user message content assembled from `user_parts`,
+- optional conversation history (when `use_history: true`).
 
-In this mode the action calls: `model.ask_chat(...)` (the model must implement it).
+In this mode the action calls: `model.ask_chat(...)` (the model client must implement it).
 
 Conceptually, the model receives:
 - `system_prompt` → `system` role
-- `user_part` → `user` role (assembled from `inputs/prefixes`)
-- `history` → prior turns (optional; only when `use_history: true`)
+- `user_part` → `user` role (assembled from `user_parts`)
+- `history` → earlier messages (only when `use_history: true`)
 
 ### 2) Manual mode (`native_chat` omitted or `false`)
-In this mode, the pipeline **builds the full prompt string** (e.g. `[INST] ...`) and calls `model.ask(prompt=...)`.
+In this mode, the pipeline **builds a final prompt string** (e.g. `[INST] ...`) and calls `model.ask(prompt=...)`.
 
 Manual prompt building is controlled by:
 - `prompt_format`
 
-Currently implemented manual prompt format:
+Currently implemented format:
 - `codellama_inst_7_34` (CodeLlama Instruct 7B/34B)
 
 Builder selection is delegated to:
 - `get_prompt_builder_by_prompt_format(prompt_format)`
 
-If there is no implementation for the selected `prompt_format` → **fail-fast** in the factory (English error message).
+Unknown `prompt_format` → **fail-fast** in the factory (English error message).
 
 ---
 
 ## `use_history` — when history is included
 History is **not included automatically**.
 
-To include history in the call:
+To include history:
 - set `use_history: true`
 
-Then `call_model` will read history from the prepared `state` field (history formatting is an internal responsibility of the application) and pass it as the `history` argument to either native chat mode or the manual builder.
+Then `call_model` reads history from `state.history_dialog` and passes it to:
+- `model.ask_chat(...)` (when `native_chat: true`), or
+- the prompt builder (manual mode).
 
 ---
 
-## `inputs` + `prefixes` — how user content (`user_part`) is assembled
-`call_model` is YAML-driven: `inputs` and `prefixes` define **what to read from state** and **how to wrap it**.
+## `user_parts` — how user content (`user_part`) is assembled
+`call_model` is YAML-driven: `user_parts` defines:
+- where to read data from `state`,
+- how to wrap it (a template with `{}`).
 
 In YAML you define:
-- `inputs`: part name → `state` attribute/method name
-- `prefixes`: same part name → format string containing `{}`
+- `user_parts.<name>.source` — a `state` attribute/method name (if it’s a method, it will be called),
+- `user_parts.<name>.template` — a format string that contains `{}`.
 
 Fail-fast rules:
-1) `inputs` must be a non-empty dict
-2) `prefixes` must be a non-empty dict
-3) `inputs` keys must match `prefixes` keys exactly
-4) every prefix must contain `{}`
-5) `inputs[key]` must point to a `state` attribute/method; if it’s a method, it will be called.
+1) `user_parts` must exist and must not be empty,
+2) each `template` must contain `{}`,
+3) each `source` must be a non-empty string and must reference an existing `state` attribute/method.
 
 Result:
-- each part becomes: `prefix.format(text)`
-- the final `user_part` is a concatenation of all parts (in the order of `inputs` keys).
+- each `user_parts.<name>` becomes: `template.format(text)`,
+- `user_part` is the concatenation of all parts in the order defined in YAML.
 
 ### Example (context summarization)
 ```yaml
 - id: call_model_summarize_context
   action: call_model
   prompt_key: "rejewski/context_summarizer_v1"
-  inputs:
-    evidence: context_blocks
-    user_question: user_question_en
-  prefixes:
-    evidence: "### Evidence:\n{}\n\n"
-    user_question: "### User:\n{}\n\n"
+  use_history: true
+  user_parts:
+    evidence:
+      source: context_blocks
+      template: "### Evidence:\n{}\n\n"
+    user_question:
+      source: user_question_en
+      template: "### User:\n{}\n\n"
   next: call_model_answer
 ```
 
@@ -106,7 +110,9 @@ Meaning:
 - `user_part`:
   - `evidence` ← `state.context_blocks` wrapped as `### Evidence:`
   - `user_question` ← `state.user_question_en` wrapped as `### User:`
+- history (because `use_history: true`) ← `state.history_dialog`
 - model output → `state.last_model_response`
+- after the step completes, the pipeline continues to `next: call_model_answer`
 
 ---
 
@@ -141,7 +147,7 @@ RAG_PIPELINE_TRACE_DIR=log/pipeline_traces
 
 In the trace you will see:
 - manual mode: `rendered_prompt`
-- native chat mode: `rendered_chat_messages` (messages payload)
+- `native_chat: true` mode: `rendered_chat_messages` (messages payload)
 
 For convenient viewing in VS Code, use:
 - https://github.com/RusieckiRoland/rag-debug-toolkit.git
@@ -149,17 +155,19 @@ For convenient viewing in VS Code, use:
 ---
 
 ## Working with `PrefixRouterAction` (routing by response prefix)
-`call_model` is often used together with `PrefixRouterAction`.
+A very common pipeline pattern is:
 
-A typical pattern:
 1) `call_model` invokes the model and stores the output in `state.last_model_response`.
-2) `PrefixRouterAction` inspects the beginning of the response (a prefix) and selects the next pipeline step accordingly.
+2) The next pipeline step is `PrefixRouterAction`, which reads `state.last_model_response`, matches a prefix, and selects the next path.
 
 Examples:
-- A router LLM returns: `[DIRECT:]` / `[BM25:] {...}` / `[SEMANTIC:] {...}` → `PrefixRouterAction` routes into the proper retrieval mode or into the direct answer path.
-- The model returns: `[Answer:] ...` or `[Requesting data on:] ...` → `PrefixRouterAction` decides whether to finish (`finalize`) or to perform another loop (follow-up / loop guard).
+- Model returns: `[DIRECT:] ...`, `[BM25:] ...`, `[SEMANTIC:] ...` → `PrefixRouterAction` routes the pipeline to the corresponding step.
+- Model returns: `[Answer:] ...` or `[Requesting data on:] ...` → `PrefixRouterAction` decides whether to finish (`finalize`) or to enter a loop (follow-up / loop guard).
 
-This pattern lets you use `call_model` either as a “decision” step (router) or as a “final” step (answer), depending on the selected prompt (`prompt_key`) and the prefixes configured in `PrefixRouterAction`.
+In this setup:
+- `call_model` always **produces an output** and writes it into `state.last_model_response`,
+- the execution path choice is made by the **next step** (e.g. `PrefixRouterAction`).
+
 ---
 
 ## Security (important)

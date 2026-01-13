@@ -4,6 +4,8 @@ from __future__ import annotations
 import os
 from typing import Optional, Sequence, Tuple
 
+from code_query_engine.chat_types import Dialog
+
 from .base import BasePromptBuilder, PromptRenderer
 from .codellama import CodellamaPromptBuilder
 from .deepseek import DeepSeekPromptBuilder
@@ -85,7 +87,7 @@ class FileProfilePromptRenderer(PromptRenderer):
         *,
         profile: str,
         modelFormatedText: str,
-        history: Optional[Sequence[Tuple[str, str]]] = None,
+        history: Dialog
     ) -> str:
         profile_text = self._try_load_profile_text(profile) or ""
 

@@ -85,9 +85,7 @@ class PipelineRuntime:
         self.graph_provider = graph_provider
         self.token_counter = token_counter
         self.add_plant_link = add_plant_link or (lambda x: x)
-
-        # Useful debug
-        self.last_model_output: Optional[str] = None
+        
 
     def get_retrieval_dispatcher(self) -> RetrievalDispatcher:
         if self.retrieval_dispatcher is not None:

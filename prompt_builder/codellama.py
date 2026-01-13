@@ -4,6 +4,7 @@ from __future__ import annotations
 from typing import Optional, Sequence, Tuple, Any, List
 
 from .base import BasePromptBuilder
+from code_query_engine.chat_types import Dialog
 
 
 class CodellamaPromptBuilder(BasePromptBuilder):
@@ -76,12 +77,55 @@ class CodellamaPromptBuilder(BasePromptBuilder):
     def build_prompt(
         self,
         modelFormatedText: str,
-        history: Optional[Sequence[Tuple[str, str]]] = None,
+        history: Dialog,
         system_prompt: Optional[str] = None,
     ) -> str:
         # Normalize inputs early (prevents '<bound method ...>' in prompt).
         modelFormatedText = self._eval_text(modelFormatedText)
-        hist = self._normalize_history(history)
+
+        # Convert Dialog (list[{"role","content"}]) into list[tuple[user, assistant]].
+        hist_pairs: List[Tuple[str, str]] = []
+        if history:
+            if not isinstance(history, list):
+                raise ValueError("build_prompt: history must be a Dialog (list of {role, content})")
+
+            pending_user: Optional[str] = None
+
+            for i, msg in enumerate(history):
+                if not isinstance(msg, dict):
+                    raise ValueError(f"build_prompt: history[{i}] must be a dict with keys: role, content")
+
+                role = str(msg.get("role") or "").strip()
+                content = str(self._eval_text(msg.get("content")) or "").strip()
+                if not content:
+                    continue
+
+                if role == "system":
+                    # system_prompt is provided separately -> ignore system messages from history
+                    continue
+
+                if role == "user":
+                    if pending_user is not None:
+                        raise ValueError("build_prompt: invalid Dialog history (two consecutive 'user' messages)")
+                    pending_user = content
+                    continue
+
+                if role == "assistant":
+                    if pending_user is None:
+                        raise ValueError("build_prompt: invalid Dialog history ('assistant' without preceding 'user')")
+                    hist_pairs.append((pending_user, content))
+                    pending_user = None
+                    continue
+
+                raise ValueError(
+                    f"build_prompt: history[{i}].role must be 'system'|'user'|'assistant', got: {role!r}"
+                )
+
+            if pending_user is not None:
+                raise ValueError(
+                    "build_prompt: invalid Dialog history (ends with 'user'). "
+                    "Pass the current user message via modelFormatedText, not in history."
+                )
 
         # SYSTEM is repository-controlled -> insert as-is (no escaping).
         sp = str(system_prompt or "").strip()
@@ -96,21 +140,19 @@ class CodellamaPromptBuilder(BasePromptBuilder):
         # If we have history, system goes into the first user turn (matches producer template).
         system_attached = False
 
-        for i, (u_raw, a_raw) in enumerate(hist):
+        for i, (u_raw, a_raw) in enumerate(hist_pairs):
             u = u_raw.strip()
             a = a_raw.strip()
 
             safe_u = self._escape_braces(self._escape_control_tokens(u))
             if not system_attached:
                 safe_u = _attach_system_if_needed(safe_u, need_system=True)
-                system_attached = True            
-           
+                system_attached = True
+
             safe_a = self._escape_braces(self._escape_control_tokens(a))
 
             # History turns are complete: <s>[INST] user [/INST] assistant </s>
-            parts.append(
-                f"{self.BOS}{self.B_INST} {safe_u} {self.E_INST} {safe_a} {self.EOS}"
-            )
+            parts.append(f"{self.BOS}{self.B_INST} {safe_u} {self.E_INST} {safe_a} {self.EOS}")
 
         # Final/current user message:
         final_user = modelFormatedText.strip()
@@ -118,9 +160,10 @@ class CodellamaPromptBuilder(BasePromptBuilder):
         # If there was no history, attach SYSTEM to the current message.
         safe_final = self._escape_braces(self._escape_control_tokens(final_user))
         if not system_attached:
-            safe_final = _attach_system_if_needed(safe_final, need_system=True)        
+            safe_final = _attach_system_if_needed(safe_final, need_system=True)
 
         # The last message must be from user, without closing </s>, so the model generates the assistant.
         parts.append(f"{self.BOS}{self.B_INST}\n{safe_final}\n{self.E_INST}")
 
         return "\n".join(parts)
+   

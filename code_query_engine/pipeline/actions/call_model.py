@@ -5,6 +5,8 @@ import os
 import json
 from typing import Any, Dict, Optional
 
+from code_query_engine.chat_types import Dialog
+
 from ..definitions import StepDef
 from ..engine import PipelineRuntime
 from ..state import PipelineState
@@ -150,69 +152,6 @@ class CallModelAction(PipelineActionBase):
         with open(path, "r", encoding="utf-8") as f:
             return f.read()
 
-    def _prepare_call_model_parts(
-        self,
-        *,
-        step: StepDef,
-        state: PipelineState,
-        runtime: PipelineRuntime,
-    ) -> tuple[str, str, list[Any]]:
-        raw = getattr(step, "raw", {}) or {}
-
-        prompts_dir = str(getattr(runtime, "pipeline_settings", {}).get("prompts_dir", "prompts") or "prompts")
-        prompt_key = str(raw.get("prompt_key") or "").strip()
-        system_prompt = self._load_system_prompt(prompts_dir=prompts_dir, prompt_key=prompt_key)
-
-        inputs = raw.get("inputs")
-        prefixes = raw.get("prefixes")
-
-        if not isinstance(inputs, dict) or not inputs:
-            raise ValueError("call_model: inputs must be a non-empty dict")
-        if not isinstance(prefixes, dict) or not prefixes:
-            raise ValueError("call_model: prefixes must be a non-empty dict")
-
-        input_keys = list(inputs.keys())
-        prefix_keys = list(prefixes.keys())
-
-        if set(input_keys) != set(prefix_keys):
-            raise ValueError(
-                f"call_model: inputs/prefixes keys mismatch. inputs={sorted(set(input_keys))}, prefixes={sorted(set(prefix_keys))}"
-            )
-
-        for k, fmt in prefixes.items():
-            if not isinstance(fmt, str) or "{}" not in fmt:
-                raise ValueError(f"call_model: prefixes['{k}'] must be a format string containing '{{}}'")
-
-        use_history = bool(raw.get("use_history", False))
-        if use_history and "history" not in inputs:
-            raise ValueError("call_model: use_history=true requires inputs/history and prefixes/history")
-
-        parts: list[str] = input_keys
-
-        user_parts: list[str] = []
-        history: list[Any] = []
-
-        for part in parts:
-            state_attr = str(inputs.get(part) or "").strip()
-            fmt = prefixes.get(part)
-
-            if not state_attr:
-                raise ValueError(f"call_model: inputs['{part}'] must be a non-empty string")
-            if not isinstance(fmt, str):
-                raise ValueError(f"call_model: prefixes['{part}'] must be a string")
-         
-
-            v = getattr(state, state_attr, None)
-            if callable(v):
-                v = v()
-
-            text = self._eval_text(v).strip()
-          
-
-            user_parts.append(fmt.format(text))
-
-        user_part = "".join(user_parts)
-        return system_prompt, user_part, history
 
     def _eval_text(self, v: Any) -> str:
         if v is None:
@@ -282,50 +221,64 @@ class CallModelAction(PipelineActionBase):
         )
 
     def ask_chat_mode_llm(
-        self,
-        *,
-        state: PipelineState,
-        model: Any,
-        system_prompt: str,
-        user_part: str,
-        history: list[Any],
-        model_kwargs: Dict[str, Any],
+    self,
+    *,
+    state: PipelineState,
+    model: Any,
+    system_prompt: str,
+    user_part: str,
+    history: Dialog,
+    model_kwargs: Dict[str, Any],
     ) -> str:
         ask_chat = getattr(model, "ask_chat", None)
-       
         if not callable(ask_chat):
             raise ValueError("call_model: native_chat=true requires model.ask_chat(...)")
 
-                # Strict validation: history must be list[tuple[str,str]] (or empty).
-        hist_pairs: Optional[list[tuple[str, str]]] = None
+        # history is Dialog (list of {"role": "...", "content": "..."}) or empty.
+        hist_dialog: Optional[Dialog] = None
         if history:
             if not isinstance(history, list):
-                raise ValueError("call_model: history must be a list")
-            for i, item in enumerate(history):
-                if not (isinstance(item, tuple) and len(item) == 2 and all(isinstance(x, str) for x in item)):
-                    raise ValueError(f"call_model: history[{i}] must be tuple[str,str]")
-            hist_pairs = history  # type: ignore[assignment]
+                raise ValueError("call_model: history must be a list (Dialog)")
+            hist_dialog = history
 
         # Build exact chat payload for tracing (equivalent to rendered_prompt in manual mode).
         messages: list[dict[str, str]] = [{"role": "system", "content": system_prompt}]
-        if hist_pairs:
-            for u, a in hist_pairs:
-                messages.append({"role": "user", "content": u})
-                messages.append({"role": "assistant", "content": a})
+
+        if hist_dialog:
+            for i, msg in enumerate(hist_dialog):
+                if not isinstance(msg, dict):
+                    raise ValueError(f"call_model: history[{i}] must be a dict (Dialog message)")
+
+                role = str(msg.get("role") or "").strip()
+                content = str(msg.get("content") or "").strip()
+
+                if not role or not content:
+                    continue
+
+                # system_prompt is passed separately; do not duplicate it from history
+                if role == "system":
+                    continue
+
+                if role not in ("user", "assistant"):
+                    raise ValueError(
+                        f"call_model: history[{i}].role must be 'user' or 'assistant' (or 'system'), got: {role!r}"
+                    )
+
+                messages.append({"role": role, "content": content})
+
         messages.append({"role": "user", "content": user_part})
-
         setattr(state, _TRACE_RENDERED_CHAT_MESSAGES_ATTR, messages)
-
 
         return str(
             ask_chat(
                 prompt=user_part,
-                history=hist_pairs,
+                history=hist_dialog,
                 system_prompt=system_prompt,
                 **model_kwargs,
             )
             or ""
         )
+
 
     def ask_manual_prompt_llm(
         self,
@@ -346,3 +299,61 @@ class CallModelAction(PipelineActionBase):
             )
             or ""
         )
+    def _prepare_call_model_parts(
+        self,
+        *,
+        step: StepDef,
+        state: PipelineState,
+        runtime: PipelineRuntime,
+    ) -> tuple[str, str, Dialog]:
+        raw = getattr(step, "raw", {}) or {}
+
+        prompts_dir = str(getattr(runtime, "pipeline_settings", {}).get("prompts_dir", "prompts") or "prompts")
+        prompt_key = str(raw.get("prompt_key") or "").strip()
+        system_prompt = self._load_system_prompt(prompts_dir=prompts_dir, prompt_key=prompt_key)
+
+        # New YAML shape:
+        # user_parts:
+        #   evidence:
+        #     source: context_blocks
+        #     template: "### Evidence:\n{}\n\n"
+        #   user_question:
+        #     source: user_question_en
+        #     template: "### User:\n{}\n\n"
+        user_parts_cfg = raw.get("user_parts")
+        if not isinstance(user_parts_cfg, dict) or not user_parts_cfg:
+            raise ValueError("call_model: user_parts must be a non-empty dict")
+
+        # History source is fixed: state.history_dialog (Dialog).
+        use_history = bool(raw.get("use_history", False))
+        history: Dialog = list(getattr(state, "history_dialog", None) or []) if use_history else []
+
+        user_parts_out: list[str] = []
+
+        # Order matters: YAML insertion order defines concatenation order.
+        for part_name, spec in user_parts_cfg.items():
+            if not isinstance(part_name, str) or not part_name.strip():
+                raise ValueError("call_model: user_parts keys must be non-empty strings")
+
+            if not isinstance(spec, dict):
+                raise ValueError(f"call_model: user_parts['{part_name}'] must be a dict")
+
+            source = str(spec.get("source") or "").strip()
+            template = spec.get("template")
+
+            if not source:
+                raise ValueError(f"call_model: user_parts['{part_name}'].source must be a non-empty string")
+            if not isinstance(template, str) or "{}" not in template:
+                raise ValueError(
+                    f"call_model: user_parts['{part_name}'].template must be a format string containing '{{}}'"
+                )
+
+            v = getattr(state, source, None)
+            if callable(v):
+                v = v()
+
+            text = self._eval_text(v).strip()
+            user_parts_out.append(template.format(text))
+
+        user_part = "".join(user_parts_out)
+        return system_prompt, user_part, history

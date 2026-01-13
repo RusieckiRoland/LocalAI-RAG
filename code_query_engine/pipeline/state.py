@@ -4,6 +4,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Set
 
+from ..chat_types import Dialog
+
 
 @dataclass
 class PipelineState:
@@ -27,11 +29,11 @@ class PipelineState:
     query_type: Optional[str] = None
 
     # Context
-    history_blocks: List[str] = field(default_factory=list)
+    history_dialog: Dialog = field(default_factory=list)
     context_blocks: List[str] = field(default_factory=list)
 
     # Model outputs
-    next_codellama_prompt: Optional[str] = None
+    
     last_model_response: Optional[str] = None
 
     # Answer fields expected by multiple actions/engine
@@ -65,7 +67,16 @@ class PipelineState:
     seen_chunk_ids: Set[str] = field(default_factory=set)
 
     def history_for_prompt(self) -> str:
-        return "\n\n".join([x for x in self.history_blocks if x])
+        parts: List[str] = []
+        for msg in (self.history_dialog or []):
+            if not isinstance(msg, dict):
+                continue
+            role = str(msg.get("role") or "").strip()
+            content = str(msg.get("content") or "").strip()
+            if not role or not content:
+                continue
+            parts.append(f"{role}: {content}")
+        return "\n\n".join(parts)
 
     def composed_context_for_prompt(self) -> str:
         blocks: List[str] = []

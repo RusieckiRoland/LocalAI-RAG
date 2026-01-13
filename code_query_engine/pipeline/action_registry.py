@@ -41,6 +41,7 @@ def build_default_action_registry() -> ActionRegistry:
     from .actions.fetch_node_texts import FetchNodeTextsAction
     from .actions.loop_guard import LoopGuardAction    
     from .actions.finalize import FinalizeAction
+    from .actions.set_variables import SetVariablesAction
 
     r = ActionRegistry()
 
@@ -55,5 +56,6 @@ def build_default_action_registry() -> ActionRegistry:
     r.register("fetch_node_texts", FetchNodeTextsAction())
     r.register("loop_guard", LoopGuardAction())   
     r.register("finalize", FinalizeAction())
+    r.register("set_variables", SetVariablesAction())
 
     return r

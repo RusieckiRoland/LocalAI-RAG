@@ -24,57 +24,83 @@ def _match_prefix(text: str, prefixes: Dict[str, str]) -> Tuple[Optional[str], s
     return None, t
 
 
-def _collect_prefixes(raw: Dict[str, Any]) -> Dict[str, str]:
+def _collect_routes(raw: Dict[str, Any]) -> Tuple[Dict[str, str], Dict[str, str]]:
     """
-    Collect all <kind>_prefix fields from step.raw into a {kind: prefix} dict.
-    Example: bm25_prefix -> {"bm25": "..."}
-    """
-    out: Dict[str, str] = {}
-    for k, v in (raw or {}).items():
-        if not isinstance(k, str):
-            continue
-        if not k.endswith("_prefix"):
-            continue
-        kind = k[: -len("_prefix")].strip()
-        if not kind:
-            continue
-        out[kind] = str(v or "")
-    return out
+    Read step.raw["routes"] in the new (Option B) format and return:
+      - prefixes: {kind: prefix}
+      - next_map: {kind: next_step_id}
 
+    Expected YAML shape:
 
-def _validate_step_contract(raw: Dict[str, Any], prefixes: Dict[str, str]) -> None:
-    """
-    Strict contract (no magic fallbacks):
-
-    - For every <kind>_prefix we REQUIRE on_<kind> to be present and non-empty.
-    - For every on_<kind> we REQUIRE <kind>_prefix to be present (except on_other).
-    - If no prefix matches at runtime, we REQUIRE on_other (no implicit "next").
+      routes:
+        bm25:
+          prefix: "[BM25:]"
+          next: fetch
+        semantic:
+          prefix: "[SEMANTIC:]"
+          next: fetch
+      on_other: fallback_step
     """
     raw = raw or {}
-    prefixes = prefixes or {}
+    routes = raw.get("routes")
 
-    # prefix -> on_kind
-    for kind in prefixes.keys():
-        on_key = f"on_{kind}"
-        if not str(raw.get(on_key) or "").strip():
+    prefixes: Dict[str, str] = {}
+    next_map: Dict[str, str] = {}
+
+    if not isinstance(routes, dict):
+        return prefixes, next_map
+
+    for kind, cfg in routes.items():
+        if not isinstance(kind, str):
+            continue
+        k = kind.strip()
+        if not k:
+            continue
+        if not isinstance(cfg, dict):
+            continue
+
+        prefix = str(cfg.get("prefix") or "")
+        next_step = str(cfg.get("next") or "")
+
+        prefixes[k] = prefix
+        next_map[k] = next_step
+
+    return prefixes, next_map
+
+
+def _validate_step_contract(raw: Dict[str, Any], prefixes: Dict[str, str], next_map: Dict[str, str]) -> None:
+    """
+    Strict contract (no magic fallbacks), Option B routes format:
+
+    - routes must be present and be a non-empty dict
+    - for every route kind:
+        - prefix must be present and non-empty (after strip)
+        - next must be present and non-empty (after strip)
+        - prefix must be a string-like value (we coerce but still require non-empty)
+    - if no prefix matches at runtime, on_other is REQUIRED (no implicit "next")
+    """
+    raw = raw or {}
+
+    routes = raw.get("routes")
+    if not isinstance(routes, dict) or not routes:
+        raise ValueError("prefix_router step must define non-empty 'routes'.")
+
+    # validate each route entry
+    for kind in routes.keys():
+        k = str(kind or "").strip()
+        if not k:
+            raise ValueError("prefix_router step has an empty route kind in 'routes'.")
+
+        p = str(prefixes.get(k) or "").strip()
+        if not p:
             raise ValueError(
-                f"prefix_router step is inconsistent: '{kind}_prefix' present but missing '{on_key}'."
+                f"prefix_router step is inconsistent: routes['{k}'].prefix is missing or empty."
             )
 
-    # on_kind -> prefix (except on_other)
-    for k, v in raw.items():
-        if not isinstance(k, str):
-            continue
-        if not k.startswith("on_"):
-            continue
-        if k == "on_other":
-            continue
-        kind = k[len("on_") :].strip()
-        if not kind:
-            continue
-        if kind not in prefixes:
+        n = str(next_map.get(k) or "").strip()
+        if not n:
             raise ValueError(
-                f"prefix_router step is inconsistent: '{k}' present but missing '{kind}_prefix'."
+                f"prefix_router step is inconsistent: routes['{k}'].next is missing or empty."
             )
 
     # require on_other (no implicit next)
@@ -89,11 +115,16 @@ class PrefixRouterAction(PipelineActionBase):
 
     def log_in(self, step: StepDef, state: PipelineState, runtime: PipelineRuntime) -> Dict[str, Any]:
         raw = step.raw or {}
-        text = state.last_model_response.strip()
-        prefixes = _collect_prefixes(raw)
+        text = (state.last_model_response or "").strip()
+        prefixes, next_map = _collect_routes(raw)
+
         return {
             "text": text,
-            "prefixes": {k: v for k, v in prefixes.items() if (v or "").strip()},
+            "routes": {
+                k: {"prefix": v, "next": next_map.get(k, "")}
+                for k, v in prefixes.items()
+                if (v or "").strip()
+            },
             "last_prefix_before": getattr(state, "last_prefix", None),
         }
 
@@ -118,8 +149,8 @@ class PrefixRouterAction(PipelineActionBase):
         # Always route based on the incoming text.
         text = (state.last_model_response or "").strip()
 
-        prefixes = _collect_prefixes(raw)
-        _validate_step_contract(raw, prefixes)
+        prefixes, next_map = _collect_routes(raw)
+        _validate_step_contract(raw, prefixes, next_map)
 
         matched_kind, payload = _match_prefix(text, prefixes)
 
@@ -130,7 +161,7 @@ class PrefixRouterAction(PipelineActionBase):
             # Strip prefix from the text and store the payload back into state.
             state.last_model_response = payload
 
-            return str(raw.get(f"on_{matched_kind}") or "").strip() or None
+            return str(next_map.get(matched_kind) or "").strip() or None
 
         # No match -> keep full text as-is and route to on_other.
         # (Contract guarantees on_other exists.)
