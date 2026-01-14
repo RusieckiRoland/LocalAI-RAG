@@ -1,1 +1,2 @@
-nothing
+Return exactly one line:
+[DIRECT:]

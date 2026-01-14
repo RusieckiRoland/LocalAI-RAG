@@ -102,6 +102,17 @@ def _load_pipe_from_inline_yaml(tmp_path: Path, yaml_text: str, name: str) -> An
     loader = PipelineLoader(pipelines_root=str(tmp_path))
     pipe = loader.load_from_path(str(yaml_path))
     PipelineValidator().validate(pipe)
+        # Ensure test prompts exist and pipeline points to tmp prompts_dir.
+    prompts_dir = tmp_path / "prompts"
+    (prompts_dir / "e2e").mkdir(parents=True, exist_ok=True)
+
+    (prompts_dir / "e2e" / "router_v1.txt").write_text("SYS ROUTER\n", encoding="utf-8")
+    (prompts_dir / "e2e" / "answer_v1.txt").write_text("SYS ANSWER\n", encoding="utf-8")
+
+    if pipe.settings is None:
+        pipe.settings = {}
+    pipe.settings["prompts_dir"] = str(prompts_dir)
+
     return pipe
 
 

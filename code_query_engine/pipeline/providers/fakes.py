@@ -66,15 +66,20 @@ class FakeRetriever(IRetriever):
         self._resolver = resolver
         self.calls: List[Dict[str, Any]] = []
 
-    def search(self, query: str, *, top_k: int, filters: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
-        self.calls.append({"query": query, "top_k": top_k, "filters": filters or {}})
+    def search(
+        self,
+        query: str,
+        *,
+        top_k: int,
+        settings=None,
+        filters=None,
+    ):
+        # Fake retriever: ignore settings/filters, just return prepared results.
+        _ = query
+        _ = settings
+        _ = filters
 
-        if self._resolver is not None:
-            return list(self._resolver(query, top_k, filters))
-
-        if query in self._results_by_query:
-            q = self._results_by_query[query]
-            return q.pop(0) if q else []
-
-        # Default scripted results (repeat same results)
-        return list(self._results)
+        results = list(getattr(self, "results", []) or [])
+        if top_k is None or top_k <= 0:
+            return []
+        return results[:top_k]

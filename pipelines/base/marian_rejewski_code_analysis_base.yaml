@@ -53,14 +53,13 @@ YAMLpipeline:
 
     - id: call_model_router
       action: call_model
-      native_chat: true
-      use_history: true
-      prompt_key: "rejewski/router_v1"
+      prompt_key: "e2e/router_v1"
       user_parts:
-        user_question:
-          source: user_question_en
-          template: "### User:\n{}\n\n"
+      question:
+        source: user_question_en
+        template: "### User:\n{}\n\n"
       next: handle_router_prefix
+
 
     - id: handle_router_prefix
       action: prefix_router
@@ -122,8 +121,7 @@ YAMLpipeline:
 
     - id: call_model_answer
       action: call_model
-      use_history: true
-      prompt_key: "rejewski/answer_v1"
+      prompt_key: "e2e/answer_v1"
       user_parts:
         evidence:
           source: context_blocks
@@ -132,6 +130,7 @@ YAMLpipeline:
           source: user_question_en
           template: "### User:\n{}\n\n"
       next: handle_answer_prefix
+
 
     - id: handle_answer_prefix
       action: prefix_router

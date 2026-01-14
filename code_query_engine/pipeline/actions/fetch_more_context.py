@@ -277,11 +277,9 @@ class FetchMoreContextAction(PipelineActionBase):
         settings = runtime.pipeline_settings or {}
         raw = step.raw or {}
 
-        # Search type comes from PrefixRouterAction (state.last_prefix),
-        # but we also persist it in state.search_type for telemetry/other steps.
-        
-        search_type = getattr(state, "search_type", None)
-        search_type = str(search_type or "").strip().lower()
+        # Contract: search_type MUST be defined explicitly on this fetch_more_context step (YAML).
+        # No implicit fallback from state.
+        search_type = str(raw.get("search_type") or "").strip().lower()        
         if search_type not in _ALLOWED_SEARCH_TYPES:
             raise ValueError(f"fetch_more_context: invalid search_type='{search_type}'. Allowed: {sorted(_ALLOWED_SEARCH_TYPES)}")
         state.search_type = search_type

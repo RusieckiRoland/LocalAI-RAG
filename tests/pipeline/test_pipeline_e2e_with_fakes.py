@@ -50,80 +50,96 @@ def test_pipeline_router_bm25_fetch_then_answer(tmp_path):
 
     yaml_path = tmp_path / "pipe.yaml"
     yaml_path.write_text(
-        textwrap.dedent(
-            f"""
-            YAMLpipeline:
-              name: e2e
+    textwrap.dedent(
+        f"""
+        YAMLpipeline:
+          name: e2e
 
-              settings:
-                entry_step_id: call_router
-                top_k: 2
-                prompts_dir: "{str(prompts_dir)}"
+          settings:
+            entry_step_id: call_router
+            top_k: 2
+            prompts_dir: "{str(prompts_dir)}"
 
-              steps:
-                - id: call_router
-                  action: call_model
-                  prompt_key: "rejewski_router_v1"
-                  user_parts:
-                    user_question:
-                      source: user_query
-                      template: "### User:\\n{{}}\\n"
-                  next: handle_router
+          steps:
+            - id: call_router
+              action: call_model
+              prompt_key: "rejewski_router_v1"
+              user_parts:
+                user_question:
+                  source: user_query
+                  template: "### User:\\n{{}}\\n"
+              next: handle_router
 
-                - id: handle_router
-                  action: prefix_router
-                  routes:
-                    bm25:
-                      prefix: "[BM25:]"
-                      next: fetch
-                    semantic:
-                      prefix: "[SEMANTIC:]"
-                      next: fetch
-                    hybrid:
-                      prefix: "[HYBRID:]"
-                      next: fetch
-                    semantic_rerank:
-                      prefix: "[SEMANTIC_RERANK:]"
-                      next: fetch
-                    direct:
-                      prefix: "[DIRECT:]"
-                      next: finalize
-                  on_other: finalize
+            - id: handle_router
+              action: prefix_router
+              routes:
+                bm25:
+                  prefix: "[BM25:]"
+                  next: fetch_bm25
+                semantic:
+                  prefix: "[SEMANTIC:]"
+                  next: fetch_semantic
+                hybrid:
+                  prefix: "[HYBRID:]"
+                  next: fetch_hybrid
+                semantic_rerank:
+                  prefix: "[SEMANTIC_RERANK:]"
+                  next: fetch_semantic_rerank
+                direct:
+                  prefix: "[DIRECT:]"
+                  next: finalize
+              on_other: finalize
 
-                - id: fetch
-                  action: fetch_more_context
-                  next: call_answer
+            - id: fetch_bm25
+              action: fetch_more_context
+              search_type: bm25
+              next: call_answer
 
-                - id: call_answer
-                  action: call_model
-                  prompt_key: "rejewski_answer_v1"
-                  user_parts:
-                    evidence:
-                      source: context_blocks
-                      template: "### Evidence:\\n{{}}\\n"
-                    user_question:
-                      source: user_query
-                      template: "### User:\\n{{}}\\n"
-                  next: handle_answer
+            - id: fetch_semantic
+              action: fetch_more_context
+              search_type: semantic
+              next: call_answer
 
-                - id: handle_answer
-                  action: prefix_router
-                  routes:
-                    answer:
-                      prefix: "[Answer:]"
-                      next: finalize
-                    followup:
-                      prefix: "[Requesting data on:]"
-                      next: finalize
-                  on_other: finalize
+            - id: fetch_hybrid
+              action: fetch_more_context
+              search_type: hybrid
+              next: call_answer
 
-                - id: finalize
-                  action: finalize
-                  end: true
-            """
-        ).strip(),
-        encoding="utf-8",
-    )
+            - id: fetch_semantic_rerank
+              action: fetch_more_context
+              search_type: semantic_rerank
+              next: call_answer
+
+            - id: call_answer
+              action: call_model
+              prompt_key: "rejewski_answer_v1"
+              user_parts:
+                evidence:
+                  source: context_blocks
+                  template: "### Evidence:\\n{{}}\\n"
+                user_question:
+                  source: user_query
+                  template: "### User:\\n{{}}\\n"
+              next: handle_answer
+
+            - id: handle_answer
+              action: prefix_router
+              routes:
+                answer:
+                  prefix: "[Answer:]"
+                  next: finalize
+                followup:
+                  prefix: "[Requesting data on:]"
+                  next: finalize
+              on_other: finalize
+
+            - id: finalize
+              action: finalize
+              end: true
+        """
+    ).strip(),
+    encoding="utf-8",
+)
 
     loader = PipelineLoader(pipelines_root=str(tmp_path))
     pipe = loader.load_from_path(str(yaml_path))

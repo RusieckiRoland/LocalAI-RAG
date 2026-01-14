@@ -49,21 +49,21 @@ class RetrievalDispatcher:
         if mode == "bm25":
             if self._bm25 is None:
                 return []
-            return self._bm25.search(query, top_k=top_k, filters=filters)
+            return self._bm25.search(query, top_k=top_k, settings=settings, filters=filters)
 
         if mode in ("semantic", "hybrid"):
-            # In the current system "hybrid" is resolved at router-level;
-            # we treat it as semantic retrieval until a dedicated hybrid retriever exists.
+            # "hybrid" resolved at router-level; here treat as semantic.
             if self._semantic is None:
                 return []
-            return self._semantic.search(query, top_k=top_k, filters=filters)
+            return self._semantic.search(query, top_k=top_k, settings=settings, filters=filters)
 
         if mode == "semantic_rerank":
             if self._semantic_rerank is None:
                 return []
-            return self._semantic_rerank.search(query, top_k=top_k, filters=filters)
+            return self._semantic_rerank.search(query, top_k=top_k, settings=settings, filters=filters)
 
         # Unknown => best-effort semantic
         if self._semantic is None:
             return []
-        return self._semantic.search(query, top_k=top_k, filters=filters)
+        return self._semantic.search(query, top_k=top_k, settings=settings, filters=filters)
+        

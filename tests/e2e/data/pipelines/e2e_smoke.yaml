@@ -19,6 +19,10 @@ YAMLpipeline:
     - id: call_router
       action: call_model
       prompt_key: "e2e/router_v1"
+      user_parts:
+        user_question:
+          source: user_query
+          template: "{}"
       next: handle_router
 
     - id: handle_router

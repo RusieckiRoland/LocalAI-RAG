@@ -22,9 +22,9 @@ class DummyTranslator:
 
 
 class DummyMarkdownTranslator:
-    def translate_markdown(self, text: str) -> str:
+    def translate(self, markdown_en: str) -> str:
         # minimal EN->PL stub
-        return f"PL: {text}"
+        return f"PL: {markdown_en}"
 
 
 class DummyLogger:
@@ -40,12 +40,15 @@ class DummyLogger:
 
 class FakeModelWithAsk:
     """
-    Minimal model stub that matches CallModelAction expectations.
+    Minimal model stub aligned with CURRENT production Model.ask contract.
 
-    The production code historically used different call shapes:
+    Production shape:
+      - ask(prompt=..., system_prompt=..., max_tokens=..., temperature=..., ...)
+
+    Some older code/tests may still call:
+      - ask(consultant=..., prompt=...)
       - ask(context=..., question=..., consultant=...)
-      - ask(prompt=..., consultant=...)
-    This test double supports both to stay aligned with the current pipeline.
+    This fake supports both, but DOES NOT require consultant.
     """
 
     def __init__(self, *, outputs_by_consultant: Dict[str, List[str]]) -> None:
@@ -55,24 +58,57 @@ class FakeModelWithAsk:
     def ask(
         self,
         *,
-        consultant: str,
         prompt: str | None = None,
+        system_prompt: str | None = None,
+        consultant: str | None = None,
         context: str | None = None,
         question: str | None = None,
         **kwargs: Any,
     ) -> str:
+        # Normalize old call shapes into "prompt"
+        if prompt is None:
+            ctx = context or ""
+            q = question or ""
+            prompt = (ctx + "\n" + q).strip()
+
+        chosen_consultant = (consultant or "").strip()
+
         self.calls.append(
             {
-                "consultant": consultant,
+                "consultant": chosen_consultant,
+                "system_prompt": system_prompt or "",
                 "prompt": prompt or "",
                 "context": context or "",
                 "question": question or "",
             }
         )
-        q = self._outputs_by_consultant.get(consultant, [])
+
+        # Output queue selection:
+        # - if consultant is provided and exists => use that
+        # - else if only one consultant key exists => use that
+        # - else empty
+        if chosen_consultant and chosen_consultant in self._outputs_by_consultant:
+            q = self._outputs_by_consultant[chosen_consultant]
+        elif len(self._outputs_by_consultant) == 1:
+            only_key = next(iter(self._outputs_by_consultant.keys()))
+            q = self._outputs_by_consultant[only_key]
+        else:
+            q = []
+
         if not q:
             return ""
         return q.pop(0)
+
+    def ask_chat(
+        self,
+        *,
+        prompt: str,
+        history: Any = None,
+        system_prompt: str | None = None,
+        **kwargs: Any,
+    ) -> str:
+        # For tests that switch call_model into chat mode.
+        return self.ask(prompt=prompt, system_prompt=system_prompt, **kwargs)
 
 
 class FakeRetriever:
@@ -212,7 +248,7 @@ def test_e2e_graph_search_expand_fetch_followup_then_answer() -> None:
             "e2e_graph_search_expand_fetch": [
                 "[BM25:] entry point",
                 "[Requesting data on:] Program.cs Main",
-                f"[Answer:] E2E OK (after followup)",
+                "[Answer:] E2E OK (after followup)",
             ],
         }
     )
@@ -258,7 +294,7 @@ def test_e2e_graph_search_expand_fetch_direct_answer() -> None:
         outputs_by_consultant={
             "e2e_graph_search_expand_fetch": [
                 "[DIRECT:]",
-                f"[Answer:] E2E OK (direct)",
+                "[Answer:] E2E OK (direct)",
             ],
         }
     )
