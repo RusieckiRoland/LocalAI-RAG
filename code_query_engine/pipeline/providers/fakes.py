@@ -9,9 +9,22 @@ from .ports import IModelClient, IRetriever
 
 @dataclass
 class ModelCall:
-    context: str
-    question: str
+    """
+    Unified call log for both manual prompt mode and native chat mode.
+
+    Notes:
+    - CallModelAction.ask_manual_prompt_llm calls:
+        model.ask(prompt=..., system_prompt=None, **model_kwargs)
+    - CallModelAction.ask_chat_mode_llm calls:
+        model.ask_chat(prompt=..., history=..., system_prompt=..., **model_kwargs)
+    """
+
     consultant: str
+    prompt: str
+    system_prompt: Optional[str]
+    mode: str  # "manual" | "chat"
+    history: Optional[List[Dict[str, str]]] = None
+    model_kwargs: Optional[Dict[str, Any]] = None
 
 
 class FakeModelClient(IModelClient):
@@ -19,6 +32,10 @@ class FakeModelClient(IModelClient):
     Deterministic model fake:
     - If resolver is provided: returns resolver(call).
     - Else returns scripted outputs per consultant in FIFO order.
+
+    Contract compatibility:
+    - Supports model.ask(prompt=..., system_prompt=..., **kwargs)
+    - Supports model.ask_chat(prompt=..., history=..., system_prompt=..., **kwargs)
     """
 
     def __init__(
@@ -33,25 +50,72 @@ class FakeModelClient(IModelClient):
         self._resolver = resolver
         self.calls: List[ModelCall] = []
 
-    def ask(self, *, context: str, question: str, consultant: str) -> str:
-        call = ModelCall(context=context, question=question, consultant=consultant)
+    def _pop_output(self, consultant: str) -> str:
+        if consultant in self._outputs_by_consultant:
+            q = self._outputs_by_consultant[consultant]
+            return str(q.pop(0) if q else "")
+        return str(self._outputs.pop(0) if self._outputs else "")
+
+    def ask(
+        self,
+        *,
+        prompt: str,
+        system_prompt: Optional[str] = None,
+        consultant: Optional[str] = None,
+        **model_kwargs: Any,
+    ) -> str:
+        # Production CallModelAction does NOT pass consultant to model.ask(...).
+        eff_consultant = str(consultant or "e2e_smoke")
+
+        call = ModelCall(
+            consultant=eff_consultant,
+            prompt=str(prompt or ""),
+            system_prompt=system_prompt,
+            mode="manual",
+            history=None,
+            model_kwargs=dict(model_kwargs or {}),
+        )
         self.calls.append(call)
 
         if self._resolver is not None:
             return str(self._resolver(call) or "")
+        return self._pop_output(eff_consultant)
 
-        if consultant in self._outputs_by_consultant:
-            q = self._outputs_by_consultant[consultant]
-            return q.pop(0) if q else ""
+    def ask_chat(
+        self,
+        *,
+        prompt: str,
+        history: Optional[List[Dict[str, str]]] = None,
+        system_prompt: Optional[str] = None,
+        consultant: Optional[str] = None,
+        **model_kwargs: Any,
+    ) -> str:
+        eff_consultant = str(consultant or "e2e_smoke")
 
-        return self._outputs.pop(0) if self._outputs else ""
+        call = ModelCall(
+            consultant=eff_consultant,
+            prompt=str(prompt or ""),
+            system_prompt=system_prompt,
+            mode="chat",
+            history=list(history or []),
+            model_kwargs=dict(model_kwargs or {}),
+        )
+        self.calls.append(call)
+
+        if self._resolver is not None:
+            return str(self._resolver(call) or "")
+        return self._pop_output(eff_consultant)
 
 
 class FakeRetriever(IRetriever):
     """
     Deterministic retriever fake:
     - If resolver is provided: returns resolver(query, top_k, filters).
-    - Else returns scripted results per query in FIFO order.
+    - Else returns scripted results.
+
+    Contract compatibility:
+    - search(query, *, top_k, settings, filters) -> List[Dict[str, Any]]
+    - Records calls to self.calls for assertions.
     """
 
     def __init__(
@@ -73,13 +137,25 @@ class FakeRetriever(IRetriever):
         top_k: int,
         settings=None,
         filters=None,
-    ):
-        # Fake retriever: ignore settings/filters, just return prepared results.
-        _ = query
-        _ = settings
-        _ = filters
+    ) -> List[Dict[str, Any]]:
+        self.calls.append(
+            {
+                "query": str(query or ""),
+                "top_k": int(top_k) if top_k is not None else None,
+                "settings": dict(settings or {}) if isinstance(settings, dict) else settings,
+                "filters": dict(filters or {}) if isinstance(filters, dict) else filters,
+            }
+        )
 
-        results = list(getattr(self, "results", []) or [])
         if top_k is None or top_k <= 0:
             return []
-        return results[:top_k]
+
+        if self._resolver is not None:
+            return list(self._resolver(str(query or ""), int(top_k), filters) or [])[: int(top_k)]
+
+        q = str(query or "")
+        if q in self._results_by_query and self._results_by_query[q]:
+            batch = self._results_by_query[q].pop(0) or []
+            return list(batch)[: int(top_k)]
+
+        return list(self._results)[: int(top_k)]

@@ -52,16 +52,16 @@ class FakeModelWithAsk:
         self._outs = {k: list(v or []) for k, v in (outputs_by_consultant or {}).items()}
 
     def ask(self, *args: Any, **kwargs: Any) -> str:
-        consultant = kwargs.get("consultant")
-        if not consultant and args:
-            # If someone passed consultant positionally, try best-effort.
-            # We only support keyword in our tests; fall back to state's consultant naming.
-            consultant = "rejewski"
+      consultant = kwargs.get("consultant")
+      if not consultant:
+          # Production Model.ask(...) does NOT receive 'consultant'.
+          # Default to the single consultant used in these E2E tests.
+          consultant = "rejewski"
 
-        q = self._outs.get(str(consultant), [])
-        if not q:
-            return ""
-        return str(q.pop(0))
+      q = self._outs.get(str(consultant), [])
+      if not q:
+          return ""
+      return str(q.pop(0))
 
 
 class FakeRetriever:
@@ -102,7 +102,8 @@ def _load_pipe_from_inline_yaml(tmp_path: Path, yaml_text: str, name: str) -> An
     loader = PipelineLoader(pipelines_root=str(tmp_path))
     pipe = loader.load_from_path(str(yaml_path))
     PipelineValidator().validate(pipe)
-        # Ensure test prompts exist and pipeline points to tmp prompts_dir.
+
+    # Ensure test prompts exist and pipeline points to tmp prompts_dir.
     prompts_dir = tmp_path / "prompts"
     (prompts_dir / "e2e").mkdir(parents=True, exist_ok=True)
 
@@ -181,14 +182,22 @@ def test_e2e_budget_over_limit_fallback_summarizes(tmp_path: Path) -> None:
         - id: call_answer
           action: call_model
           prompt_key: "e2e/answer_v1"
+          user_parts:
+            evidence:
+              source: context_blocks
+              template: "### Evidence:\\n{}\\n\\n"
+            user:
+              source: user_query
+              template: "### User:\\n{}\\n\\n"
           next: handle_answer
 
         - id: handle_answer
           action: prefix_router
-          answer_prefix: "[Answer:]"
-          on_answer: finalize
+          routes:
+            answer:
+              prefix: "[Answer:]"
+              next: finalize
           on_other: finalize
-          next: finalize
 
         - id: finalize
           action: finalize
@@ -243,22 +252,31 @@ def test_e2e_router_direct_answer_path(tmp_path: Path) -> None:
         - id: call_router
           action: call_model
           prompt_key: "e2e/router_v1"
+          user_parts:
+            user:
+              source: user_query
+              template: "### User:\\n{}\\n\\n"
           next: handle_router
 
         - id: handle_router
           action: prefix_router
-          bm25_prefix: "[BM25:]"
-          semantic_prefix: "[SEMANTIC:]"
-          hybrid_prefix: "[HYBRID:]"
-          semantic_rerank_prefix: "[SEMANTIC_RERANK:]"
-          direct_prefix: "[DIRECT:]"
-          on_bm25: fetch
-          on_semantic: fetch
-          on_hybrid: fetch
-          on_semantic_rerank: fetch
-          on_direct: call_answer
+          routes:
+            bm25:
+              prefix: "[BM25:]"
+              next: fetch
+            semantic:
+              prefix: "[SEMANTIC:]"
+              next: fetch
+            hybrid:
+              prefix: "[HYBRID:]"
+              next: fetch
+            semantic_rerank:
+              prefix: "[SEMANTIC_RERANK:]"
+              next: fetch
+            direct:
+              prefix: "[DIRECT:]"
+              next: call_answer
           on_other: call_answer
-          next: call_answer
 
         - id: fetch
           action: fetch_more_context
@@ -267,14 +285,22 @@ def test_e2e_router_direct_answer_path(tmp_path: Path) -> None:
         - id: call_answer
           action: call_model
           prompt_key: "e2e/answer_v1"
+          user_parts:
+            evidence:
+              source: context_blocks
+              template: "### Evidence:\\n{}\\n\\n"
+            user:
+              source: user_query
+              template: "### User:\\n{}\\n\\n"
           next: handle_answer
 
         - id: handle_answer
           action: prefix_router
-          answer_prefix: "[Answer:]"
-          on_answer: finalize
+          routes:
+            answer:
+              prefix: "[Answer:]"
+              next: finalize
           on_other: finalize
-          next: finalize
 
         - id: finalize
           action: finalize
@@ -325,38 +351,56 @@ def test_e2e_router_bm25_fetch_more_context_path(tmp_path: Path) -> None:
         - id: call_router
           action: call_model
           prompt_key: "e2e/router_v1"
+          user_parts:
+            user:
+              source: user_query
+              template: "### User:\\n{}\\n\\n"
           next: handle_router
 
         - id: handle_router
           action: prefix_router
-          bm25_prefix: "[BM25:]"
-          semantic_prefix: "[SEMANTIC:]"
-          hybrid_prefix: "[HYBRID:]"
-          semantic_rerank_prefix: "[SEMANTIC_RERANK:]"
-          direct_prefix: "[DIRECT:]"
-          on_bm25: fetch
-          on_semantic: fetch
-          on_hybrid: fetch
-          on_semantic_rerank: fetch
-          on_direct: call_answer
+          routes:
+            bm25:
+              prefix: "[BM25:]"
+              next: fetch
+            semantic:
+              prefix: "[SEMANTIC:]"
+              next: fetch
+            hybrid:
+              prefix: "[HYBRID:]"
+              next: fetch
+            semantic_rerank:
+              prefix: "[SEMANTIC_RERANK:]"
+              next: fetch
+            direct:
+              prefix: "[DIRECT:]"
+              next: call_answer
           on_other: call_answer
-          next: call_answer
 
         - id: fetch
           action: fetch_more_context
+          search_type: "bm25"
           next: call_answer
 
         - id: call_answer
           action: call_model
           prompt_key: "e2e/answer_v1"
+          user_parts:
+            evidence:
+              source: context_blocks
+              template: "### Evidence:\\n{}\\n\\n"
+            user:
+              source: user_query
+              template: "### User:\\n{}\\n\\n"
           next: handle_answer
 
         - id: handle_answer
           action: prefix_router
-          answer_prefix: "[Answer:]"
-          on_answer: finalize
+          routes:
+            answer:
+              prefix: "[Answer:]"
+              next: finalize
           on_other: finalize
-          next: finalize
 
         - id: finalize
           action: finalize
@@ -411,14 +455,22 @@ def test_e2e_dependency_expand_then_fetch_node_texts(tmp_path: Path) -> None:
         - id: call_answer
           action: call_model
           prompt_key: "e2e/answer_v1"
+          user_parts:
+            evidence:
+              source: context_blocks
+              template: "### Evidence:\\n{}\\n\\n"
+            user:
+              source: user_query
+              template: "### User:\\n{}\\n\\n"
           next: handle_answer
 
         - id: handle_answer
           action: prefix_router
-          answer_prefix: "[Answer:]"
-          on_answer: finalize
+          routes:
+            answer:
+              prefix: "[Answer:]"
+              next: finalize
           on_other: finalize
-          next: finalize
 
         - id: finalize
           action: finalize

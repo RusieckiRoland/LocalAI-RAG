@@ -6,7 +6,7 @@ YAMLpipeline:
     entry_step_id: translate_in
     top_k: 3
     prompts_dir: "tests/e2e/data/prompts"
-    
+
   steps:
     - id: translate_in
       action: translate_in_if_needed
@@ -20,38 +20,58 @@ YAMLpipeline:
       action: call_model
       prompt_key: "e2e/router_v1"
       user_parts:
-        user_question:
+        user:
           source: user_query
-          template: "{}"
+          template: "### User:\n{}\n\n"
       next: handle_router
 
     - id: handle_router
       action: prefix_router
-      bm25_prefix: "[BM25:]"
-      semantic_prefix: "[SEMANTIC:]"
-      hybrid_prefix: "[HYBRID:]"
-      semantic_rerank_prefix: "[SEMANTIC_RERANK:]"
-      direct_prefix: "[DIRECT:]"
-      on_direct: call_answer
-      on_semantic: call_answer
-      on_bm25: call_answer
-      on_hybrid: call_answer
-      on_semantic_rerank: call_answer
-      on_other: finalize
-      next: finalize
+      routes:
+        direct:
+          prefix: "[DIRECT:]"
+          next: call_answer
+        bm25:
+          prefix: "[BM25:]"
+          next: fetch
+        semantic:
+          prefix: "[SEMANTIC:]"
+          next: fetch
+        hybrid:
+          prefix: "[HYBRID:]"
+          next: fetch
+        semantic_rerank:
+          prefix: "[SEMANTIC_RERANK:]"
+          next: fetch
+      on_other: call_answer
+
+    - id: fetch
+      action: fetch_more_context
+      search_type: "bm25"
+      next: call_answer
 
     - id: call_answer
       action: call_model
       prompt_key: "e2e/answer_v1"
+      user_parts:
+        evidence:
+          source: context_blocks
+          template: "### Evidence:\n{}\n\n"
+        user:
+          source: user_query
+          template: "### User:\n{}\n\n"
       next: handle_answer
 
     - id: handle_answer
       action: prefix_router
-      answer_prefix: "[Answer:]"
-      followup_prefix: "[Requesting data on:]"
-      on_answer: finalize
+      routes:
+        answer:
+          prefix: "[Answer:]"
+          next: finalize
+        followup:
+          prefix: "[Requesting data on:]"
+          next: finalize
       on_other: finalize
-      next: finalize   
 
     - id: finalize
       action: finalize
