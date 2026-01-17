@@ -1,16 +1,17 @@
 # code_query_engine/pipeline/engine.py
 from __future__ import annotations
 
+import json
 import logging
+import os
+import time
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from .action_registry import ActionRegistry
 from .definitions import PipelineDef, StepDef
 from .providers.ports import (
-
-
-
     IGraphProvider,
     IHistoryManager,
     IInteractionLogger,
@@ -19,13 +20,9 @@ from .providers.ports import (
     IRetriever,
     ITokenCounter,
     ITranslatorPlEn,
+    IRetrievalBackend,
 )
-
 from .providers.retrieval import RetrievalDispatcher
-import json
-import os
-import time
-from pathlib import Path
 
 py_logger = logging.getLogger(__name__)
 
@@ -42,26 +39,32 @@ class PipelineResult:
 
     # Final view
     final_answer: str
-    query_type: str    
+    query_type: str
     model_input_en: str
 
 
 class PipelineRuntime:
     """
     Runtime DI container expected by existing actions and tests.
+
+    IMPORTANT:
+    - New retrieval contract uses `retrieval_backend` (strict).
+    - Legacy actions/tests still call `get_retrieval_dispatcher()`.
+      We keep it until actions/tests are migrated fully to retrieval_backend.
     """
 
     def __init__(
         self,
         *,
         pipeline_settings: Dict[str, Any],
-        model: IModelClient,
+        model: Optional[IModelClient],
         searcher: Optional[IRetriever],
         markdown_translator: Optional[IMarkdownTranslatorEnPl],
         translator_pl_en: Optional[ITranslatorPlEn],
-        history_manager: IHistoryManager,
-        logger: IInteractionLogger,
+        history_manager: Optional[IHistoryManager],
+        logger: Optional[IInteractionLogger],
         constants: Any,
+        retrieval_backend: Optional[IRetrievalBackend] = None,
         retrieval_dispatcher: Optional[RetrievalDispatcher] = None,
         bm25_searcher: Optional[IRetriever] = None,
         semantic_rerank_searcher: Optional[IRetriever] = None,
@@ -78,24 +81,48 @@ class PipelineRuntime:
         self.logger = logger
         self.constants = constants
 
+        # New contract: retrieval backend (preferred)
+        self.retrieval_backend = retrieval_backend
+
+        # Legacy wiring still used by some actions/tests
         self.retrieval_dispatcher = retrieval_dispatcher
         self.bm25_searcher = bm25_searcher
         self.semantic_rerank_searcher = semantic_rerank_searcher
 
         self.graph_provider = graph_provider
         self.token_counter = token_counter
-        self.add_plant_link = add_plant_link or (lambda x: x)
-        
 
+        # Some call sites pass add_plant_link=lambda text, consultant=None: text
+        self.add_plant_link = add_plant_link or (lambda x, consultant=None: x)
+
+    # ---------------------------------------------------------------------
+    # New strict retrieval contract entrypoint
+    # ---------------------------------------------------------------------
+    def get_retrieval_backend(self) -> IRetrievalBackend:
+        if self.retrieval_backend is None:
+            raise ValueError("PipelineRuntime: retrieval_backend is required by retrieval_contract")
+        return self.retrieval_backend
+
+    # ---------------------------------------------------------------------
+    # Legacy compatibility for older actions/tests (will be removed later)
+    # ---------------------------------------------------------------------
     def get_retrieval_dispatcher(self) -> RetrievalDispatcher:
+        """
+        Legacy: SearchNodesAction historically used dispatcher directly.
+        Kept to avoid breaking tests while migrating actions to retrieval_backend.
+        """
         if self.retrieval_dispatcher is not None:
             return self.retrieval_dispatcher
 
+        # Try to build a dispatcher from individual retrievers (best-effort).
+        # NOTE: semantic_rerank_searcher is optional; if missing and semantic exists,
+        # it can be wrapped (soft-failure).
         semantic_rerank = self.semantic_rerank_searcher
+
         if semantic_rerank is None and self.searcher is not None:
-            # Default reranker over semantic results (works without extra indexes)
             try:
                 from common.semantic_rerank_wrapper import SemanticRerankWrapper
+
                 semantic_rerank = SemanticRerankWrapper(self.searcher)
             except Exception:
                 py_logger.exception("soft-failure: SemanticRerankWrapper init failed; semantic_rerank disabled")
@@ -106,7 +133,6 @@ class PipelineRuntime:
             bm25=self.bm25_searcher,
             semantic_rerank=semantic_rerank,
         )
-
 
 
 class PipelineEngine:
@@ -185,20 +211,27 @@ class PipelineEngine:
                 break
 
             # Resolve final answer (what the caller sees)
-            final_answer = state.answer_en or ""
-            if getattr(state, "translate_chat", False) and state.answer_pl:
+            final_answer = getattr(state, "answer_en", None) or ""
+            if bool(getattr(state, "translate_chat", False)) and getattr(state, "answer_pl", None):
                 final_answer = state.answer_pl
 
             state.final_answer = final_answer
 
+            # Some tests rely on this helper existing; keep it defensive.
+            model_input_en = ""
+            try:
+                model_input_en = state.model_input_en_or_fallback()
+            except Exception:
+                model_input_en = getattr(state, "model_input_en", None) or ""
+
             result = PipelineResult(
                 steps_used=state.steps_used,
                 step_trace=list(state.step_trace),
-                answer_en=state.answer_en,
-                answer_pl=state.answer_pl,
+                answer_en=getattr(state, "answer_en", None),
+                answer_pl=getattr(state, "answer_pl", None),
                 final_answer=final_answer,
-                query_type=state.query_type or "",               
-                model_input_en=state.model_input_en_or_fallback(),
+                query_type=getattr(state, "query_type", None) or "",
+                model_input_en=model_input_en,
             )
             return result
 
@@ -228,6 +261,13 @@ class PipelineEngine:
                 filename = f"{ts_utc_safe}_{ts_ms}_interaction_{safe_session}_{safe_pipeline}.json"
                 path = Path(trace_dir) / filename
 
+                # Some tests rely on this helper existing; keep it defensive.
+                model_input_en = ""
+                try:
+                    model_input_en = state.model_input_en_or_fallback()
+                except Exception:
+                    model_input_en = getattr(state, "model_input_en", None) or ""
+
                 payload: Dict[str, Any] = {
                     "ts_utc": ts_utc,
                     "ts_ms": ts_ms,
@@ -238,11 +278,15 @@ class PipelineEngine:
                     "step_trace": list(getattr(state, "step_trace", []) or []),
                     "user_query": getattr(state, "user_query", None),
                     "translate_chat": bool(getattr(state, "translate_chat", False)),
-                    "model_input_en": (result.model_input_en if result is not None else state.model_input_en_or_fallback()),
+                    "model_input_en": (result.model_input_en if result is not None else model_input_en),
                     "answer_en": getattr(state, "answer_en", None),
                     "answer_pl": getattr(state, "answer_pl", None),
-                    "final_answer": (result.final_answer if result is not None else (getattr(state, "final_answer", None) or final_answer)),
-                    "query_type": getattr(state, "query_type", None),                    
+                    "final_answer": (
+                        result.final_answer
+                        if result is not None
+                        else (getattr(state, "final_answer", None) or final_answer)
+                    ),
+                    "query_type": getattr(state, "query_type", None),
                     "error": trace_error,
                     # This is populated by actions via their log_in/log_out hooks.
                     "events": list(getattr(state, "pipeline_trace_events", []) or []),
@@ -253,6 +297,7 @@ class PipelineEngine:
                 with open(tmp_path, "w", encoding="utf-8") as f:
                     json.dump(payload, f, ensure_ascii=False, indent=2)
                 os.replace(tmp_path, path)
+
                 latest_path = Path(trace_dir) / "latest.json"
                 tmp_latest = str(latest_path) + ".tmp"
                 with open(tmp_latest, "w", encoding="utf-8") as f:

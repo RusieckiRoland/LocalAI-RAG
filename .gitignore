@@ -101,6 +101,8 @@ repositories/
 
 rag_dump_*.txt
 
+clip_dump_*.txt
+
 log/
 
 docs_pl/

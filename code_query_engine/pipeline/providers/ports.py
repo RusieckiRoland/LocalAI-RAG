@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional, Protocol
 
+from .retrieval_backend_contract import SearchRequest, SearchResponse
+
 
 class IInteractionLogger(Protocol):
     def log_interaction(
@@ -37,6 +39,22 @@ class IRetriever(Protocol):
         filters: Optional[Dict[str, Any]] = None,
         **kwargs: Any,
     ) -> List[Dict[str, Any]]:
+        ...
+
+
+class IRetrievalBackend(Protocol):
+    def search(self, req: SearchRequest) -> SearchResponse:
+        ...
+
+    def fetch_texts(
+        self,
+        *,
+        node_ids: List[str],
+        repository: str,
+        branch: str,
+        active_index: Optional[str],
+        retrieval_filters: Dict[str, Any],
+    ) -> Dict[str, str]:
         ...
 
 

@@ -12,6 +12,7 @@ from .pipeline.action_registry import build_default_action_registry
 from .pipeline.engine import PipelineEngine, PipelineRuntime
 from .pipeline.loader import PipelineLoader
 from .pipeline.providers.retrieval import RetrievalDispatcher
+from .pipeline.providers.retrieval_backend_adapter import RetrievalBackendAdapter
 from .pipeline.state import PipelineState
 from .pipeline.validator import PipelineValidator
 
@@ -161,6 +162,12 @@ class DynamicPipelineRunner:
             semantic_rerank=self.semantic_rerank_searcher,
         )
 
+        retrieval_backend = RetrievalBackendAdapter(
+            dispatcher=retrieval_dispatcher,
+            graph_provider=self.graph_provider,
+            pipeline_settings=effective_settings,
+        )
+
         # ✅ Match PipelineRuntime signature (no action_registry kwarg here)
         runtime = PipelineRuntime(
             pipeline_settings=effective_settings,
@@ -171,7 +178,8 @@ class DynamicPipelineRunner:
             history_manager=history_manager,
             logger=self.logger,
             constants=constants,
-            retrieval_dispatcher=retrieval_dispatcher,
+            retrieval_backend=retrieval_backend,
+            retrieval_dispatcher=None,  # contract: retrieval actions must use backend only
             bm25_searcher=self.bm25_searcher,
             semantic_rerank_searcher=self.semantic_rerank_searcher,
             graph_provider=self.graph_provider,

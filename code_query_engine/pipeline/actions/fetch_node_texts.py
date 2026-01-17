@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 from ..definitions import StepDef
 from ..engine import PipelineRuntime
@@ -16,12 +16,9 @@ class FetchNodeTextsAction(PipelineActionBase):
       - state.graph_expanded_nodes (preferred)
       - state.graph_seed_nodes (fallback)
 
-    Stores the result on:
-      - state.graph_node_texts
-
-    Provider contract (runtime.graph_provider):
-      - fetch_node_texts(node_ids=[...], repository=str|None, branch=str|None, active_index=str|None)
-        -> [{"id": "...", "text": "..."}, ...]
+    Stores:
+      - state.graph_node_texts (list[dict])
+      - state.graph_debug (dict)
     """
 
     @property
@@ -30,130 +27,79 @@ class FetchNodeTextsAction(PipelineActionBase):
 
     def log_in(self, step: StepDef, state: PipelineState, runtime: PipelineRuntime) -> Dict[str, Any]:
         raw = step.raw or {}
-        node_ids = list(getattr(state, "graph_expanded_nodes", None) or getattr(state, "graph_seed_nodes", []) or [])
-        max_chars = int(raw.get("max_chars", 50_000))
+        node_ids = list(state.graph_expanded_nodes or state.graph_seed_nodes or [])
         return {
-            "node_ids": node_ids,
             "node_count": len(node_ids),
-            "max_chars": max_chars,
+            "max_chars": int(raw.get("max_chars", 50_000)),
         }
 
     def log_out(
-    self,
-    step: StepDef,
-    state: PipelineState,
-    runtime: PipelineRuntime,
-    *,
-    next_step_id: Optional[str],
-    error: Optional[Dict[str, Any]],
-) -> Dict[str, Any]:
-        raw = step.raw or {}
-
-        texts = getattr(state, "graph_node_texts", None)
-        texts_list: List[Dict[str, Any]] = texts if isinstance(texts, list) else []
-
-        # Keep logs bounded: preview only (configurable from YAML step.raw).
-        max_items = int(raw.get("log_texts_max_items", 5))
-        max_chars = int(raw.get("log_texts_max_chars", 800))
-
-        preview: List[Dict[str, Any]] = []
-        for item in texts_list[:max_items]:
-            nid = (item.get("id") or item.get("Id") or "").strip()
-            t = item.get("text") or item.get("Text") or ""
-            if not isinstance(t, str):
-                t = str(t)
-            t = t.strip()
-
-            if len(t) > max_chars:
-                t = t[:max_chars] + "…"
-
-            preview.append({"id": nid, "text": t})
-
+        self,
+        step: StepDef,
+        state: PipelineState,
+        runtime: PipelineRuntime,
+        *,
+        next_step_id: Optional[str],
+        error: Optional[Dict[str, Any]],
+    ) -> Dict[str, Any]:
+        texts = state.graph_node_texts
         return {
             "next_step_id": next_step_id,
-            "node_texts_count": len(texts_list),
-            "node_texts_preview": preview,
-            "node_texts_preview_max_items": max_items,
-            "node_texts_preview_max_chars": max_chars,
-            "graph_debug": getattr(state, "graph_debug", None),
+            "node_texts_count": len(texts),
+            "error": error,
         }
 
-
     def do_execute(self, step: StepDef, state: PipelineState, runtime: PipelineRuntime) -> Optional[str]:
-        raw: Dict[str, Any] = step.raw or {}
-        settings: Dict[str, Any] = getattr(runtime, "pipeline_settings", None) or {}
+        raw = step.raw or {}
 
         provider = getattr(runtime, "graph_provider", None)
         if provider is None:
-            setattr(state, "graph_debug", {"reason": "missing_graph_provider"})
+            # Test expects this exact reason string
+            state.graph_debug = {"reason": "missing_graph_provider"}
+            state.graph_node_texts = []
             return None
 
-        node_ids: List[str] = list(getattr(state, "graph_expanded_nodes", None) or [])
+        node_ids = list(state.graph_expanded_nodes or state.graph_seed_nodes or [])
         if not node_ids:
-            node_ids = list(getattr(state, "graph_seed_nodes", None) or [])
-        if not node_ids:
-            setattr(state, "graph_debug", {"reason": "no_nodes"})
-            setattr(state, "graph_node_texts", [])
+            state.graph_debug = {"reason": "no_nodes_for_fetch_node_texts"}
+            state.graph_node_texts = []
             return None
 
-        repository: Optional[str] = settings.get("repository") or getattr(state, "repository", None) or None
-        active_index: Optional[str] = (
-            settings.get("active_index")
-            or settings.get("index")
-            or getattr(state, "active_index", None)
-            or None
-        )
+        settings = getattr(runtime, "pipeline_settings", None) or {}
 
-        # If repository is missing we still *try* to fetch (test harnesses/providers may not require it).
-        # If the provider rejects repository=None, we soft-fail below.
-        if not repository:
-            debug = dict(getattr(state, "graph_debug", None) or {})
-            debug.update({"reason": "missing_repository_for_fetch_node_texts"})
-            setattr(state, "graph_debug", debug)
-
-
-        branch: Optional[str] = getattr(state, "branch", None) or (
-            settings.get("branch") if isinstance(settings.get("branch"), str) else None
-        )
+        # Branch is required (tests always provide it)
+        branch = state.branch or settings.get("branch")
         if not branch:
-            setattr(state, "graph_debug", {"reason": "missing_branch_for_fetch_node_texts"})
-            setattr(state, "graph_node_texts", [])
-            return None
+            raise ValueError("fetch_node_texts: state.branch is required by retrieval_contract")
+
+        # Repository: if you want strict contract -> hard fail here.
+        # Currently: allow None to keep e2e tests simple.
+        repository = state.repository or settings.get("repository")
+        if not repository:
+            repository = None
+
+        active_index = getattr(state, "active_index", None) or settings.get("active_index")
 
         fetch_fn = getattr(provider, "fetch_node_texts", None)
         if fetch_fn is None:
-            setattr(state, "graph_debug", {"reason": "graph_provider_missing_fetch_node_texts"})
-            setattr(state, "graph_node_texts", [])
+            state.graph_debug = {"reason": "graph_provider_missing_fetch_node_texts"}
+            state.graph_node_texts = []
             return None
 
         max_chars = int(raw.get("max_chars", 50_000))
 
-        try:
-            texts = fetch_fn(
-                node_ids=node_ids,
-                repository=repository,
-                branch=branch,
-                active_index=active_index,
-                max_chars=max_chars,
-            ) or []
-        except Exception as ex:
-            debug = dict(getattr(state, "graph_debug", None) or {})
-            debug.update(
-                {
-                    "reason": "fetch_node_texts_failed",
-                    "error_type": ex.__class__.__name__,
-                    "error": str(ex)[:200],
-                }
-            )
-            setattr(state, "graph_debug", debug)
-            setattr(state, "graph_node_texts", [])
-            return None
+        texts = fetch_fn(
+            node_ids=node_ids,
+            repository=repository,
+            branch=branch,
+            active_index=active_index,
+            max_chars=max_chars,
+        ) or []
 
+        state.graph_node_texts = list(texts)
 
-        setattr(state, "graph_node_texts", list(texts))
-
-        debug = dict(getattr(state, "graph_debug", None) or {})
-        debug.update({"node_texts_count": len(texts)})
-        setattr(state, "graph_debug", debug)
+        debug = dict(state.graph_debug or {})
+        debug.update({"node_texts_count": len(texts), "reason": "ok"})
+        state.graph_debug = debug
 
         return None

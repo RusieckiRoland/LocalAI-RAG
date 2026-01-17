@@ -53,11 +53,11 @@ YAMLpipeline:
 
     - id: call_model_router
       action: call_model
-      prompt_key: "e2e/router_v1"
+      prompt_key: "rejewski/router_v1"
       user_parts:
-      question:
-        source: user_question_en
-        template: "### User:\n{}\n\n"
+        question:
+          source: user_question_en
+          template: "### User:\n{}\n\n"
       next: handle_router_prefix
 
 
@@ -78,12 +78,14 @@ YAMLpipeline:
     - id: fetch_semantic
       search_type: semantic
       action: search_nodes
+      top_k: 12
       query_parser: JsonishQueryParser
       next: expand_dependency_tree
 
     - id: fetch_bm25
       search_type: bm25
       action: search_nodes
+      top_k: 12
       query_parser: JsonishQueryParser
       next: expand_dependency_tree
 
@@ -121,7 +123,7 @@ YAMLpipeline:
 
     - id: call_model_answer
       action: call_model
-      prompt_key: "e2e/answer_v1"
+      prompt_key: "rejewski/answer_v1"
       user_parts:
         evidence:
           source: context_blocks
