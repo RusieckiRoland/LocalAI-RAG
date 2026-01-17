@@ -7,7 +7,7 @@
 
 ## Context and problem statement
 
-LocalAI-RAG uses YAML-defined pipelines composed of existing actions (e.g., `call_model`, `prefix_router`, `fetch_more_context`, `expand_dependency_tree`, `fetch_node_texts`, `persist_turn`, etc.).
+LocalAI-RAG uses YAML-defined pipelines composed of existing actions (e.g., `call_model`, `prefix_router`, `search_nodes`, `expand_dependency_tree`, `fetch_node_texts`, `persist_turn`, etc.).
 
 We already validate basic structural correctness (e.g., `entry_step_id` exists, referenced `next` steps exist). We also run E2E “scenario runner” tests that exercise a handful of standard pipelines.
 
@@ -82,7 +82,7 @@ For each action, define:
 
 Example (conceptual):
 
-- `fetch_more_context`:
+- `search_nodes`:
   - Requires: `state.followup_query OR state.retrieval_query` non-empty; `state.retrieval_mode` set to known mode
   - Ensures: `state.context_blocks` updated; `state.seed_nodes` updated (deduped)
 
@@ -104,7 +104,7 @@ When `call_model` is used as a router:
 - **End conditions**: ensure pipelines end (e.g., `end: true` reachable, or an action that returns `None` has a defined fallback path).
 
 ### 4) Runtime assertions (examples)
-- If `fetch_more_context` executes with an empty query → raise a clear error (or optionally return `None` and record diagnostics; policy choice).
+- If `search_nodes` executes with an empty query → raise a clear error (or optionally return `None` and record diagnostics; policy choice).
 - If `prefix_router` has missing `on_*` for a configured prefix → raise “invalid pipeline configuration” immediately.
 
 ## Notes

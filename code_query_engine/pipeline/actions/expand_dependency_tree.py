@@ -101,7 +101,7 @@ class ExpandDependencyTreeAction(PipelineActionBase):
                 out.append(v)
             return out
 
-        # Primary contract: seed nodes set by fetch_more_context
+        # Primary contract: seed nodes set by search_nodes
         seed_nodes: List[str] = list(getattr(state, "retrieval_seed_nodes", None) or [])
 
         # Fallbacks: be robust to minor refactors / different seed sources

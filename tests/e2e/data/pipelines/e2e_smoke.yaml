@@ -46,7 +46,7 @@ YAMLpipeline:
       on_other: call_answer
 
     - id: fetch
-      action: fetch_more_context
+      action: search_nodes
       search_type: "bm25"
       next: call_answer
 

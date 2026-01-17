@@ -279,7 +279,7 @@ def test_e2e_router_direct_answer_path(tmp_path: Path) -> None:
           on_other: call_answer
 
         - id: fetch
-          action: fetch_more_context
+          action: search_nodes
           next: call_answer
 
         - id: call_answer
@@ -334,7 +334,7 @@ def test_e2e_router_direct_answer_path(tmp_path: Path) -> None:
     assert out.final_answer == "OK DIRECT"
 
 
-def test_e2e_router_bm25_fetch_more_context_path(tmp_path: Path) -> None:
+def test_e2e_router_bm25_search_nodes_path(tmp_path: Path) -> None:
     yaml_text = """
     YAMLpipeline:
       name: e2e_bm25_path
@@ -378,7 +378,7 @@ def test_e2e_router_bm25_fetch_more_context_path(tmp_path: Path) -> None:
           on_other: call_answer
 
         - id: fetch
-          action: fetch_more_context
+          action: search_nodes
           search_type: "bm25"
           next: call_answer
 

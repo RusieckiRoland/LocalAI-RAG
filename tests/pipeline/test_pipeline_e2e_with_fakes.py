@@ -91,22 +91,22 @@ def test_pipeline_router_bm25_fetch_then_answer(tmp_path):
               on_other: finalize
 
             - id: fetch_bm25
-              action: fetch_more_context
+              action: search_nodes
               search_type: bm25
               next: call_answer
 
             - id: fetch_semantic
-              action: fetch_more_context
+              action: search_nodes
               search_type: semantic
               next: call_answer
 
             - id: fetch_hybrid
-              action: fetch_more_context
+              action: search_nodes
               search_type: hybrid
               next: call_answer
 
             - id: fetch_semantic_rerank
-              action: fetch_more_context
+              action: search_nodes
               search_type: semantic_rerank
               next: call_answer
 
@@ -196,7 +196,7 @@ def test_pipeline_router_bm25_fetch_then_answer(tmp_path):
         translate_chat=False,
     )
 
-    # fetch_more_context requires state.search_type to be set (current contract)
+    # search_nodes requires state.search_type to be set (current contract)
     state.search_type = "bm25"
 
     out = engine.run(pipe, state, rt)

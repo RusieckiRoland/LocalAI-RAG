@@ -269,7 +269,7 @@ load_conversation_history
 check_context_budget (budget gate)
 call_model (router, summarizers, answer)
 prefix_router (router prefixes, answer/follow-up prefixes)
-fetch_more_context (per retrieval mode)
+search_nodes (per retrieval mode)
 expand_dependency_tree (graph traversal)
 fetch_node_texts (targeted lookup by identity)
 loop_guard (enforce max_turn_loops)

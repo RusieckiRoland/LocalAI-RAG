@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import constants
 
-from code_query_engine.pipeline.actions.fetch_more_context import FetchMoreContextAction
+from code_query_engine.pipeline.actions.search_nodes import SearchNodesAction
 from code_query_engine.pipeline.definitions import StepDef
 from code_query_engine.pipeline.engine import PipelineRuntime
 from code_query_engine.pipeline.providers.fakes import FakeModelClient, FakeRetriever
@@ -54,14 +54,13 @@ def _runtime(pipe_settings, dispatcher):
         add_plant_link=lambda x: x,
     )
 
-
-def test_fetch_more_context_accepts_File_Content_keys_and_line_range():
+def test_search_nodes_accepts_File_Content_keys_and_line_range():
     step = StepDef(
         id="fetch",
-        action="fetch_more_context",
+        action="search_nodes",
         raw={
             "id": "fetch",
-            "action": "fetch_more_context",
+            "action": "search_nodes",
             # NEW contract: search_type is defined on the step (YAML), not in state.
             "search_type": "semantic",
         },
@@ -70,6 +69,7 @@ def test_fetch_more_context_accepts_File_Content_keys_and_line_range():
     retr = FakeRetriever(
         results=[
             {
+                "Id": "NODE1",
                 "File": "src/a.cs",
                 "Content": "HELLO",
                 "start_line": 10,
@@ -77,7 +77,7 @@ def test_fetch_more_context_accepts_File_Content_keys_and_line_range():
             }
         ]
     )
-    dispatcher = RetrievalDispatcher(semantic=retr, bm25=retr, semantic_rerank=retr)
+    dispatcher = RetrievalDispatcher(semantic=retr, bm25=retr)
     rt = _runtime({"top_k": 1}, dispatcher)
 
     state = PipelineState(
@@ -88,17 +88,13 @@ def test_fetch_more_context_accepts_File_Content_keys_and_line_range():
         translate_chat=False,
     )
     state.retrieval_mode = "semantic"
-    state.retrieval_query = "query"
+
+    # NEW contract: query comes from router output (prefix stripped).
+    state.last_model_response = "query"
 
     # NOTE: state.search_type is no longer used as input.
-    FetchMoreContextAction().execute(step, state, rt)
+    SearchNodesAction().execute(step, state, rt)
 
-    # Ensure context block was produced from File/Content mapping + line range
-    assert state.context_blocks, "Expected context_blocks to be populated"
-    block = state.context_blocks[-1]
-
-    # We only assert key signals (format is owned by production code)
-    assert "src/a.cs" in block
-    assert "HELLO" in block
-    assert "10" in block
-    assert "20" in block
+    # NEW contract: search_nodes outputs ONLY IDs (no context materialization).
+    assert state.context_blocks == []
+    assert state.retrieval_seed_nodes == ["NODE1"]

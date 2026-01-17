@@ -117,7 +117,7 @@ YAMLpipelines:
         on_other: call_answer
 
       - id: search
-        action: fetch_more_context
+        action: search_nodes
         search_type: bm25
         next: call_answer
 
@@ -199,7 +199,7 @@ YAMLpipelines:
         on_other: call_answer
 
       - id: search
-        action: fetch_more_context
+        action: search_nodes
         search_type: bm25
         next: expand
 

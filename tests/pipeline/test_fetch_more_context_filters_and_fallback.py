@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import constants
 
-from code_query_engine.pipeline.actions.fetch_more_context import FetchMoreContextAction
+from code_query_engine.pipeline.actions.search_nodes import SearchNodesAction
 from code_query_engine.pipeline.definitions import StepDef
 from code_query_engine.pipeline.engine import PipelineRuntime
 from code_query_engine.pipeline.providers.fakes import FakeModelClient, FakeRetriever
@@ -55,20 +55,22 @@ def _runtime(pipe_settings, dispatcher):
     )
 
 
-def test_fetch_more_context_merges_branch_and_repo_filters():
+def test_search_nodes_merges_branch_and_repo_filters():
     step = StepDef(
         id="fetch",
-        action="fetch_more_context",
+        action="search_nodes",
         raw={
             "id": "fetch",
-            "action": "fetch_more_context",
+            "action": "search_nodes",
             # NEW contract: search_type is defined on the step (YAML), not in state.
             "search_type": "bm25",
         },
     )
 
-    retr = FakeRetriever(results=[{"path": "a.cs", "content": "x"}])
-    dispatcher = RetrievalDispatcher(semantic=retr, bm25=retr, semantic_rerank=retr)
+    retr = FakeRetriever(results=[{"Id": "X", "path": "a.cs", "content": "x"}])
+
+    # NOTE: semantic_rerank removed from dispatcher API (rerank is internal, not a mode).
+    dispatcher = RetrievalDispatcher(semantic=retr, bm25=retr)
 
     rt = _runtime({"branch": "develop", "repository": "nopCommerce", "top_k": 2}, dispatcher)
 
@@ -80,11 +82,13 @@ def test_fetch_more_context_merges_branch_and_repo_filters():
         translate_chat=False,
     )
     state.retrieval_mode = "bm25"
-    state.retrieval_query = "Main entry point"
     state.retrieval_filters = {"data_type": "regular_code"}
 
+    # NEW contract: query comes from router payload (prefix stripped).
+    state.last_model_response = "Main entry point"
+
     # NOTE: state.search_type is no longer required as input.
-    FetchMoreContextAction().execute(step, state, rt)
+    SearchNodesAction().execute(step, state, rt)
 
     # Ensure filters were merged into retriever call
     assert retr.calls, "Expected retriever.search to be called"
@@ -94,13 +98,13 @@ def test_fetch_more_context_merges_branch_and_repo_filters():
     assert call["filters"].get("data_type") == "regular_code"
 
 
-def test_fetch_more_context_returns_gracefully_when_missing_dispatcher():
+def test_search_nodes_returns_gracefully_when_missing_dispatcher():
     step = StepDef(
         id="fetch",
-        action="fetch_more_context",
+        action="search_nodes",
         raw={
             "id": "fetch",
-            "action": "fetch_more_context",
+            "action": "search_nodes",
             # NEW contract: search_type is defined on the step (YAML), not in state.
             "search_type": "semantic",
         },
@@ -131,7 +135,9 @@ def test_fetch_more_context_returns_gracefully_when_missing_dispatcher():
         translate_chat=False,
     )
     state.retrieval_mode = "semantic"
-    state.retrieval_query = "something"
+
+    # NEW contract: query comes from router payload (prefix stripped).
+    state.last_model_response = "something"
 
     # Should not throw
-    FetchMoreContextAction().execute(step, state, rt)
+    SearchNodesAction().execute(step, state, rt)

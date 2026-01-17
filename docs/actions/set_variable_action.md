@@ -157,7 +157,7 @@ Deterministic:
       transform: parse_json
     - set: context_blocks
       value: []
-  next: fetch_more_context
+  next: search_nodes
 ```
 
 This is the recommended style when you want to "prepare state" before

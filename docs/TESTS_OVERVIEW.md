@@ -20,7 +20,7 @@ These layers are not equal in terms of expected churn.
 
 **Location (examples):**
 - `tests/pipeline/actions/`
-- `tests/pipeline/test_fetch_more_context_*.py`
+- `tests/pipeline/test_search_nodes_*.py`
 - `tests/pipeline/test_prefix_router_*.py`
 - `tests/pipeline/test_call_model_*.py`
 

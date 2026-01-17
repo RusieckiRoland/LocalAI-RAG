@@ -1,4 +1,4 @@
-# File: code_query_engine/pipeline/providers/retrieval.py
+# code_query_engine/pipeline/providers/retrieval.py
 
 from __future__ import annotations
 
@@ -12,6 +12,77 @@ from .ports import IRetriever
 class RetrievalDecision:
     mode: str
     query: str
+
+
+def _extract_result_id(r: Dict[str, Any]) -> str:
+    """
+    Best-effort stable ID extraction across different retrievers.
+
+    We prioritize canonical chunk/node IDs if available.
+    If missing, we fallback to a composite key based on path+lines (still deterministic).
+    """
+    nid = r.get("Id") or r.get("id") or r.get("node_id") or r.get("nodeId")
+    if nid is not None:
+        s = str(nid).strip()
+        if s:
+            return s
+
+    path = str(r.get("path") or r.get("file") or r.get("File") or "").strip()
+    start = r.get("start_line")
+    end = r.get("end_line")
+    return f"{path}::{start}-{end}"
+
+
+def _rrf_fuse(
+    a: List[Dict[str, Any]],
+    b: List[Dict[str, Any]],
+    *,
+    rrf_k: int,
+) -> List[Dict[str, Any]]:
+    """
+    Reciprocal Rank Fusion (RRF).
+
+    Score(doc) = sum_i 1 / (rrf_k + rank_i)
+
+    - rank starts at 1
+    - higher score = better
+    - keeps one representative payload per ID (prefers the earliest occurrence from 'a')
+    """
+    scores: Dict[str, float] = {}
+    best_payload: Dict[str, Dict[str, Any]] = {}
+
+    def add(results: List[Dict[str, Any]], source_priority: int) -> None:
+        for idx, r in enumerate(results or [], start=1):
+            if not isinstance(r, dict):
+                continue
+            rid = _extract_result_id(r)
+            if not rid:
+                continue
+
+            scores[rid] = scores.get(rid, 0.0) + (1.0 / (rrf_k + idx))
+
+            # Keep deterministic representative payload:
+            # prefer the first time we see it; if tie, prefer source 'a' (priority=0).
+            if rid not in best_payload:
+                best_payload[rid] = r
+                best_payload[rid]["_rrf_source_priority"] = source_priority
+
+    add(a, source_priority=0)
+    add(b, source_priority=1)
+
+    fused_ids = sorted(
+        scores.keys(),
+        key=lambda rid: (-scores[rid], best_payload[rid].get("_rrf_source_priority", 99), rid),
+    )
+
+    fused: List[Dict[str, Any]] = []
+    for rid in fused_ids:
+        item = dict(best_payload[rid])
+        item.pop("_rrf_source_priority", None)
+        item["rrf_score"] = scores[rid]
+        fused.append(item)
+
+    return fused
 
 
 class RetrievalDispatcher:
@@ -51,12 +122,44 @@ class RetrievalDispatcher:
                 return []
             return self._bm25.search(query, top_k=top_k, settings=settings, filters=filters)
 
-        if mode in ("semantic", "hybrid"):
-            # "hybrid" resolved at router-level; here treat as semantic.
+        if mode == "semantic":
             if self._semantic is None:
                 return []
             return self._semantic.search(query, top_k=top_k, settings=settings, filters=filters)
 
+        if mode == "hybrid":
+            # HybridSearch = Semantic + BM25 fused by RRF.
+            # Both sources receive the same enforced filters.
+            if self._semantic is None and self._bm25 is None:
+                return []
+
+            if self._semantic is None:
+                return self._bm25.search(query, top_k=top_k, settings=settings, filters=filters)
+
+            if self._bm25 is None:
+                return self._semantic.search(query, top_k=top_k, settings=settings, filters=filters)
+
+            # Optional tuning (strictly optional; defaults are deterministic).
+            # - widen factors: allow hybrid to have a richer candidate pool before fusion.
+            # - rrf_k controls how quickly rank position decays.
+            widen = int(settings.get("hybrid_widen", 2))
+            widen = max(1, widen)
+
+            rrf_k = int(settings.get("hybrid_rrf_k", 60))
+            rrf_k = max(1, rrf_k)
+
+            sem_k = max(top_k, top_k * widen)
+            bm_k = max(top_k, top_k * widen)
+
+            sem_results = self._semantic.search(query, top_k=sem_k, settings=settings, filters=filters) or []
+            bm_results = self._bm25.search(query, top_k=bm_k, settings=settings, filters=filters) or []
+
+            fused = _rrf_fuse(sem_results, bm_results, rrf_k=rrf_k)
+
+            # Trim to requested top_k
+            return fused[:top_k]
+
+        # Kept for compatibility with existing wiring/tests, even if router no longer emits it.
         if mode == "semantic_rerank":
             if self._semantic_rerank is None:
                 return []
@@ -66,4 +169,3 @@ class RetrievalDispatcher:
         if self._semantic is None:
             return []
         return self._semantic.search(query, top_k=top_k, settings=settings, filters=filters)
-        

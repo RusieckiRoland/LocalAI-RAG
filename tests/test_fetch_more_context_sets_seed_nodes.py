@@ -1,11 +1,11 @@
-# File: tests/test_fetch_more_context_sets_seed_nodes.py
+# File: tests/test_search_nodes_sets_seed_nodes.py
 from __future__ import annotations
 
 from typing import Any, Dict, Optional
 
 import constants
 
-from code_query_engine.pipeline.actions.fetch_more_context import FetchMoreContextAction
+from code_query_engine.pipeline.actions.search_nodes import SearchNodesAction
 from code_query_engine.pipeline.definitions import StepDef
 from code_query_engine.pipeline.engine import PipelineRuntime
 from code_query_engine.pipeline.providers.fakes import FakeRetriever
@@ -42,7 +42,7 @@ class DummyHistoryManager:
 def _runtime(pipeline_settings: Dict[str, Any], dispatcher: RetrievalDispatcher) -> PipelineRuntime:
     return PipelineRuntime(
         pipeline_settings=pipeline_settings,
-        model=None,  # not used by fetch_more_context
+        model=None,  # not used by search_nodes
         searcher=None,
         markdown_translator=DummyMarkdownTranslator(),
         translator_pl_en=DummyTranslator(),
@@ -58,13 +58,13 @@ def _runtime(pipeline_settings: Dict[str, Any], dispatcher: RetrievalDispatcher)
     )
 
 
-def test_fetch_more_context_sets_retrieval_seed_nodes_from_ids():
+def test_search_nodes_sets_retrieval_seed_nodes_from_ids():
     step = StepDef(
         id="fetch",
-        action="fetch_more_context",
+        action="search_nodes",
         raw={
             "id": "fetch",
-            "action": "fetch_more_context",
+            "action": "search_nodes",
             # NEW contract: search_type is defined on the step (YAML), not in state.
             "search_type": "semantic",
         },
@@ -79,7 +79,9 @@ def test_fetch_more_context_sets_retrieval_seed_nodes_from_ids():
             }
         ]
     )
-    dispatcher = RetrievalDispatcher(semantic=retr, bm25=retr, semantic_rerank=retr)
+
+    # semantic_rerank was removed from dispatcher API (rerank is internal, not a mode)
+    dispatcher = RetrievalDispatcher(semantic=retr, bm25=retr)
     rt = _runtime({"top_k": 2}, dispatcher)
 
     state = PipelineState(
@@ -90,16 +92,14 @@ def test_fetch_more_context_sets_retrieval_seed_nodes_from_ids():
         translate_chat=False,
     )
 
-    # Keep legacy fields (some actions/tests still set them)
     state.retrieval_mode = "semantic"
     state.retrieval_filters = {}
 
-    # IMPORTANT:
-    # RetrievalDispatcher expects a RetrievalDecision object (decision.mode must exist).
-    state.retrieval_query = "query"
+    # NEW contract: query comes from router output (prefix stripped payload)
+    state.last_model_response = "query"
 
     # Execute
-    FetchMoreContextAction().execute(step, state, rt)
+    SearchNodesAction().execute(step, state, rt)
 
     # Seed nodes come from IDs returned by retriever
     assert state.retrieval_seed_nodes == ["A"]

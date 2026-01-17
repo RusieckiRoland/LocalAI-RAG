@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Dump files (cs / md / csxaml / py / rag) into a single txt with size, mtime, and SHA256.
+Dump files (cs / md / csxaml / py / rag / clip) into a single txt with size, mtime, and SHA256.
 
 STRICT POLICY:
 - Only include files TRACKED by Git (git ls-files).
@@ -10,6 +10,11 @@ STRICT POLICY:
   still using git-tracked-only policy.
 
 This prevents accidental inclusion of ignored artifacts, even if they exist on disk.
+
+NEW MODE: clip
+- Dumps ONLY files whose paths are currently in clipboard.
+- Clipboard should contain one file path per line (repo-relative preferred).
+- Files MUST be git-tracked (STRICT policy still applies).
 """
 
 import argparse
@@ -21,7 +26,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import List, Optional, Tuple
 
-KIND_CHOICES = ("cs", "md", "csxaml", "py", "rag")
+KIND_CHOICES = ("cs", "md", "csxaml", "py", "rag", "clip")
 
 # ---------- Hashing ----------
 
@@ -45,6 +50,83 @@ def ask_kind(default="csxaml") -> str:
         print(f"Invalid choice '{ans}'. Use one of: {', '.join(KIND_CHOICES)}.", file=sys.stderr)
         sys.exit(1)
     return ans
+
+# ---------- Clipboard helpers ----------
+
+def _run_clip_cmd(cmd: List[str]) -> Optional[str]:
+    try:
+        p = subprocess.run(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True,
+            check=True,
+        )
+        out = (p.stdout or "").strip()
+        return out if out else None
+    except Exception:
+        return None
+
+def read_clipboard_text() -> str:
+    """
+    Best-effort clipboard read without extra dependencies.
+    Tries common Linux/WSL tools and Windows PowerShell.
+    """
+    # Wayland
+    out = _run_clip_cmd(["wl-paste", "--no-newline"])
+    if out:
+        return out
+
+    # X11
+    out = _run_clip_cmd(["xclip", "-selection", "clipboard", "-o"])
+    if out:
+        return out
+
+    out = _run_clip_cmd(["xsel", "--clipboard", "--output"])
+    if out:
+        return out
+
+    # WSL -> Windows clipboard
+    out = _run_clip_cmd(["powershell.exe", "-NoProfile", "-Command", "Get-Clipboard"])
+    if out:
+        return out
+
+    return ""
+
+def parse_clipboard_paths(text: str) -> List[str]:
+    """
+    Parse clipboard content into a clean list of repo-relative file paths.
+    Expectation: one path per line (preferred).
+    Tolerates leading bullets like '- '.
+    """
+    lines = []
+    for raw in (text or "").splitlines():
+        s = (raw or "").strip()
+        if not s:
+            continue
+
+        # tolerate bullets or accidental prefixes
+        if s.startswith("- "):
+            s = s[2:].strip()
+        elif s.startswith("* "):
+            s = s[2:].strip()
+
+        s = s.replace("\\", "/").strip()
+        if s.startswith("./"):
+            s = s[2:].strip()
+
+        if s:
+            lines.append(s)
+
+    # de-dupe preserving order
+    seen = set()
+    out: List[str] = []
+    for x in lines:
+        if x in seen:
+            continue
+        seen.add(x)
+        out.append(x)
+    return out
 
 # ---------- Git helpers (STRICT SOURCE OF TRUTH) ----------
 
@@ -85,6 +167,110 @@ def git_list_tracked_files(root: Path, include_paths: List[str]) -> List[Path]:
 def should_skip_dir(rel_path: Path, excluded: set) -> bool:
     """Skip if any path segment is in excluded list (relative to root)."""
     return any(part in excluded for part in rel_path.parts)
+
+def collect_files_from_clipboard(root: Path, exclude_folders: set, include_paths: List[str]) -> List[Path]:
+    """
+    Collect files listed in clipboard. Still STRICT: must be git-tracked and within include_paths scope
+    (or fallback to '.' if include_paths produce empty tracked set).
+    """
+    clip_text = read_clipboard_text()
+    if not clip_text.strip():
+        print(
+            "ERROR: Clipboard is empty or unavailable. Copy file paths (one per line) and retry with --kind clip.",
+            file=sys.stderr,
+        )
+        sys.exit(4)
+
+    requested = parse_clipboard_paths(clip_text)
+    if not requested:
+        print(
+            "ERROR: Clipboard did not contain any usable file paths. Expected one path per line.",
+            file=sys.stderr,
+        )
+        sys.exit(5)
+
+    # STRICT tracked candidates under include_paths
+    candidates = git_list_tracked_files(root, include_paths=include_paths)
+
+    # If include_paths yield zero tracked, fallback to whole repo (.)
+    if not candidates and include_paths != ["."]:
+        print(
+            f"WARNING: No tracked files matched include paths: {include_paths}. Falling back to include path '.'.",
+            file=sys.stderr,
+        )
+        candidates = git_list_tracked_files(root, include_paths=["."])
+
+    tracked_rel_set = set()
+    tracked_map = {}
+    for p in candidates:
+        if not p.exists() or not p.is_file():
+            continue
+        try:
+            rel = p.relative_to(root)
+        except ValueError:
+            continue
+        rel_s = str(rel).replace("\\", "/")
+        tracked_rel_set.add(rel_s)
+        tracked_map[rel_s] = p
+
+    results: List[Path] = []
+    missing: List[str] = []
+
+    for line in requested:
+        # Normalize to repo-relative if absolute under root
+        rel_s = line
+        try:
+            as_path = Path(line)
+            if as_path.is_absolute():
+                try:
+                    rel_s = str(as_path.resolve().relative_to(root)).replace("\\", "/")
+                except Exception:
+                    # Not under root -> treat as given (likely not valid)
+                    rel_s = line
+        except Exception:
+            rel_s = line
+
+        if rel_s not in tracked_rel_set:
+            missing.append(line)
+            continue
+
+        p = tracked_map.get(rel_s)
+        if not p:
+            missing.append(line)
+            continue
+
+        try:
+            rel = p.relative_to(root)
+        except ValueError:
+            missing.append(line)
+            continue
+
+        if should_skip_dir(rel.parent, exclude_folders):
+            # Respect excluded folders even in clip mode
+            continue
+
+        results.append(p)
+
+    # De-dupe and sort stable by path for deterministic output
+    results = sorted({str(p.resolve()): p for p in results}.values(), key=lambda p: str(p).lower())
+
+    if not results:
+        print(
+            "ERROR: Collected 0 files from clipboard after applying STRICT git-tracked policy.",
+            file=sys.stderr,
+        )
+        if missing:
+            print("Not tracked / not found (first 20):", file=sys.stderr)
+            for m in missing[:20]:
+                print(f" - {m}", file=sys.stderr)
+        sys.exit(6)
+
+    if missing:
+        print(f"WARNING: {len(missing)} clipboard entries were not git-tracked / not found (ignored).", file=sys.stderr)
+        print("Missing (not tracked / not found):", file=sys.stderr)
+        for m in missing:
+            print(f" - {m}", file=sys.stderr)
+    return results
 
 def collect_files_from_tracked(root: Path, kind: str, exclude_folders: set, include_paths: List[str]) -> List[Path]:
     """Collect files by kind from git-tracked candidates under include_paths."""
@@ -139,6 +325,10 @@ def collect_files(root: Path, kind: str, exclude_folders: set, include_paths: Li
     if not is_git_repo(root):
         print("ERROR: This script is in STRICT mode and requires a Git work tree.", file=sys.stderr)
         sys.exit(2)
+
+    # CLIP mode: only files listed in clipboard (still strict + tracked)
+    if kind == "clip":
+        return collect_files_from_clipboard(root, exclude_folders, include_paths=include_paths)
 
     # First attempt (user-specified / default include paths)
     files = collect_files_from_tracked(root, kind, exclude_folders, include_paths=include_paths)
@@ -230,7 +420,7 @@ def main():
     parser.add_argument(
         "--include-designer",
         action="store_true",
-        help="Include designer/auto-generated .cs files (applies to cs/csxaml/rag)",
+        help="Include designer/auto-generated .cs files (applies to cs/csxaml/rag/clip when relevant)",
     )
     parser.add_argument(
         "--extra-exclude-folder",
@@ -288,12 +478,18 @@ def main():
             "# NOTE: Combined repository artifact for RAG.",
             "# Includes: *.py, *.cs, *.md, *.txt, *.html, .env.example, *.yml, *.yaml, *.json.",
         ])
+    if kind == "clip":
+        header_lines.extend([
+            "# NOTE: CLIP mode dumps ONLY files listed in clipboard (one path per line).",
+            "# Clipboard entries must be git-tracked (STRICT policy still applies).",
+        ])
     header_lines.append("")
     out_file.write_text("\n".join(header_lines), encoding="utf-8")
 
     # Collect
     files = collect_files(root, kind, exclude_folders, include_paths=include_paths)
-    if (kind in ("cs", "csxaml", "rag")) and not args.include_designer:
+
+    if (kind in ("cs", "csxaml", "rag", "clip")) and not args.include_designer:
         files = filter_designer(files)
 
     files = filter_dump_artifacts(files, out_file, kind)
@@ -302,7 +498,7 @@ def main():
     if not files:
         print(
             "ERROR: Collected 0 files. You are in STRICT mode (git-tracked only). "
-            "Either your include paths have no tracked files or repo has none matching extensions.",
+            "Either your include paths have no tracked files or repo has none matching extensions / clipboard entries.",
             file=sys.stderr,
         )
         print("Hint: try --include-path .", file=sys.stderr)

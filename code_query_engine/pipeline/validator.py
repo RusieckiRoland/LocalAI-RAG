@@ -22,7 +22,7 @@ class PipelineValidator:
         "translate_out_if_needed",
         "load_conversation_history",
         "check_context_budget",
-        "fetch_more_context",
+        "search_nodes",
         "expand_dependency_tree",
         "fetch_node_texts",
         "finalize",      
@@ -180,7 +180,7 @@ class PipelineValidator:
         ids = [getattr(s, "id", "") for s in steps]
 
         has_expand = "expand_dependency_tree" in actions
-        has_fetch_more = "fetch_more_context" in actions
+        has_fetch_more = "search_nodes" in actions
         has_fetch_texts = "fetch_node_texts" in actions
 
         if has_fetch_texts and not has_expand:
@@ -195,11 +195,11 @@ class PipelineValidator:
             idx_answer = -1
 
         try:
-            idx_fetch = actions.index("fetch_more_context")
+            idx_fetch = actions.index("search_nodes")
         except ValueError:
             idx_fetch = -1
 
         if idx_answer >= 0 and idx_fetch >= 0 and idx_answer < idx_fetch:
-            warnings.append("answer before fetch_more_context")
+            warnings.append("answer before search_nodes")
 
         return warnings

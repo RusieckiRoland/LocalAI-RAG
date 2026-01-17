@@ -77,13 +77,13 @@ YAMLpipeline:
 
     - id: fetch_semantic
       search_type: semantic
-      action: fetch_more_context
+      action: search_nodes
       query_parser: JsonishQueryParser
       next: expand_dependency_tree
 
     - id: fetch_bm25
       search_type: bm25
-      action: fetch_more_context
+      action: search_nodes
       query_parser: JsonishQueryParser
       next: expand_dependency_tree
 

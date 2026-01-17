@@ -36,7 +36,7 @@ def build_default_action_registry() -> ActionRegistry:
     from .actions.translate_out_if_needed import TranslateOutIfNeededAction
     from .actions.load_conversation_history import LoadConversationHistoryAction
     from .actions.check_context_budget import CheckContextBudgetAction
-    from .actions.fetch_more_context import FetchMoreContextAction
+    from .actions.search_nodes import SearchNodesAction
     from .actions.expand_dependency_tree import ExpandDependencyTreeAction
     from .actions.fetch_node_texts import FetchNodeTextsAction
     from .actions.loop_guard import LoopGuardAction    
@@ -51,7 +51,7 @@ def build_default_action_registry() -> ActionRegistry:
     r.register("check_context_budget", CheckContextBudgetAction())
     r.register("call_model", CallModelAction())
     r.register("prefix_router", PrefixRouterAction())
-    r.register("fetch_more_context", FetchMoreContextAction())
+    r.register("search_nodes", SearchNodesAction())
     r.register("expand_dependency_tree", ExpandDependencyTreeAction())
     r.register("fetch_node_texts", FetchNodeTextsAction())
     r.register("loop_guard", LoopGuardAction())   

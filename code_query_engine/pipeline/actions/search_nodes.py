@@ -1,4 +1,4 @@
-# code_query_engine/pipeline/actions/fetch_more_context.py
+# code_query_engine/pipeline/actions/search_nodes.py
 from __future__ import annotations
 
 import logging
@@ -13,7 +13,7 @@ from .base_action import PipelineActionBase
 
 py_logger = logging.getLogger(__name__)
 
-_ALLOWED_SEARCH_TYPES = {"semantic", "bm25", "hybrid", "semantic_rerank"}
+_ALLOWED_SEARCH_TYPES = {"semantic", "bm25", "hybrid"}
 _ALLOWED_DATA_TYPES = {"regular_code", "db_code"}
 
 
@@ -167,13 +167,13 @@ def _normalize_and_validate_filters(filters: Dict[str, Any]) -> Dict[str, Any]:
         dt = out.get("data_type")
         # Accept scalar string only (router contract). If someone passes list -> fail loud.
         if isinstance(dt, list):
-            raise ValueError("fetch_more_context: 'data_type' must be a single value (regular_code/db_code), not a list.")
+            raise ValueError("search_nodes: 'data_type' must be a single value (regular_code/db_code), not a list.")
         dt_s = str(dt or "").strip()
         if not dt_s:
             out.pop("data_type", None)
         else:
             if dt_s not in _ALLOWED_DATA_TYPES:
-                raise ValueError(f"fetch_more_context: invalid data_type='{dt_s}'. Allowed: regular_code, db_code.")
+                raise ValueError(f"search_nodes: invalid data_type='{dt_s}'. Allowed: regular_code, db_code.")
             out["data_type"] = dt_s
 
     # permission_tags_all: must be a list of non-empty strings if present
@@ -198,17 +198,17 @@ def _normalize_and_validate_filters(filters: Dict[str, Any]) -> Dict[str, Any]:
     return out
 
 
-class FetchMoreContextAction(PipelineActionBase):
+class SearchNodesAction(PipelineActionBase):
     @property
     def action_id(self) -> str:
-        return "fetch_more_context"
+        return "search_nodes"
 
     def log_in(self, step: StepDef, state: PipelineState, runtime: PipelineRuntime) -> Dict[str, Any]:
         settings = runtime.pipeline_settings or {}
         raw = step.raw or {}
 
-        search_type = (getattr(state, "search_type", None) or getattr(state, "last_prefix", None) or "semantic")
-        search_type = str(search_type or "").strip().lower()
+        # Contract: search_type is defined by YAML step.raw.search_type (no implicit fallback from state).
+        search_type = str(raw.get("search_type") or "").strip().lower()
 
         payload = (state.last_model_response or "").strip()
 
@@ -225,7 +225,7 @@ class FetchMoreContextAction(PipelineActionBase):
         effective_filters = _normalize_and_validate_filters(effective_filters)
 
         top_k = int(settings.get("top_k", 12))
-        effective_query = (parsed_query or state.retrieval_query or payload or "").strip()
+        effective_query = (parsed_query or payload or "").strip()
 
         return {
             "search_type": search_type,
@@ -261,7 +261,7 @@ class FetchMoreContextAction(PipelineActionBase):
         effective_filters.update(base_filters)
         effective_filters = _normalize_and_validate_filters(effective_filters)
 
-        effective_query = (parsed_query or state.retrieval_query or payload or "").strip()
+        effective_query = (parsed_query or payload or "").strip()
 
         return {
             "next_step_id": next_step_id,
@@ -277,11 +277,11 @@ class FetchMoreContextAction(PipelineActionBase):
         settings = runtime.pipeline_settings or {}
         raw = step.raw or {}
 
-        # Contract: search_type MUST be defined explicitly on this fetch_more_context step (YAML).
+        # Contract: search_type MUST be defined explicitly on this search_nodes step (YAML).
         # No implicit fallback from state.
-        search_type = str(raw.get("search_type") or "").strip().lower()        
+        search_type = str(raw.get("search_type") or "").strip().lower()
         if search_type not in _ALLOWED_SEARCH_TYPES:
-            raise ValueError(f"fetch_more_context: invalid search_type='{search_type}'. Allowed: {sorted(_ALLOWED_SEARCH_TYPES)}")
+            raise ValueError(f"search_nodes: invalid search_type='{search_type}'. Allowed: {sorted(_ALLOWED_SEARCH_TYPES)}")
         state.search_type = search_type
 
         # Payload is what HandlePrefix left us (prefix-stripped).
@@ -291,8 +291,8 @@ class FetchMoreContextAction(PipelineActionBase):
         if payload:
             parsed_query, parsed_filters, _warnings = _parse_payload_if_configured(raw, payload)
 
-        # Query resolution: parser.query > state.retrieval_query > raw payload
-        query = (parsed_query or state.retrieval_query or payload or "").strip()
+        # Contract: query is derived ONLY from current payload (optionally parsed).
+        query = (parsed_query or payload or "").strip()
         if not query:
             return None
 
@@ -325,27 +325,8 @@ class FetchMoreContextAction(PipelineActionBase):
 
         results = _normalize_results(results)
 
-        # Seed nodes are used by graph expansion steps.
+        # Contract output: ONLY IDs for graph expansion steps.
         state.retrieval_seed_nodes = _extract_seed_nodes(results)
-
-        blocks: List[str] = []
-        for r in results:
-            path = (r.get("path") or "").strip()
-            content = (r.get("content") or "").strip()
-            if not content:
-                continue
-
-            start = r.get("start_line")
-            end = r.get("end_line")
-
-            header = f"### File: {path}" if path else "### File"
-            if start is not None and end is not None:
-                header += f" (lines {start}-{end})"
-
-            blocks.append(f"{header}\n{content}".strip())
-
-        if blocks:
-            state.context_blocks.extend(blocks)
 
         try:
             runtime.history_manager.add_iteration(query, results)
