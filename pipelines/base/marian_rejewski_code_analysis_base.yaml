@@ -40,7 +40,7 @@ YAMLpipeline:
       - semantic
       - bm25
       - hybrid
-      - semantic_rerank
+      
 
   steps:
     - id: maybe_translate_in

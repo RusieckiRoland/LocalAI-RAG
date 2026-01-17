@@ -1,0 +1,116 @@
+@startuml
+title search_nodes + optional rerank (semantic only)
+
+skinparam backgroundColor white
+skinparam shadowing false
+skinparam ArrowColor #333333
+skinparam ActivityBorderColor #333333
+skinparam ActivityBackgroundColor #F7F7F7
+skinparam NoteBackgroundColor #FFFBE6
+skinparam NoteBorderColor #E0C97F
+
+start
+
+:Input from PipelineState;
+note right
+- state.last_model_response (required)
+- state.branch (required)
+- state.repository (optional)
+- state.retrieval_filters (ACL - sacred)
+end note
+
+if (payload empty?) then (yes)
+  :No-op;
+  :state.retrieval_seed_nodes = [];
+  stop
+endif
+
+:Optional parsing (JsonishQueryParser);
+note right
+If step.raw.query_parser is set:
+- parsed_query
+- parsed_filters
+else:
+- parsed_query = payload
+- parsed_filters = {}
+end note
+
+:Build base_filters (ACL enforced);
+note right
+base_filters = state.retrieval_filters
++ repo (optional)
++ branch (required)
+(+ optional tenant/owner/groups/tags)
+end note
+
+:Merge filters (security-first);
+note right
+filters = parsed_filters + base_filters
+base_filters ALWAYS wins
+end note
+
+:Resolve query (parsed_query or payload);
+if (query empty?) then (yes)
+  :No-op;
+  :state.retrieval_seed_nodes = [];
+  stop
+endif
+
+:Read search_type from step.raw.search_type;
+note right
+Allowed:
+- semantic
+- bm25
+- hybrid
+end note
+
+partition "RetrievalDispatcher.search()" {
+  :Candidate retrieval by search_type;
+
+  if (search_type == semantic?) then (yes)
+    if (rerank enabled?) then (yes)
+      :Widen candidate pool (semantic_top_k_wide);
+      note right
+      This is the key idea:
+      retrieve MORE than final top_k,
+      then rerank + trim.
+      end note
+
+      if (rerank == keyword_rerank?) then (yes)
+        :Keyword rerank on candidates;
+        note right
+        Uses existing class:
+SemanticKeywordRerankSearch
+(no new model)
+        end note
+      else (codebert_rerank)
+        :CodeBERT rerank on candidates;
+        note right
+Future:
+cross-encoder rerank
+(shared infra with keyword_rerank)
+        end note
+      endif
+
+      :Trim to final top_k;
+    else (no)
+      :Use semantic top_k directly;
+    endif
+  else (bm25/hybrid)
+    :No rerank (current rule);
+  endif
+
+  :Return results (with Id + path/content if present);
+}
+
+:Normalize results;
+:Extract seed node IDs;
+
+:Output;
+note right
+state.retrieval_seed_nodes = [canonical IDs]
+Only required output of search_nodes
+end note
+
+stop
+@enduml
