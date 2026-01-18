@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import logging
 from typing import Any, Dict, List, Optional
 
 from ..definitions import StepDef
@@ -8,53 +7,31 @@ from ..engine import PipelineRuntime
 from ..state import PipelineState
 from .base_action import PipelineActionBase
 
-py_logger = logging.getLogger(__name__)
 
- 
 class ExpandDependencyTreeAction(PipelineActionBase):
     """
-    Expands a dependency graph starting from `state.retrieval_seed_nodes`.
+    Expands graph dependencies starting from retrieval seed nodes.
 
-    Provider contract (runtime.graph_provider):
-      - expand_dependency_tree(seed_nodes=[...], max_depth=int, max_nodes=int, edge_allowlist=[...],
-                              repository=str|None, branch=str|None, active_index=str|None)
-        -> {"nodes": [...], "edges": [...]}
+    Contract (as per our current decision):
+    - expansion limits MUST be defined explicitly on this YAML step:
+        - max_depth (int >= 1)
+        - max_nodes (int >= 1)
+        - edge_allowlist (list[str] or null)
+    - no defaults, no guessing
     """
+
     @property
     def action_id(self) -> str:
         return "expand_dependency_tree"
 
     def log_in(self, step: StepDef, state: PipelineState, runtime: PipelineRuntime) -> Dict[str, Any]:
         raw = step.raw or {}
-        settings = runtime.pipeline_settings or {}
-        seed_nodes = list(getattr(state, "retrieval_seed_nodes", []) or [])
-
-        def _read_int_setting(key: str, default: int) -> int:
-            name = (raw.get(key) or "").strip()
-            if not name:
-                return default
-            v = settings.get(name, default)
-            try:
-                return int(v)
-            except Exception:
-                py_logger.warning("Invalid int setting %s=%r; using default=%d", name, v, default, exc_info=True)
-                return default
-
-        def _read_list_setting(key: str) -> Optional[List[str]]:
-            name = (raw.get(key) or "").strip()
-            if not name:
-                return None
-            v = settings.get(name)
-            return list(v) if isinstance(v, list) else None
-
         return {
-            "seed_nodes": seed_nodes,
-            "max_depth": _read_int_setting("max_depth_from_settings", 2),
-            "max_nodes": _read_int_setting("max_nodes_from_settings", 200),
-            "edge_allowlist": _read_list_setting("edge_allowlist_from_settings"),
+            "seed_nodes_count": len(getattr(state, "retrieval_seed_nodes", None) or []),
+            "max_depth": raw.get("max_depth", None),
+            "max_nodes": raw.get("max_nodes", None),
+            "edge_allowlist": raw.get("edge_allowlist", None),
         }
-    
-    
 
     def log_out(
         self,
@@ -67,144 +44,110 @@ class ExpandDependencyTreeAction(PipelineActionBase):
     ) -> Dict[str, Any]:
         return {
             "next_step_id": next_step_id,
-            "graph_seed_nodes_count": len(getattr(state, "graph_seed_nodes", []) or []),
-            "graph_expanded_nodes_count": len(getattr(state, "graph_expanded_nodes", []) or []),
-            "graph_edges_count": len(getattr(state, "graph_edges", []) or []),
-            "graph_debug": getattr(state, "graph_debug", None),
+            "expanded_nodes_count": len(getattr(state, "graph_expanded_nodes", None) or []),
+            "graph_nodes_count": len(getattr(state, "graph_nodes", None) or []),
+            "graph_edges_count": len(getattr(state, "graph_edges", None) or []),
+            "graph_debug": dict(getattr(state, "graph_debug", None) or {}),
+            "error": error,
         }
 
     def do_execute(self, step: StepDef, state: PipelineState, runtime: PipelineRuntime) -> Optional[str]:
         raw: Dict[str, Any] = step.raw or {}
-        settings: Dict[str, Any] = getattr(runtime, "pipeline_settings", None) or {}
 
         provider = getattr(runtime, "graph_provider", None)
         if provider is None:
-            setattr(state, "graph_debug", {"reason": "missing_graph_provider"})
+            # Must be non-fatal (pipeline can run without graph)
+            state.graph_debug = {"reason": "missing_graph_provider"}
+            state.graph_expanded_nodes = []
+            state.graph_nodes = []
+            state.graph_edges = []
             return None
 
-        def _extract_seed_nodes_from_results(results: Any) -> List[str]:
-            # Deterministic: preserve first occurrence order
-            if not isinstance(results, list):
-                return []
-            seen = set()
-            out: List[str] = []
-            for r in results:
-                if not isinstance(r, dict):
-                    continue
-                nid = r.get("Id") or r.get("id") or r.get("node_id") or r.get("nodeId")
-                if nid is None:
-                    continue
-                v = str(nid).strip()
-                if not v or v in seen:
-                    continue
-                seen.add(v)
-                out.append(v)
-            return out
-
-        # Primary contract: seed nodes set by search_nodes
         seed_nodes: List[str] = list(getattr(state, "retrieval_seed_nodes", None) or [])
-
-        # Fallbacks: be robust to minor refactors / different seed sources
         if not seed_nodes:
-            seed_nodes = list(getattr(state, "graph_seed_nodes", None) or [])
-        if not seed_nodes:
-            seed_nodes = _extract_seed_nodes_from_results(getattr(state, "last_retrieval_results", None))
-
-        if not seed_nodes:
-            setattr(state, "graph_debug", {"reason": "no_seeds"})
+            # Must be non-fatal: expansion is a no-op without seeds
+            state.graph_debug = {"reason": "no_seeds"}
+            state.graph_expanded_nodes = []
+            state.graph_nodes = []
+            state.graph_edges = []
             return None
 
-        def _read_int_setting(key_name: str, default: int) -> int:
-            key = (raw.get(key_name) or "").strip()
-            if not key:
-                return default
-            if key not in settings:
-                return default
-            try:
-                return int(settings[key])
-            except Exception:
-                py_logger.warning(
-                    "Invalid int setting %s=%r; using default=%d",
-                    key,
-                    settings.get(key),
-                    default,
-                    exc_info=True,
-                )
-                return default
+        # ---- Contract: fail-fast on step config (NO DEFAULTS) ----
+        if "max_depth" not in raw:
+            raise ValueError("expand_dependency_tree: Missing required 'max_depth' in YAML step.")
+        if "max_nodes" not in raw:
+            raise ValueError("expand_dependency_tree: Missing required 'max_nodes' in YAML step.")
+        if "edge_allowlist" not in raw:
+            raise ValueError("expand_dependency_tree: Missing required 'edge_allowlist' in YAML step (can be null).")
 
-        def _read_list_setting(key_name: str) -> Optional[List[str]]:
-            key = (raw.get(key_name) or "").strip()
-            if not key:
-                return None
-            val = settings.get(key)
-            if val is None:
-                return None
-            if isinstance(val, list):
-                out = [str(x).strip() for x in val if str(x).strip()]
-                return out or None
-            if isinstance(val, str):
-                out = [x.strip() for x in val.split(",") if x.strip()]
-                return out or None
-            return None
+        max_depth = int(raw.get("max_depth"))
+        max_nodes = int(raw.get("max_nodes"))
+        edge_allowlist = raw.get("edge_allowlist", None)
+        if edge_allowlist is not None:
+            edge_allowlist = list(edge_allowlist)
 
-        max_depth = _read_int_setting("max_depth_from_settings", default=2)
-        max_nodes = _read_int_setting("max_nodes_from_settings", default=200)
-        edge_allowlist = _read_list_setting("edge_allowlist_from_settings")
+        if max_depth < 1:
+            raise ValueError("expand_dependency_tree: 'max_depth' must be >= 1.")
+        if max_nodes < 1:
+            raise ValueError("expand_dependency_tree: 'max_nodes' must be >= 1.")
 
-        repository: Optional[str] = None
-        # Default: pass repository unless step explicitly disables it.
-        if raw.get("repository_from_settings") is not False:
-            repository = settings.get("repository") or getattr(state, "repository", None) or None
+        settings = getattr(runtime, "pipeline_settings", None) or {}
 
-        active_index: Optional[str] = None
-        # Default: pass active_index unless step explicitly disables it.
-       # Default: pass active_index unless step explicitly disables it.
-        if raw.get("active_index_from_settings") is not False:
-            active_index = (
-                settings.get("active_index_id")
-                or settings.get("active_index")
-                or getattr(state, "active_index_id", None)
-                or getattr(state, "active_index", None)
-            )
+        # Scope: branch is required, repository is strongly expected
+        branch = (state.branch or settings.get("branch") or "").strip()
+        if not branch:
+            raise ValueError("expand_dependency_tree: state.branch is required by retrieval_contract")
 
+        repository = (state.repository or settings.get("repository") or "").strip()
+        if not repository:
+            raise ValueError("expand_dependency_tree: Missing required 'repository' (state.repository or pipeline settings['repository']).")
 
+        active_index = getattr(state, "active_index", None) or settings.get("active_index")
 
+        retrieval_filters = dict(getattr(state, "retrieval_filters", None) or {})
 
-        branch: Optional[str] = getattr(state, "branch", None) or (
-            settings.get("branch") if isinstance(settings.get("branch"), str) else None
-        )
-
-        expand_fn = getattr(provider, "expand_dependency_tree", None) or getattr(provider, "expand", None)
+        expand_fn = getattr(provider, "expand_dependency_tree", None)
         if expand_fn is None:
-            setattr(state, "graph_debug", {"reason": "graph_provider_missing_expand"})
+            state.graph_debug = {"reason": "graph_provider_missing_expand_dependency_tree"}
+            state.graph_expanded_nodes = []
+            state.graph_nodes = []
+            state.graph_edges = []
             return None
 
-        out = expand_fn(
+        result = expand_fn(
             seed_nodes=seed_nodes,
-            max_depth=max_depth,
-            max_nodes=max_nodes,
-            edge_allowlist=edge_allowlist,
             repository=repository,
             branch=branch,
             active_index=active_index,
+            max_depth=max_depth,
+            max_nodes=max_nodes,
+            edge_allowlist=edge_allowlist,
+            filters=retrieval_filters,
         ) or {}
 
-        nodes = list(out.get("nodes") or [])
-        edges = list(out.get("edges") or [])
+        nodes = list(result.get("nodes", []) or [])
+        edges = list(result.get("edges", []) or [])
 
-        # Store results for next steps
-        setattr(state, "graph_seed_nodes", list(seed_nodes))
-        setattr(state, "graph_expanded_nodes", nodes)
-        setattr(state, "graph_edges", edges)
+        # Contract: expanded set is "seed + expanded nodes" (unique, keep order)
+        expanded = []
+        seen = set()
+        for nid in list(seed_nodes) + list(nodes):
+            s = str(nid)
+            if s and s not in seen:
+                seen.add(s)
+                expanded.append(s)
 
-        debug = dict(getattr(state, "graph_debug", None) or {})
-        debug.update(
-            {
-                "seed_nodes_count": len(seed_nodes),
-                "expanded_nodes_count": len(nodes),
-                "edges_count": len(edges),
-            }
-        )
-        setattr(state, "graph_debug", debug)
+        state.graph_seed_nodes = list(seed_nodes)
+        state.graph_expanded_nodes = expanded
+        state.graph_nodes = list(nodes)
+        state.graph_edges = list(edges)
+
+        state.graph_debug = {
+            "reason": "ok",
+            "seed_nodes_count": len(seed_nodes),
+            "graph_nodes_count": len(nodes),
+            "graph_edges_count": len(edges),
+            "expanded_nodes_count": len(expanded),
+        }
 
         return None

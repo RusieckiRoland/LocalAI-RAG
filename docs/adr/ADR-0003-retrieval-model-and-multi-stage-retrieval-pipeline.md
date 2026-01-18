@@ -67,7 +67,7 @@ This step operates strictly on **identities and relationships**, never on text.
 
 **Contract**
 - **Requires:** graph-expanded node IDs (or seed nodes as a fallback).
-- **Ensures:** textual payloads (`graph_node_texts`) ready for prompt construction.
+- **Ensures:** textual payloads (`node_nexts`) ready for prompt construction.
 
 Text is materialized **only at this stage**, ensuring predictable cost and context size.
 

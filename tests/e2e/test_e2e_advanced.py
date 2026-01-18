@@ -9,6 +9,7 @@ import constants
 from code_query_engine.pipeline.action_registry import build_default_action_registry
 from code_query_engine.pipeline.engine import PipelineEngine, PipelineRuntime
 from code_query_engine.pipeline.loader import PipelineLoader
+from code_query_engine.pipeline.providers.retrieval_backend_adapter import RetrievalBackendAdapter
 from code_query_engine.pipeline.state import PipelineState
 from code_query_engine.pipeline.validator import PipelineValidator
 
@@ -52,16 +53,16 @@ class FakeModelWithAsk:
         self._outs = {k: list(v or []) for k, v in (outputs_by_consultant or {}).items()}
 
     def ask(self, *args: Any, **kwargs: Any) -> str:
-      consultant = kwargs.get("consultant")
-      if not consultant:
-          # Production Model.ask(...) does NOT receive 'consultant'.
-          # Default to the single consultant used in these E2E tests.
-          consultant = "rejewski"
+        consultant = kwargs.get("consultant")
+        if not consultant:
+            # Production Model.ask(...) does NOT receive 'consultant'.
+            # Default to the single consultant used in these E2E tests.
+            consultant = "rejewski"
 
-      q = self._outs.get(str(consultant), [])
-      if not q:
-          return ""
-      return str(q.pop(0))
+        q = self._outs.get(str(consultant), [])
+        if not q:
+            return ""
+        return str(q.pop(0))
 
 
 class FakeRetriever:
@@ -69,7 +70,9 @@ class FakeRetriever:
         self._results = list(results or [])
         self.calls: List[Dict[str, Any]] = []
 
-    def search(self, *, query: str, top_k: int, settings: Dict[str, Any], filters: Dict[str, Any]) -> List[Dict[str, Any]]:
+    def search(
+        self, *, query: str, top_k: int, settings: Dict[str, Any], filters: Dict[str, Any]
+    ) -> List[Dict[str, Any]]:
         self.calls.append({"query": query, "top_k": top_k})
         return list(self._results)
 
@@ -78,13 +81,20 @@ class DummyRetrievalDispatcher:
     def __init__(self, *, retriever: FakeRetriever) -> None:
         self._retriever = retriever
 
-    def search(self, decision: Any, *, top_k: int, settings: Dict[str, Any], filters: Dict[str, Any]) -> List[Dict[str, Any]]:
+    def search(
+        self, decision: Any, *, top_k: int, settings: Dict[str, Any], filters: Dict[str, Any]
+    ) -> List[Dict[str, Any]]:
         query = getattr(decision, "query", None) or ""
         return self._retriever.search(query=str(query), top_k=int(top_k), settings=settings, filters=filters)
 
 
 class FakeGraphProvider:
-    def __init__(self, *, expand_result: Optional[Dict[str, Any]] = None, node_texts: Optional[List[Dict[str, Any]]] = None) -> None:
+    def __init__(
+        self,
+        *,
+        expand_result: Optional[Dict[str, Any]] = None,
+        node_texts: Optional[List[Dict[str, Any]]] = None,
+    ) -> None:
         self._expand_result = dict(expand_result or {"nodes": [], "edges": []})
         self._node_texts = list(node_texts or [])
 
@@ -126,6 +136,12 @@ def _runtime(
     token_counter: Optional[Any] = None,
     graph_provider: Optional[Any] = None,
 ) -> PipelineRuntime:
+    backend = RetrievalBackendAdapter(
+        dispatcher=dispatcher,
+        graph_provider=graph_provider,
+        pipeline_settings=pipeline_settings,
+    )
+
     return PipelineRuntime(
         pipeline_settings=pipeline_settings,
         model=model,
@@ -135,6 +151,7 @@ def _runtime(
         history_manager=history_manager,
         logger=DummyInteractionLogger(),
         constants=constants,
+        retrieval_backend=backend,
         retrieval_dispatcher=dispatcher,
         bm25_searcher=None,
         semantic_rerank_searcher=None,
@@ -241,6 +258,7 @@ def test_e2e_router_direct_answer_path(tmp_path: Path) -> None:
       name: e2e_direct_path
       settings:
         entry_step_id: load_history
+        repository: "nopCommerce"
         top_k: 2
         test: true
 
@@ -340,6 +358,7 @@ def test_e2e_router_bm25_search_nodes_path(tmp_path: Path) -> None:
       name: e2e_bm25_path
       settings:
         entry_step_id: load_history
+        repository: "nopCommerce"
         top_k: 2
         test: true
 
@@ -436,46 +455,52 @@ def test_e2e_router_bm25_search_nodes_path(tmp_path: Path) -> None:
 
 
 def test_e2e_dependency_expand_then_fetch_node_texts(tmp_path: Path) -> None:
+    # IMPORTANT: YAML must have consistent indentation, because _load_pipe_from_inline_yaml uses textwrap.dedent().
+    # Any mixed indentation will break YAML parsing.
     yaml_text = """
-    YAMLpipeline:
-      name: e2e_dep_expand
-      settings:
-        entry_step_id: expand
-        test: true
+YAMLpipeline:
+  name: e2e_dep_expand
+  settings:
+    entry_step_id: expand
+    repository: "nopCommerce"
+    test: true
 
-      steps:
-        - id: expand
-          action: expand_dependency_tree
-          next: fetch_texts
+  steps:
+    - id: expand
+      action: expand_dependency_tree
+      max_depth: 2
+      max_nodes: 200
+      edge_allowlist: null
+      next: fetch_texts
 
-        - id: fetch_texts
-          action: fetch_node_texts
-          next: call_answer
+    - id: fetch_texts
+      action: fetch_node_texts
+      next: call_answer
 
-        - id: call_answer
-          action: call_model
-          prompt_key: "e2e/answer_v1"
-          user_parts:
-            evidence:
-              source: context_blocks
-              template: "### Evidence:\\n{}\\n\\n"
-            user:
-              source: user_query
-              template: "### User:\\n{}\\n\\n"
-          next: handle_answer
+    - id: call_answer
+      action: call_model
+      prompt_key: "e2e/answer_v1"
+      user_parts:
+        evidence:
+          source: context_blocks
+          template: "### Evidence:\\n{}\\n\\n"
+        user:
+          source: user_query
+          template: "### User:\\n{}\\n\\n"
+      next: handle_answer
 
-        - id: handle_answer
-          action: prefix_router
-          routes:
-            answer:
-              prefix: "[Answer:]"
-              next: finalize
-          on_other: finalize
+    - id: handle_answer
+      action: prefix_router
+      routes:
+        answer:
+          prefix: "[Answer:]"
+          next: finalize
+      on_other: finalize
 
-        - id: finalize
-          action: finalize
-          end: true
-    """
+    - id: finalize
+      action: finalize
+      end: true
+"""
 
     pipe = _load_pipe_from_inline_yaml(tmp_path, yaml_text, "e2e_dep_expand")
 

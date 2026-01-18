@@ -2,11 +2,14 @@ from __future__ import annotations
 
 import constants
 
+import pytest
+
 from code_query_engine.pipeline.actions.search_nodes import SearchNodesAction
 from code_query_engine.pipeline.definitions import StepDef
 from code_query_engine.pipeline.engine import PipelineRuntime
 from code_query_engine.pipeline.providers.fakes import FakeModelClient, FakeRetriever
 from code_query_engine.pipeline.providers.retrieval import RetrievalDispatcher
+from code_query_engine.pipeline.providers.retrieval_backend_adapter import RetrievalBackendAdapter
 from code_query_engine.pipeline.state import PipelineState
 
 
@@ -37,6 +40,7 @@ class DummyLogger:
 
 
 def _runtime(pipe_settings, dispatcher):
+    backend = RetrievalBackendAdapter(dispatcher=dispatcher, graph_provider=None, pipeline_settings=pipe_settings)
     return PipelineRuntime(
         pipeline_settings=pipe_settings,
         model=FakeModelClient(outputs=[""]),
@@ -46,6 +50,7 @@ def _runtime(pipe_settings, dispatcher):
         history_manager=DummyHistory(),
         logger=DummyLogger(),
         constants=constants,
+        retrieval_backend=backend,
         retrieval_dispatcher=dispatcher,
         bm25_searcher=None,
         semantic_rerank_searcher=None,
@@ -98,7 +103,7 @@ def test_search_nodes_merges_branch_and_repo_filters():
     assert call["filters"].get("data_type") == "regular_code"
 
 
-def test_search_nodes_returns_gracefully_when_missing_dispatcher():
+def test_search_nodes_raises_when_missing_retrieval_backend():
     step = StepDef(
         id="fetch",
         action="search_nodes",
@@ -111,7 +116,7 @@ def test_search_nodes_returns_gracefully_when_missing_dispatcher():
     )
 
     rt = PipelineRuntime(
-        pipeline_settings={"top_k": 2},
+        pipeline_settings={"top_k": 2, "repository": "nopCommerce", "branch": "develop"},
         model=FakeModelClient(outputs=[""]),
         searcher=None,
         markdown_translator=DummyMarkdownTranslator(),
@@ -119,6 +124,7 @@ def test_search_nodes_returns_gracefully_when_missing_dispatcher():
         history_manager=DummyHistory(),
         logger=DummyLogger(),
         constants=constants,
+        retrieval_backend=None,
         retrieval_dispatcher=None,
         bm25_searcher=None,
         semantic_rerank_searcher=None,
@@ -139,5 +145,6 @@ def test_search_nodes_returns_gracefully_when_missing_dispatcher():
     # NEW contract: query comes from router payload (prefix stripped).
     state.last_model_response = "something"
 
-    # Should not throw
-    SearchNodesAction().execute(step, state, rt)
+    # New contract: retrieval_backend is mandatory
+    with pytest.raises(ValueError):
+        SearchNodesAction().execute(step, state, rt)

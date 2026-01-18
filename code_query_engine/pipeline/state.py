@@ -28,6 +28,10 @@ class PipelineState:
     retrieval_filters: Dict[str, Any] = field(default_factory=dict)   
     query_type: Optional[str] = None
 
+    # Materialized node texts fetched for graph nodes (used as Evidence for the LLM prompt).
+    # `fetch_node_texts` prefers graph_expanded_nodes; falls back to graph_seed_nodes.
+    graph_node_texts: List[Dict[str, Any]] = field(default_factory=list)
+
     # Context
     history_dialog: Dialog = field(default_factory=list)
     context_blocks: List[str] = field(default_factory=list)

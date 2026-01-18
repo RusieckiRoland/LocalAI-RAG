@@ -57,4 +57,4 @@ def test_fetch_node_texts_calls_provider_and_stores_result():
     assert call["active_index"] == "nop_main_index"
     assert call["branch"] == "develop"
 
-    assert getattr(state, "graph_node_texts", None) == [{"id": "A", "text": "text:A"}, {"id": "B", "text": "text:B"}]
+    assert getattr(state, "node_nexts", None) == [{"id": "A", "text": "text:A"}, {"id": "B", "text": "text:B"}]

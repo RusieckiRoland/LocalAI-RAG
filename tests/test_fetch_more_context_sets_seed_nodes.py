@@ -10,6 +10,7 @@ from code_query_engine.pipeline.definitions import StepDef
 from code_query_engine.pipeline.engine import PipelineRuntime
 from code_query_engine.pipeline.providers.fakes import FakeRetriever
 from code_query_engine.pipeline.providers.retrieval import RetrievalDecision, RetrievalDispatcher
+from code_query_engine.pipeline.providers.retrieval_backend_adapter import RetrievalBackendAdapter
 from code_query_engine.pipeline.state import PipelineState
 
 
@@ -40,6 +41,7 @@ class DummyHistoryManager:
 
 
 def _runtime(pipeline_settings: Dict[str, Any], dispatcher: RetrievalDispatcher) -> PipelineRuntime:
+    backend = RetrievalBackendAdapter(dispatcher=dispatcher, graph_provider=None, pipeline_settings=pipeline_settings)
     return PipelineRuntime(
         pipeline_settings=pipeline_settings,
         model=None,  # not used by search_nodes
@@ -49,6 +51,7 @@ def _runtime(pipeline_settings: Dict[str, Any], dispatcher: RetrievalDispatcher)
         history_manager=DummyHistoryManager(),
         logger=DummyInteractionLogger(),
         constants=constants,
+        retrieval_backend=backend,
         retrieval_dispatcher=dispatcher,
         bm25_searcher=None,
         semantic_rerank_searcher=None,
@@ -82,7 +85,7 @@ def test_search_nodes_sets_retrieval_seed_nodes_from_ids():
 
     # semantic_rerank was removed from dispatcher API (rerank is internal, not a mode)
     dispatcher = RetrievalDispatcher(semantic=retr, bm25=retr)
-    rt = _runtime({"top_k": 2}, dispatcher)
+    rt = _runtime({"top_k": 2, "repository": "nopCommerce"}, dispatcher)
 
     state = PipelineState(
         user_query="Q",

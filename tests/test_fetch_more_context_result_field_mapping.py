@@ -7,6 +7,7 @@ from code_query_engine.pipeline.definitions import StepDef
 from code_query_engine.pipeline.engine import PipelineRuntime
 from code_query_engine.pipeline.providers.fakes import FakeModelClient, FakeRetriever
 from code_query_engine.pipeline.providers.retrieval import RetrievalDispatcher
+from code_query_engine.pipeline.providers.retrieval_backend_adapter import RetrievalBackendAdapter
 from code_query_engine.pipeline.state import PipelineState
 
 
@@ -37,6 +38,7 @@ class DummyLogger:
 
 
 def _runtime(pipe_settings, dispatcher):
+    backend = RetrievalBackendAdapter(dispatcher=dispatcher, graph_provider=None, pipeline_settings=pipe_settings)
     return PipelineRuntime(
         pipeline_settings=pipe_settings,
         model=FakeModelClient(outputs=[""]),
@@ -46,6 +48,7 @@ def _runtime(pipe_settings, dispatcher):
         history_manager=DummyHistory(),
         logger=DummyLogger(),
         constants=constants,
+        retrieval_backend=backend,
         retrieval_dispatcher=dispatcher,
         bm25_searcher=None,
         semantic_rerank_searcher=None,
@@ -53,6 +56,7 @@ def _runtime(pipe_settings, dispatcher):
         token_counter=None,
         add_plant_link=lambda x: x,
     )
+
 
 def test_search_nodes_accepts_File_Content_keys_and_line_range():
     step = StepDef(
@@ -78,7 +82,7 @@ def test_search_nodes_accepts_File_Content_keys_and_line_range():
         ]
     )
     dispatcher = RetrievalDispatcher(semantic=retr, bm25=retr)
-    rt = _runtime({"top_k": 1}, dispatcher)
+    rt = _runtime({"top_k": 1, "repository": "nopCommerce"}, dispatcher)
 
     state = PipelineState(
         user_query="Q",

@@ -6,7 +6,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from ..definitions import StepDef
 from ..engine import PipelineRuntime
-from ..providers.retrieval import RetrievalDecision
+from ..providers.retrieval_backend_contract import SearchRequest
 from ..query_parsers import BaseQueryParser, QueryParseResult, JsonishQueryParser
 from ..state import PipelineState
 from .base_action import PipelineActionBase
@@ -31,14 +31,32 @@ def _normalize_str_list(v: Any) -> List[str]:
     return [s] if s else []
 
 
+def _cleanup_retrieval_artifacts(state: PipelineState) -> None:
+    """
+    Contract-level cleanup to avoid cross-request state leakage.
+    We reset retrieval/graph/text artifacts at the very beginning of search_nodes.
+    """
+    state.retrieval_seed_nodes = []
+    state.graph_seed_nodes = []
+    state.graph_expanded_nodes = []
+    state.graph_edges = []
+    state.graph_debug = {}
+    state.graph_node_texts = []
+    state.context_blocks = []
+
+    # Defensive: some older actions/tests may have this attribute dynamically
+    if hasattr(state, "node_nexts"):
+        setattr(state, "node_nexts", [])
+
+
 def _merge_filters(settings: Dict[str, Any], state: PipelineState, step_raw: Dict[str, Any]) -> Dict[str, Any]:
     """
     Build the filter dict that MUST be applied at SEARCH TIME.
 
-    IMPORTANT:
-    - unified-index metadata uses 'repo' (NOT 'repository')
-    - branch is always required
-    - pipeline-enforced filters (repo/branch/tenant/permissions) MUST NOT be overridden by model payload
+    IMPORTANT (retrieval_contract):
+    - repository + branch are required (scope)
+    - ACL filters from state.retrieval_filters are sacred
+    - parsed/model payload must never override base filters
     """
     filters: Dict[str, Any] = {}
     filters.update(state.retrieval_filters or {})
@@ -46,12 +64,14 @@ def _merge_filters(settings: Dict[str, Any], state: PipelineState, step_raw: Dic
     repo = (state.repository or settings.get("repository") or "").strip()
     branch = (state.branch or settings.get("branch") or "").strip()
 
+    if not repo:
+        raise ValueError("search_nodes: Missing required 'repository' (state.repository or pipeline settings['repository']).")
     if not branch:
-        raise ValueError("Missing required 'branch' (state.branch or pipeline settings['branch']).")
+        raise ValueError("search_nodes: Missing required 'branch' (state.branch or pipeline settings['branch']).")
 
-    if repo:
-        filters["repo"] = repo
-
+    # Keep metadata keys compatible with the existing unified-index layout
+    # (retrievers historically use 'repo' not 'repository')
+    filters["repo"] = repo
     filters["branch"] = branch
 
     # Optional multi-tenant / auth-ish filters from pipeline settings
@@ -72,52 +92,6 @@ def _merge_filters(settings: Dict[str, Any], state: PipelineState, step_raw: Dic
         filters["permission_tags_all"] = [s for s in _normalize_str_list(perm_tags)]
 
     return filters
-
-
-def _normalize_results(results: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    normalized: List[Dict[str, Any]] = []
-    for r in results or []:
-        if not isinstance(r, dict):
-            continue
-
-        path = r.get("path") or r.get("File") or r.get("file") or ""
-        content = r.get("content") or r.get("Content") or r.get("text") or ""
-        start_line = r.get("start_line")
-        end_line = r.get("end_line")
-
-        normalized.append(
-            {
-                "path": path,
-                "content": content,
-                "start_line": start_line,
-                "end_line": end_line,
-                # Keep everything else for debugging / seed extraction.
-                **{k: v for k, v in r.items() if k not in {"path", "file", "File", "content", "Content", "text"}},
-            }
-        )
-    return normalized
-
-
-def _extract_seed_nodes(results: List[Dict[str, Any]]) -> List[str]:
-    seen = set()
-    out: List[str] = []
-
-    for r in results or []:
-        if not isinstance(r, dict):
-            continue
-
-        nid = r.get("Id") or r.get("id") or r.get("node_id") or r.get("nodeId")
-        if nid is None:
-            continue
-
-        v = str(nid).strip()
-        if not v or v in seen:
-            continue
-
-        seen.add(v)
-        out.append(v)
-
-    return out
 
 
 def _resolve_parser(parser_name: str) -> BaseQueryParser:
@@ -198,6 +172,19 @@ def _normalize_and_validate_filters(filters: Dict[str, Any]) -> Dict[str, Any]:
     return out
 
 
+def _opt_int(v: Any) -> Optional[int]:
+    if v is None:
+        return None
+    if isinstance(v, bool):
+        return None
+    if isinstance(v, int):
+        return v
+    s = str(v or "").strip()
+    if not s:
+        return None
+    return int(s)
+
+
 class SearchNodesAction(PipelineActionBase):
     @property
     def action_id(self) -> str:
@@ -207,9 +194,7 @@ class SearchNodesAction(PipelineActionBase):
         settings = runtime.pipeline_settings or {}
         raw = step.raw or {}
 
-        # Contract: search_type is defined by YAML step.raw.search_type (no implicit fallback from state).
         search_type = str(raw.get("search_type") or "").strip().lower()
-
         payload = (state.last_model_response or "").strip()
 
         parsed_query = ""
@@ -218,13 +203,18 @@ class SearchNodesAction(PipelineActionBase):
         if payload:
             parsed_query, parsed_filters, warnings = _parse_payload_if_configured(raw, payload)
 
-        # IMPORTANT: parsed filters can never override pipeline-enforced filters.
         base_filters = _merge_filters(settings, state, raw)
         effective_filters = dict(parsed_filters or {})
         effective_filters.update(base_filters)
         effective_filters = _normalize_and_validate_filters(effective_filters)
 
-        top_k = int(settings.get("top_k", 12))
+        # Contract: step.raw.top_k optional. Keep settings.top_k as a fallback for backward compatibility.
+        top_k = _opt_int(raw.get("top_k"))
+        if top_k is None:
+            top_k = _opt_int(settings.get("top_k"))
+        if top_k is None:
+            top_k = 5
+
         effective_query = (parsed_query or payload or "").strip()
 
         return {
@@ -249,7 +239,6 @@ class SearchNodesAction(PipelineActionBase):
         next_step_id: Optional[str],
         error: Optional[Dict[str, Any]],
     ) -> Dict[str, Any]:
-        # Re-derive effective query/filters so traces always show what the search used.
         settings = runtime.pipeline_settings or {}
         raw = step.raw or {}
 
@@ -277,12 +266,38 @@ class SearchNodesAction(PipelineActionBase):
         settings = runtime.pipeline_settings or {}
         raw = step.raw or {}
 
+        # Contract cleanup: must happen BEFORE doing anything else.
+        _cleanup_retrieval_artifacts(state)
+
         # Contract: search_type MUST be defined explicitly on this search_nodes step (YAML).
-        # No implicit fallback from state.
+               # Contract: search_type MUST be defined explicitly on this search_nodes step (YAML).
         search_type = str(raw.get("search_type") or "").strip().lower()
         if search_type not in _ALLOWED_SEARCH_TYPES:
             raise ValueError(f"search_nodes: invalid search_type='{search_type}'. Allowed: {sorted(_ALLOWED_SEARCH_TYPES)}")
         state.search_type = search_type
+
+        # Contract: step.raw.rerank is optional, but allowed ONLY for search_type='semantic'.
+        # Allowed values: none, keyword_rerank, codebert_rerank (reserved).
+        rerank_raw = str(raw.get("rerank") or "").strip().lower()
+        if not rerank_raw or rerank_raw == "none":
+            rerank_raw = "none"
+
+        allowed_reranks = {"none", "keyword_rerank", "codebert_rerank"}
+        if rerank_raw not in allowed_reranks:
+            raise ValueError(
+                f"search_nodes: invalid rerank='{rerank_raw}'. Allowed: {sorted(allowed_reranks)}"
+            )
+
+        if rerank_raw != "none" and search_type != "semantic":
+            raise ValueError(
+                "search_nodes: rerank is allowed only for search_type='semantic' (retrieval_contract)."
+            )
+
+        if rerank_raw == "codebert_rerank":
+            raise ValueError(
+                "search_nodes: rerank='codebert_rerank' is reserved and not implemented yet."
+            )
+
 
         # Payload is what HandlePrefix left us (prefix-stripped).
         payload = (state.last_model_response or "").strip()
@@ -294,14 +309,22 @@ class SearchNodesAction(PipelineActionBase):
         # Contract: query is derived ONLY from current payload (optionally parsed).
         query = (parsed_query or payload or "").strip()
         if not query:
-            return None
+            raise ValueError("search_nodes: Empty query after parsing/normalization is not allowed by retrieval_contract.")
 
-        dispatcher = runtime.get_retrieval_dispatcher()
-        if dispatcher is None:
-            # Graceful: tests expect no throw in this case.
-            return None
+        # Contract: repository + branch required (scope)
+        repo = (state.repository or settings.get("repository") or "").strip()
+        branch = (state.branch or settings.get("branch") or "").strip()
+        if not repo:
+            raise ValueError("search_nodes: Missing required 'repository' (state.repository or pipeline settings['repository']).")
+        if not branch:
+            raise ValueError("search_nodes: Missing required 'branch' (state.branch or pipeline settings['branch']).")
 
-        top_k = int(settings.get("top_k", 12))
+        # Contract: step.raw.top_k optional. Keep settings.top_k as a fallback for backward compatibility.
+        top_k = _opt_int(raw.get("top_k"))
+        if top_k is None:
+            top_k = _opt_int(settings.get("top_k"))
+        if top_k is None:
+            top_k = 5
 
         # IMPORTANT: parsed filters can never override pipeline-enforced filters.
         base_filters = _merge_filters(settings, state, raw)
@@ -309,27 +332,34 @@ class SearchNodesAction(PipelineActionBase):
         filters.update(base_filters)
         filters = _normalize_and_validate_filters(filters)
 
-        decision = RetrievalDecision(mode=search_type, query=query)
+        active_index = getattr(state, "active_index", None) or settings.get("active_index")
 
-        search_fn = getattr(dispatcher, "search", None)
-        if callable(search_fn):
-            results = search_fn(decision, top_k=top_k, settings=settings, filters=filters)
-        else:
-            # Fallback (older fakes)
-            retriever = getattr(dispatcher, "retriever", None) or getattr(dispatcher, "_retriever", None)
-            retr_search = getattr(retriever, "search", None) if retriever is not None else None
-            if callable(retr_search):
-                results = retr_search(query, top_k=top_k, filters=filters)
-            else:
-                results = []
+        # ✅ Strict contract: use backend only (no direct FAISS/dispatcher access)
+        backend = runtime.get_retrieval_backend()
 
-        results = _normalize_results(results)
+        req = SearchRequest(
+            search_type=search_type,  # type: ignore[arg-type]
+            query=query,
+            top_k=int(top_k),
+            repository=repo,
+            branch=branch,
+            retrieval_filters=filters,
+            active_index=str(active_index).strip() if active_index else None,
+        )
+
+        resp = backend.search(req)
 
         # Contract output: ONLY IDs for graph expansion steps.
-        state.retrieval_seed_nodes = _extract_seed_nodes(results)
+        state.retrieval_seed_nodes = [h.id for h in (resp.hits or []) if getattr(h, "id", None)]
 
+        # History manager is a debug artifact; keep soft-failure behavior.
         try:
-            runtime.history_manager.add_iteration(query, results)
+            # Keep a minimal structure similar to old "results" for debugging.
+            results_for_history: List[Dict[str, Any]] = []
+            for h in (resp.hits or []):
+                results_for_history.append({"Id": h.id, "score": getattr(h, "score", 0.0), "rank": getattr(h, "rank", 0)})
+
+            runtime.history_manager.add_iteration(query, results_for_history)
         except Exception:
             py_logger.exception("soft-failure: history_manager.add_iteration failed; continuing")
 

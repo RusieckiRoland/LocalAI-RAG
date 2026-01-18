@@ -17,7 +17,7 @@ class FetchNodeTextsAction(PipelineActionBase):
       - state.graph_seed_nodes (fallback)
 
     Stores:
-      - state.graph_node_texts (list[dict])
+      - state.node_nexts (list[dict])
       - state.graph_debug (dict)
     """
 
@@ -42,7 +42,7 @@ class FetchNodeTextsAction(PipelineActionBase):
         next_step_id: Optional[str],
         error: Optional[Dict[str, Any]],
     ) -> Dict[str, Any]:
-        texts = state.graph_node_texts
+        texts = state.node_nexts
         return {
             "next_step_id": next_step_id,
             "node_texts_count": len(texts),
@@ -56,13 +56,13 @@ class FetchNodeTextsAction(PipelineActionBase):
         if provider is None:
             # Test expects this exact reason string
             state.graph_debug = {"reason": "missing_graph_provider"}
-            state.graph_node_texts = []
+            state.node_nexts = []
             return None
 
         node_ids = list(state.graph_expanded_nodes or state.graph_seed_nodes or [])
         if not node_ids:
             state.graph_debug = {"reason": "no_nodes_for_fetch_node_texts"}
-            state.graph_node_texts = []
+            state.node_nexts = []
             return None
 
         settings = getattr(runtime, "pipeline_settings", None) or {}
@@ -83,7 +83,7 @@ class FetchNodeTextsAction(PipelineActionBase):
         fetch_fn = getattr(provider, "fetch_node_texts", None)
         if fetch_fn is None:
             state.graph_debug = {"reason": "graph_provider_missing_fetch_node_texts"}
-            state.graph_node_texts = []
+            state.node_nexts = []
             return None
 
         max_chars = int(raw.get("max_chars", 50_000))
@@ -96,7 +96,7 @@ class FetchNodeTextsAction(PipelineActionBase):
             max_chars=max_chars,
         ) or []
 
-        state.graph_node_texts = list(texts)
+        state.node_nexts = list(texts)
 
         debug = dict(state.graph_debug or {})
         debug.update({"node_texts_count": len(texts), "reason": "ok"})

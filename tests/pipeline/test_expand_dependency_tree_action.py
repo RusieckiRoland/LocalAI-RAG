@@ -19,6 +19,7 @@ class FakeGraphProvider:
         repository=None,
         branch=None,
         active_index=None,
+        filters=None,
     ):
         self.calls.append(
             {
@@ -29,6 +30,7 @@ class FakeGraphProvider:
                 "repository": repository,
                 "branch": branch,
                 "active_index": active_index,
+                "filters": dict(filters or {}),
             }
         )
         return {"nodes": ["A", "B"], "edges": [{"from": "A", "to": "B", "type": "Calls"}]}
@@ -64,10 +66,10 @@ def test_expand_dependency_tree_calls_provider_and_updates_state():
         action="expand_dependency_tree",
         raw={
             "id": "expand",
-            "action": "expand_dependency_tree",          
-            "max_depth_from_settings": "graph_max_depth",
-            "max_nodes_from_settings": "graph_max_nodes",
-            "edge_allowlist_from_settings": "graph_edge_allowlist",
+            "action": "expand_dependency_tree",
+            "max_depth": 3,
+            "max_nodes": 10,
+            "edge_allowlist": ["Calls"],
         },
     )
 
@@ -97,6 +99,7 @@ def test_expand_dependency_tree_calls_provider_and_updates_state():
     assert call["repository"] == "nopCommerce"
     assert call["active_index"] == "nop_main_index"
     assert call["branch"] == "develop"
+    assert call["filters"] == {}
 
     assert getattr(state, "graph_seed_nodes", None) == ["A"]
     assert getattr(state, "graph_expanded_nodes", None) == ["A", "B"]

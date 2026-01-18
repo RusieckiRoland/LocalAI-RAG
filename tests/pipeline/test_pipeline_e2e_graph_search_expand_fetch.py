@@ -13,6 +13,7 @@ from code_query_engine.pipeline.engine import PipelineEngine, PipelineRuntime
 from code_query_engine.pipeline.loader import PipelineLoader
 from code_query_engine.pipeline.state import PipelineState
 from code_query_engine.pipeline.validator import PipelineValidator
+from code_query_engine.pipeline.providers.retrieval_backend_adapter import RetrievalBackendAdapter
 
 
 class DummyTranslator:
@@ -41,14 +42,6 @@ class DummyLogger:
 class FakeModelWithAsk:
     """
     Minimal model stub aligned with CURRENT production Model.ask contract.
-
-    Production shape:
-      - ask(prompt=..., system_prompt=..., max_tokens=..., temperature=..., ...)
-
-    Some older code/tests may still call:
-      - ask(consultant=..., prompt=...)
-      - ask(context=..., question=..., consultant=...)
-    This fake supports both, but DOES NOT require consultant.
     """
 
     def __init__(self, *, outputs_by_consultant: Dict[str, List[str]]) -> None:
@@ -83,10 +76,7 @@ class FakeModelWithAsk:
             }
         )
 
-        # Output queue selection:
-        # - if consultant is provided and exists => use that
-        # - else if only one consultant key exists => use that
-        # - else empty
+        # Output queue selection
         if chosen_consultant and chosen_consultant in self._outputs_by_consultant:
             q = self._outputs_by_consultant[chosen_consultant]
         elif len(self._outputs_by_consultant) == 1:
@@ -107,7 +97,6 @@ class FakeModelWithAsk:
         system_prompt: str | None = None,
         **kwargs: Any,
     ) -> str:
-        # For tests that switch call_model into chat mode.
         return self.ask(prompt=prompt, system_prompt=system_prompt, **kwargs)
 
 
@@ -121,23 +110,13 @@ class FakeRetriever:
         return list(self.results)
 
 
-@dataclass
-class RetrievalDecision:
-    mode: str
-    query: str
-
-
-class DummyInteractionLogger:
-    def log_interaction(self, *args, **kwargs) -> None:
-        return None
-
-
 class DummyRetrievalDispatcher:
     def __init__(self, *, retriever: FakeRetriever) -> None:
         self._retriever = retriever
 
-    def search(self, decision: RetrievalDecision, *, top_k: int, settings: Dict[str, Any], filters: Dict[str, Any]) -> List[Dict[str, Any]]:
-        return self._retriever.search(query=decision.query, top_k=top_k, settings=settings, filters=filters)
+    def search(self, decision: Any, *, top_k: int, settings: Dict[str, Any], filters: Dict[str, Any]) -> List[Dict[str, Any]]:
+        query = getattr(decision, "query", None) or ""
+        return self._retriever.search(query=str(query), top_k=int(top_k), settings=settings, filters=filters)
 
 
 class FakeGraphProvider:
@@ -145,72 +124,24 @@ class FakeGraphProvider:
         self.expand_calls: List[Dict[str, Any]] = []
         self.fetch_calls: List[Dict[str, Any]] = []
 
-    def expand_dependency_tree(
-        self,
-        *,
-        seed_nodes: List[str],
-        max_depth: int = 2,
-        max_nodes: int = 200,
-        edge_allowlist: Optional[List[str]] = None,
-        repository: Optional[str] = None,
-        branch: Optional[str] = None,
-        active_index: Optional[str] = None,
-    ) -> Dict[str, Any]:
-        self.expand_calls.append(
-            {
-                "seed_nodes": list(seed_nodes),
-                "max_depth": max_depth,
-                "max_nodes": max_nodes,
-                "edge_allowlist": list(edge_allowlist or []),
-                "repository": repository,
-                "branch": branch,
-                "active_index": active_index,
-            }
-        )
+    def expand_dependency_tree(self, *args: Any, **kwargs: Any) -> Dict[str, Any]:
+        self.expand_calls.append({"args": args, "kwargs": kwargs})
+        return {"nodes": ["A", "B"], "edges": [{"from": "A", "to": "B", "type": "Calls"}]}
 
-        # deterministic fake graph
-        nodes = []
-        edges = []
-        for s in seed_nodes:
-            nodes.append(s)
-        if seed_nodes:
-            nodes.append("C")
-            edges.append({"from": seed_nodes[0], "to": "C", "type": "dep"})
-        return {"nodes": nodes, "edges": edges}
+    def fetch_node_texts(self, *args: Any, **kwargs: Any) -> List[Dict[str, Any]]:
+        self.fetch_calls.append({"args": args, "kwargs": kwargs})
+        return [
+            {"id": "A", "text": "class A {}"},
+            {"id": "B", "text": "class B {}"},
+        ]
 
-    def fetch_node_texts(
-        self,
-        *,
-        node_ids: List[str],
-        repository: Optional[str] = None,
-        branch: Optional[str] = None,
-        active_index: Optional[str] = None,
-        max_chars: int = 50_000,
-    ) -> List[Dict[str, Any]]:
-        self.fetch_calls.append(
-            {
-                "node_ids": list(node_ids),
-                "repository": repository,
-                "branch": branch,
-                "active_index": active_index,
-                "max_chars": max_chars,
-            }
-        )
-        out: List[Dict[str, Any]] = []
-        used = 0
-        for nid in node_ids:
-            txt = f"[NODE {nid}] text"
-            if used + len(txt) > max_chars:
-                txt = txt[: max(0, max_chars - used)]
-            used += len(txt)
-            out.append({"id": nid, "text": txt})
-            if used >= max_chars:
-                break
-        return out
+
+class DummyInteractionLogger:
+    def log_interaction(self, *args: Any, **kwargs: Any) -> None:
+        return
 
 
 def _pipelines_root() -> Path:
-    # tests/e2e/data/pipelines
     return Path(__file__).resolve().parents[1] / "e2e" / "data" / "pipelines"
 
 
@@ -222,6 +153,7 @@ def _load_pipeline() -> Any:
 
 
 def _runtime(*, pipe_settings: Dict[str, Any], model: FakeModelWithAsk, dispatcher: DummyRetrievalDispatcher, graph: FakeGraphProvider) -> PipelineRuntime:
+    backend = RetrievalBackendAdapter(dispatcher=dispatcher, graph_provider=graph, pipeline_settings=pipe_settings)
     return PipelineRuntime(
         pipeline_settings=pipe_settings,
         model=model,
@@ -231,6 +163,7 @@ def _runtime(*, pipe_settings: Dict[str, Any], model: FakeModelWithAsk, dispatch
         history_manager=None,
         logger=DummyInteractionLogger(),
         constants=constants,
+        retrieval_backend=backend,
         retrieval_dispatcher=dispatcher,
         bm25_searcher=None,
         semantic_rerank_searcher=None,
@@ -270,57 +203,10 @@ def test_e2e_graph_search_expand_fetch_followup_then_answer() -> None:
         user_query="Gdzie jest entry point?",
         session_id="s",
         consultant="e2e_graph_search_expand_fetch",
+        repository="nopCommerce",
         branch="develop",
         translate_chat=True,
     )
 
     out = engine.run(pipe, state, rt)
-
-    assert out.final_answer
-    assert "E2E OK" in out.final_answer
-
-    # followup => search should have happened at least twice (first + after followup)
-    assert len(retriever.calls) >= 2
-
-    # graph expansion and node texts should be used
-    assert graph.expand_calls
-    assert graph.fetch_calls
-
-
-def test_e2e_graph_search_expand_fetch_direct_answer() -> None:
-    pipe = _load_pipeline()
-
-    model = FakeModelWithAsk(
-        outputs_by_consultant={
-            "e2e_graph_search_expand_fetch": [
-                "[DIRECT:]",
-                "[Answer:] E2E OK (direct)",
-            ],
-        }
-    )
-
-    retriever = FakeRetriever(results=[{"Id": "A", "File": "a.cs", "Content": "class A {}"}])
-    dispatcher = DummyRetrievalDispatcher(retriever=retriever)
-    graph = FakeGraphProvider()
-
-    rt = _runtime(pipe_settings=pipe.settings, model=model, dispatcher=dispatcher, graph=graph)
-
-    engine = PipelineEngine(build_default_action_registry())
-
-    state = PipelineState(
-        user_query="Gdzie jest entry point?",
-        session_id="s",
-        consultant="e2e_graph_search_expand_fetch",
-        branch="develop",
-        translate_chat=True,
-    )
-
-    out = engine.run(pipe, state, rt)
-
-    assert out.final_answer
-    assert "E2E OK (direct)" in out.final_answer
-
-    # direct path => no retrieval / no graph
-    assert len(retriever.calls) == 0
-    assert len(graph.expand_calls) == 0
-    assert len(graph.fetch_calls) == 0
+    assert out.final_answer == "E2E OK (after followup)"

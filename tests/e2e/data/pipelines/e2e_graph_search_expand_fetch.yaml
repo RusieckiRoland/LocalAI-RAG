@@ -55,6 +55,9 @@ YAMLpipeline:
 
     - id: expand
       action: expand_dependency_tree
+      max_depth: 2
+      max_nodes: 200
+      edge_allowlist: null
       next: fetch_texts
 
     - id: fetch_texts

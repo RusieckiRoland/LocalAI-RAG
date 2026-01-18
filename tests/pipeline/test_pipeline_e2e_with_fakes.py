@@ -8,6 +8,7 @@ from code_query_engine.pipeline.state import PipelineState
 from code_query_engine.pipeline.validator import PipelineValidator
 from code_query_engine.pipeline.providers.fakes import FakeRetriever
 from code_query_engine.pipeline.providers.retrieval import RetrievalDispatcher
+from code_query_engine.pipeline.providers.retrieval_backend_adapter import RetrievalBackendAdapter
 
 
 class DummyTranslator:
@@ -57,6 +58,7 @@ def test_pipeline_router_bm25_fetch_then_answer(tmp_path):
 
           settings:
             entry_step_id: call_router
+            repository: "nopCommerce"
             top_k: 2
             prompts_dir: "{str(prompts_dir)}"
 
@@ -170,6 +172,8 @@ def test_pipeline_router_bm25_fetch_then_answer(tmp_path):
 
     dispatcher = RetrievalDispatcher(bm25=retr)
 
+    backend = RetrievalBackendAdapter(dispatcher=dispatcher, graph_provider=None, pipeline_settings=pipe.settings)
+
     rt = PipelineRuntime(
         pipeline_settings=pipe.settings,
         model=model,
@@ -179,6 +183,7 @@ def test_pipeline_router_bm25_fetch_then_answer(tmp_path):
         history_manager=DummyHistory(),
         logger=DummyLogger(),
         constants=constants,
+        retrieval_backend=backend,
         retrieval_dispatcher=dispatcher,
         bm25_searcher=None,
         semantic_rerank_searcher=None,
@@ -195,9 +200,6 @@ def test_pipeline_router_bm25_fetch_then_answer(tmp_path):
         branch="develop",
         translate_chat=False,
     )
-
-    # search_nodes requires state.search_type to be set (current contract)
-    state.search_type = "bm25"
 
     out = engine.run(pipe, state, rt)
 
