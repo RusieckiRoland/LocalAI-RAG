@@ -204,6 +204,10 @@ YAMLpipelines:
         next: expand
 
       - id: expand
+        graph_max_depth: 2
+        graph_max_nodes: 200
+        graph_edge_allowlist: null
+        max_context_tokens: 4096
         action: expand_dependency_tree
         next: fetch_texts
 
@@ -264,6 +268,10 @@ YAMLpipelines:
 
       - id: expand
         action: expand_dependency_tree
+        graph_max_depth: 2
+        graph_max_nodes: 200
+        graph_edge_allowlist: null
+        max_context_tokens: 4096
         next: fetch_texts
 
       - id: fetch_texts

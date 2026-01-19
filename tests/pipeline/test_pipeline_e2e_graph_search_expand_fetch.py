@@ -1,139 +1,21 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-from pathlib import Path
-from typing import Any, Dict, List, Optional
-
 import textwrap
+from pathlib import Path
+from types import SimpleNamespace
+from typing import Any, Dict, List
 
 import constants
 
 from code_query_engine.pipeline.action_registry import build_default_action_registry
 from code_query_engine.pipeline.engine import PipelineEngine, PipelineRuntime
 from code_query_engine.pipeline.loader import PipelineLoader
+from code_query_engine.pipeline.providers.retrieval_backend_adapter import RetrievalBackendAdapter
 from code_query_engine.pipeline.state import PipelineState
 from code_query_engine.pipeline.validator import PipelineValidator
-from code_query_engine.pipeline.providers.retrieval_backend_adapter import RetrievalBackendAdapter
 
-
-class DummyTranslator:
-    def translate(self, text: str) -> str:
-        # minimal PL->EN stub
-        return f"EN: {text}"
-
-
-class DummyMarkdownTranslator:
-    def translate(self, markdown_en: str) -> str:
-        # minimal EN->PL stub
-        return f"PL: {markdown_en}"
-
-
-class DummyLogger:
-    def info(self, *args: Any, **kwargs: Any) -> None:
-        pass
-
-    def warning(self, *args: Any, **kwargs: Any) -> None:
-        pass
-
-    def error(self, *args: Any, **kwargs: Any) -> None:
-        pass
-
-
-class FakeModelWithAsk:
-    """
-    Minimal model stub aligned with CURRENT production Model.ask contract.
-    """
-
-    def __init__(self, *, outputs_by_consultant: Dict[str, List[str]]) -> None:
-        self._outputs_by_consultant = {k: list(v) for k, v in (outputs_by_consultant or {}).items()}
-        self.calls: List[Dict[str, str]] = []
-
-    def ask(
-        self,
-        *,
-        prompt: str | None = None,
-        system_prompt: str | None = None,
-        consultant: str | None = None,
-        context: str | None = None,
-        question: str | None = None,
-        **kwargs: Any,
-    ) -> str:
-        # Normalize old call shapes into "prompt"
-        if prompt is None:
-            ctx = context or ""
-            q = question or ""
-            prompt = (ctx + "\n" + q).strip()
-
-        chosen_consultant = (consultant or "").strip()
-
-        self.calls.append(
-            {
-                "consultant": chosen_consultant,
-                "system_prompt": system_prompt or "",
-                "prompt": prompt or "",
-                "context": context or "",
-                "question": question or "",
-            }
-        )
-
-        # Output queue selection
-        if chosen_consultant and chosen_consultant in self._outputs_by_consultant:
-            q = self._outputs_by_consultant[chosen_consultant]
-        elif len(self._outputs_by_consultant) == 1:
-            only_key = next(iter(self._outputs_by_consultant.keys()))
-            q = self._outputs_by_consultant[only_key]
-        else:
-            q = []
-
-        if not q:
-            return ""
-        return q.pop(0)
-
-    def ask_chat(
-        self,
-        *,
-        prompt: str,
-        history: Any = None,
-        system_prompt: str | None = None,
-        **kwargs: Any,
-    ) -> str:
-        return self.ask(prompt=prompt, system_prompt=system_prompt, **kwargs)
-
-
-class FakeRetriever:
-    def __init__(self, *, results: List[Dict[str, Any]]) -> None:
-        self.results = list(results or [])
-        self.calls: List[Dict[str, Any]] = []
-
-    def search(self, *, query: str, top_k: int, settings: Dict[str, Any], filters: Dict[str, Any]) -> List[Dict[str, Any]]:
-        self.calls.append({"query": query, "top_k": top_k, "settings": dict(settings or {}), "filters": dict(filters or {})})
-        return list(self.results)
-
-
-class DummyRetrievalDispatcher:
-    def __init__(self, *, retriever: FakeRetriever) -> None:
-        self._retriever = retriever
-
-    def search(self, decision: Any, *, top_k: int, settings: Dict[str, Any], filters: Dict[str, Any]) -> List[Dict[str, Any]]:
-        query = getattr(decision, "query", None) or ""
-        return self._retriever.search(query=str(query), top_k=int(top_k), settings=settings, filters=filters)
-
-
-class FakeGraphProvider:
-    def __init__(self) -> None:
-        self.expand_calls: List[Dict[str, Any]] = []
-        self.fetch_calls: List[Dict[str, Any]] = []
-
-    def expand_dependency_tree(self, *args: Any, **kwargs: Any) -> Dict[str, Any]:
-        self.expand_calls.append({"args": args, "kwargs": kwargs})
-        return {"nodes": ["A", "B"], "edges": [{"from": "A", "to": "B", "type": "Calls"}]}
-
-    def fetch_node_texts(self, *args: Any, **kwargs: Any) -> List[Dict[str, Any]]:
-        self.fetch_calls.append({"args": args, "kwargs": kwargs})
-        return [
-            {"id": "A", "text": "class A {}"},
-            {"id": "B", "text": "class B {}"},
-        ]
+from history.history_manager import HistoryManager
+from history.mock_redis import InMemoryMockRedis
 
 
 class DummyInteractionLogger:
@@ -141,26 +23,178 @@ class DummyInteractionLogger:
         return
 
 
-def _pipelines_root() -> Path:
-    return Path(__file__).resolve().parents[1] / "e2e" / "data" / "pipelines"
+class DummyTranslator:
+    def translate(self, text: str) -> str:
+        return text
 
 
-def _load_pipeline() -> Any:
-    loader = PipelineLoader(pipelines_root=str(_pipelines_root()))
-    pipe = loader.load_by_name("e2e_graph_search_expand_fetch")
+class DummyMarkdownTranslator:
+    def translate_markdown(self, text: str) -> str:
+        return text
+
+
+class FakeModelWithAsk:
+    """
+    call_model uses model.ask(...). Allow both positional and keyword usage.
+    Queue is per consultant.
+    """
+
+    def __init__(self, *, outputs_by_consultant: Dict[str, List[str]]) -> None:
+        self._outs = {k: list(v or []) for k, v in (outputs_by_consultant or {}).items()}
+
+    def ask(self, *args: Any, **kwargs: Any) -> str:
+        consultant = kwargs.get("consultant") or "e2e_graph_search_expand_fetch"
+        q = self._outs.get(str(consultant), [])
+        if not q:
+            return ""
+        return str(q.pop(0))
+
+
+class FakeRetriever:
+    def __init__(self, *, results: List[Dict[str, Any]]) -> None:
+        self._results = list(results or [])
+        self.calls: List[Dict[str, Any]] = []
+
+    def search(
+        self, *, query: str, top_k: int, settings: Dict[str, Any], filters: Dict[str, Any]
+    ) -> List[Dict[str, Any]]:
+        self.calls.append({"query": query, "top_k": top_k})
+        return list(self._results)
+
+
+class DummyRetrievalDispatcher:
+    def __init__(self, *, retriever: FakeRetriever) -> None:
+        self._retriever = retriever
+
+    def search(
+        self, decision: Any, *, top_k: int, settings: Dict[str, Any], filters: Dict[str, Any]
+    ) -> List[Dict[str, Any]]:
+        query = getattr(decision, "query", None) or ""
+        return self._retriever.search(query=str(query), top_k=int(top_k), settings=settings, filters=filters)
+
+
+class FakeGraphProvider:
+    def expand_dependency_tree(self, *args: Any, **kwargs: Any) -> Dict[str, Any]:
+        # Minimal contract-compatible shape
+        return {"nodes": [], "edges": []}
+
+    def fetch_node_texts(self, *args: Any, **kwargs: Any) -> List[Dict[str, Any]]:
+        return []
+
+
+def _load_pipeline(tmp_path: Path) -> Any:
+    yaml_text = """
+YAMLpipeline:
+  name: e2e_graph_search_expand_fetch
+  settings:
+    entry_step_id: router
+    repository: "nopCommerce"
+    top_k: 2
+    test: true
+
+    max_context_tokens: 4096
+    graph_max_depth: 2
+    graph_max_nodes: 200
+    graph_edge_allowlist: null
+
+  steps:
+    - id: router
+      action: call_model
+      prompt_key: "e2e/router_v1"
+      user_parts:
+        user:
+          source: user_query
+          template: "### User:\\n{}\\n\\n"
+      next: handle_router
+
+    - id: handle_router
+      action: prefix_router
+      routes:
+        bm25:
+          prefix: "[BM25:]"
+          next: search
+      on_other: search
+
+    - id: search
+      action: search_nodes
+      search_type: "bm25"
+      next: expand
+
+    - id: expand
+      action: expand_dependency_tree
+      max_depth_from_settings: "graph_max_depth"
+      max_nodes_from_settings: "graph_max_nodes"
+      edge_allowlist_from_settings: "graph_edge_allowlist"
+      next: fetch_texts
+
+    - id: fetch_texts
+      action: fetch_node_texts
+      next: call_answer
+
+    - id: call_answer
+      action: call_model
+      prompt_key: "e2e/answer_v1"
+      user_parts:
+        evidence:
+          source: context_blocks
+          template: "### Evidence:\\n{}\\n\\n"
+        user:
+          source: user_query
+          template: "### User:\\n{}\\n\\n"
+      next: handle_answer
+
+    - id: handle_answer
+      action: prefix_router
+      routes:
+        answer:
+          prefix: "[Answer:]"
+          next: finalize
+        requesting_data:
+          prefix: "[Requesting data on:]"
+          next: search
+      on_other: finalize
+
+    - id: finalize
+      action: finalize
+      end: true
+"""
+
+    yaml_path = tmp_path / "e2e_graph_search_expand_fetch.yaml"
+    yaml_path.write_text(textwrap.dedent(yaml_text).strip(), encoding="utf-8")
+
+    loader = PipelineLoader(pipelines_root=str(tmp_path))
+    pipe = loader.load_from_path(str(yaml_path))
     PipelineValidator().validate(pipe)
+
+    # Ensure prompts exist and pipeline points to tmp prompts_dir.
+    prompts_dir = tmp_path / "prompts"
+    (prompts_dir / "e2e").mkdir(parents=True, exist_ok=True)
+    (prompts_dir / "e2e" / "router_v1.txt").write_text("SYS ROUTER\n", encoding="utf-8")
+    (prompts_dir / "e2e" / "answer_v1.txt").write_text("SYS ANSWER\n", encoding="utf-8")
+
+    if pipe.settings is None:
+        pipe.settings = {}
+    pipe.settings["prompts_dir"] = str(prompts_dir)
+
     return pipe
 
 
-def _runtime(*, pipe_settings: Dict[str, Any], model: FakeModelWithAsk, dispatcher: DummyRetrievalDispatcher, graph: FakeGraphProvider) -> PipelineRuntime:
-    backend = RetrievalBackendAdapter(dispatcher=dispatcher, graph_provider=graph, pipeline_settings=pipe_settings)
+def _runtime(*, pipe_settings: Dict[str, Any], model: Any, dispatcher: Any, graph: Any) -> PipelineRuntime:
+    history_manager = HistoryManager(backend=InMemoryMockRedis(), session_id="s")
+
+    backend = RetrievalBackendAdapter(
+        dispatcher=dispatcher,
+        graph_provider=graph,
+        pipeline_settings=pipe_settings,
+    )
+
     return PipelineRuntime(
         pipeline_settings=pipe_settings,
         model=model,
         searcher=None,
         markdown_translator=DummyMarkdownTranslator(),
         translator_pl_en=DummyTranslator(),
-        history_manager=None,
+        history_manager=history_manager,
         logger=DummyInteractionLogger(),
         constants=constants,
         retrieval_backend=backend,
@@ -168,13 +202,13 @@ def _runtime(*, pipe_settings: Dict[str, Any], model: FakeModelWithAsk, dispatch
         bm25_searcher=None,
         semantic_rerank_searcher=None,
         graph_provider=graph,
-        token_counter=None,
-        add_plant_link=lambda x, consultant=None: x,
+        token_counter=SimpleNamespace(count_tokens=lambda s: len(str(s).split())),
+        add_plant_link=lambda text, consultant=None: text,
     )
 
 
-def test_e2e_graph_search_expand_fetch_followup_then_answer() -> None:
-    pipe = _load_pipeline()
+def test_e2e_graph_search_expand_fetch_followup_then_answer(tmp_path: Path) -> None:
+    pipe = _load_pipeline(tmp_path)
 
     model = FakeModelWithAsk(
         outputs_by_consultant={

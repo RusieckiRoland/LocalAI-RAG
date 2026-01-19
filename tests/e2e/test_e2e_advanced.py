@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import textwrap
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any, Dict, List, Optional
 
 import constants
@@ -464,13 +465,17 @@ YAMLpipeline:
     entry_step_id: expand
     repository: "nopCommerce"
     test: true
+    max_context_tokens: 4096
+    graph_max_depth: 2
+    graph_max_nodes: 200
+    graph_edge_allowlist: null
 
   steps:
     - id: expand
       action: expand_dependency_tree
-      max_depth: 2
-      max_nodes: 200
-      edge_allowlist: null
+      max_depth_from_settings: "graph_max_depth"
+      max_nodes_from_settings: "graph_max_nodes"
+      edge_allowlist_from_settings: "graph_edge_allowlist"
       next: fetch_texts
 
     - id: fetch_texts
@@ -522,6 +527,7 @@ YAMLpipeline:
         dispatcher=dispatcher,
         history_manager=history_manager,
         graph_provider=graph,
+        token_counter=FakeTokenCounter(fixed_count=1),
     )
 
     state = PipelineState(

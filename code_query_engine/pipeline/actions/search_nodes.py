@@ -1,4 +1,3 @@
-# code_query_engine/pipeline/actions/search_nodes.py
 from __future__ import annotations
 
 import logging
@@ -15,6 +14,9 @@ py_logger = logging.getLogger(__name__)
 
 _ALLOWED_SEARCH_TYPES = {"semantic", "bm25", "hybrid"}
 _ALLOWED_DATA_TYPES = {"regular_code", "db_code"}
+
+# "codebert_rerank" is for future use (contract allows it, execution can be backend-side later)
+_ALLOWED_RERANK_MODES = {"none", "keyword_rerank", "codebert_rerank"}
 
 
 def _normalize_str_list(v: Any) -> List[str]:
@@ -34,9 +36,10 @@ def _normalize_str_list(v: Any) -> List[str]:
 def _cleanup_retrieval_artifacts(state: PipelineState) -> None:
     """
     Contract-level cleanup to avoid cross-request state leakage.
-    We reset retrieval/graph/text artifacts at the very beginning of search_nodes.
+    Reset retrieval/graph/text artifacts at the very beginning of search_nodes.
     """
     state.retrieval_seed_nodes = []
+    state.retrieval_hits = []
     state.graph_seed_nodes = []
     state.graph_expanded_nodes = []
     state.graph_edges = []
@@ -59,7 +62,7 @@ def _merge_filters(settings: Dict[str, Any], state: PipelineState, step_raw: Dic
     - parsed/model payload must never override base filters
     """
     filters: Dict[str, Any] = {}
-    filters.update(state.retrieval_filters or {})
+    filters.update(getattr(state, "retrieval_filters", None) or {})
 
     repo = (state.repository or settings.get("repository") or "").strip()
     branch = (state.branch or settings.get("branch") or "").strip()
@@ -69,8 +72,7 @@ def _merge_filters(settings: Dict[str, Any], state: PipelineState, step_raw: Dic
     if not branch:
         raise ValueError("search_nodes: Missing required 'branch' (state.branch or pipeline settings['branch']).")
 
-    # Keep metadata keys compatible with the existing unified-index layout
-    # (retrievers historically use 'repo' not 'repository')
+    # Keep metadata keys compatible with existing unified-index layout
     filters["repo"] = repo
     filters["branch"] = branch
 
@@ -130,16 +132,13 @@ def _parse_payload_if_configured(step_raw: Dict[str, Any], payload: str) -> Tupl
 
 def _normalize_and_validate_filters(filters: Dict[str, Any]) -> Dict[str, Any]:
     """
-    Validate only the invariants we care about (today):
-    - data_type (if present) must be one of: regular_code, db_code
-
+    Validate only invariants we care about (today).
     Do NOT rewrite arbitrary filter keys/values here.
     """
     out = dict(filters or {})
 
     if "data_type" in out:
         dt = out.get("data_type")
-        # Accept scalar string only (router contract). If someone passes list -> fail loud.
         if isinstance(dt, list):
             raise ValueError("search_nodes: 'data_type' must be a single value (regular_code/db_code), not a list.")
         dt_s = str(dt or "").strip()
@@ -150,7 +149,6 @@ def _normalize_and_validate_filters(filters: Dict[str, Any]) -> Dict[str, Any]:
                 raise ValueError(f"search_nodes: invalid data_type='{dt_s}'. Allowed: regular_code, db_code.")
             out["data_type"] = dt_s
 
-    # permission_tags_all: must be a list of non-empty strings if present
     if "permission_tags_all" in out:
         tags = out.get("permission_tags_all")
         if isinstance(tags, list):
@@ -162,7 +160,6 @@ def _normalize_and_validate_filters(filters: Dict[str, Any]) -> Dict[str, Any]:
         elif tags is None:
             out.pop("permission_tags_all", None)
         else:
-            # tolerate a single string (be forgiving)
             s = str(tags or "").strip()
             if s:
                 out["permission_tags_all"] = [s]
@@ -185,6 +182,53 @@ def _opt_int(v: Any) -> Optional[int]:
     return int(s)
 
 
+def _resolve_top_k(step_raw: Dict[str, Any], settings: Dict[str, Any]) -> int:
+    """
+    Contract:
+    - step.raw.top_k is optional
+    - pipeline_settings.top_k is optional
+    - if both missing -> default to 5
+    """
+    top_k = _opt_int(step_raw.get("top_k"))
+    if top_k is None:
+        top_k = _opt_int(settings.get("top_k"))
+
+    if top_k is None:
+        top_k = 5
+
+    if top_k < 1:
+        raise ValueError("search_nodes: top_k must be >= 1.")
+
+    return int(top_k)
+
+
+def _resolve_rerank(search_type: str, step_raw: Dict[str, Any]) -> str:
+    """
+    Contract:
+    - step.raw.rerank is optional
+    - missing -> "none"
+    - allowed: none | keyword_rerank | codebert_rerank
+    - fail-fast:
+        - unknown value -> runtime error
+        - rerank != none when search_type != semantic -> runtime error
+    """
+    raw_val = step_raw.get("rerank", None)
+    if raw_val is None:
+        mode = "none"
+    else:
+        mode = str(raw_val or "").strip().lower()
+        if not mode:
+            mode = "none"
+
+    if mode not in _ALLOWED_RERANK_MODES:
+        raise ValueError(f"search_nodes: invalid rerank='{mode}'. Allowed: {sorted(_ALLOWED_RERANK_MODES)}")
+
+    if search_type != "semantic" and mode != "none":
+        raise ValueError(f"search_nodes: rerank='{mode}' is only allowed for search_type='semantic' (contract).")
+
+    return mode
+
+
 class SearchNodesAction(PipelineActionBase):
     @property
     def action_id(self) -> str:
@@ -194,7 +238,6 @@ class SearchNodesAction(PipelineActionBase):
         settings = runtime.pipeline_settings or {}
         raw = step.raw or {}
 
-        search_type = str(raw.get("search_type") or "").strip().lower()
         payload = (state.last_model_response or "").strip()
 
         parsed_query = ""
@@ -208,17 +251,14 @@ class SearchNodesAction(PipelineActionBase):
         effective_filters.update(base_filters)
         effective_filters = _normalize_and_validate_filters(effective_filters)
 
-        # Contract: step.raw.top_k optional. Keep settings.top_k as a fallback for backward compatibility.
-        top_k = _opt_int(raw.get("top_k"))
-        if top_k is None:
-            top_k = _opt_int(settings.get("top_k"))
-        if top_k is None:
-            top_k = 5
-
+        search_type = str(raw.get("search_type") or "").strip().lower()
+        rerank = _resolve_rerank(search_type, raw)
+        top_k = _resolve_top_k(raw, settings)
         effective_query = (parsed_query or payload or "").strip()
 
         return {
             "search_type": search_type,
+            "rerank": rerank,
             "payload": payload,
             "query_parsed": (parsed_query or "").strip(),
             "query_effective": effective_query,
@@ -239,79 +279,38 @@ class SearchNodesAction(PipelineActionBase):
         next_step_id: Optional[str],
         error: Optional[Dict[str, Any]],
     ) -> Dict[str, Any]:
-        settings = runtime.pipeline_settings or {}
-        raw = step.raw or {}
-
-        payload = (state.last_model_response or "").strip()
-        parsed_query, parsed_filters, warnings = _parse_payload_if_configured(raw, payload) if payload else ("", {}, [])
-
-        base_filters = _merge_filters(settings, state, raw)
-        effective_filters = dict(parsed_filters or {})
-        effective_filters.update(base_filters)
-        effective_filters = _normalize_and_validate_filters(effective_filters)
-
-        effective_query = (parsed_query or payload or "").strip()
-
         return {
             "next_step_id": next_step_id,
             "search_type": getattr(state, "search_type", None),
-            "query_effective": effective_query,
-            "filters_effective": effective_filters,
-            "parser_warnings": warnings,
+            "rerank": getattr(state, "rerank", None),
             "retrieval_seed_nodes": list(getattr(state, "retrieval_seed_nodes", []) or []),
-            "context_blocks_count": len(getattr(state, "context_blocks", []) or []),
+            "retrieval_hits_count": len(getattr(state, "retrieval_hits", []) or []),
         }
 
     def do_execute(self, step: StepDef, state: PipelineState, runtime: PipelineRuntime) -> Optional[str]:
         settings = runtime.pipeline_settings or {}
         raw = step.raw or {}
 
-        # Contract cleanup: must happen BEFORE doing anything else.
         _cleanup_retrieval_artifacts(state)
 
-        # Contract: search_type MUST be defined explicitly on this search_nodes step (YAML).
-               # Contract: search_type MUST be defined explicitly on this search_nodes step (YAML).
+        # search_type must be explicit in YAML
         search_type = str(raw.get("search_type") or "").strip().lower()
         if search_type not in _ALLOWED_SEARCH_TYPES:
             raise ValueError(f"search_nodes: invalid search_type='{search_type}'. Allowed: {sorted(_ALLOWED_SEARCH_TYPES)}")
         state.search_type = search_type
 
-        # Contract: step.raw.rerank is optional, but allowed ONLY for search_type='semantic'.
-        # Allowed values: none, keyword_rerank, codebert_rerank (reserved).
-        rerank_raw = str(raw.get("rerank") or "").strip().lower()
-        if not rerank_raw or rerank_raw == "none":
-            rerank_raw = "none"
+        # Fail-fast validation of rerank mode (contract)
+        state.rerank = _resolve_rerank(search_type, raw)
 
-        allowed_reranks = {"none", "keyword_rerank", "codebert_rerank"}
-        if rerank_raw not in allowed_reranks:
-            raise ValueError(
-                f"search_nodes: invalid rerank='{rerank_raw}'. Allowed: {sorted(allowed_reranks)}"
-            )
-
-        if rerank_raw != "none" and search_type != "semantic":
-            raise ValueError(
-                "search_nodes: rerank is allowed only for search_type='semantic' (retrieval_contract)."
-            )
-
-        if rerank_raw == "codebert_rerank":
-            raise ValueError(
-                "search_nodes: rerank='codebert_rerank' is reserved and not implemented yet."
-            )
-
-
-        # Payload is what HandlePrefix left us (prefix-stripped).
         payload = (state.last_model_response or "").strip()
-
         parsed_query, parsed_filters, _warnings = ("", {}, [])
         if payload:
             parsed_query, parsed_filters, _warnings = _parse_payload_if_configured(raw, payload)
 
-        # Contract: query is derived ONLY from current payload (optionally parsed).
         query = (parsed_query or payload or "").strip()
         if not query:
             raise ValueError("search_nodes: Empty query after parsing/normalization is not allowed by retrieval_contract.")
 
-        # Contract: repository + branch required (scope)
         repo = (state.repository or settings.get("repository") or "").strip()
         branch = (state.branch or settings.get("branch") or "").strip()
         if not repo:
@@ -319,14 +318,8 @@ class SearchNodesAction(PipelineActionBase):
         if not branch:
             raise ValueError("search_nodes: Missing required 'branch' (state.branch or pipeline settings['branch']).")
 
-        # Contract: step.raw.top_k optional. Keep settings.top_k as a fallback for backward compatibility.
-        top_k = _opt_int(raw.get("top_k"))
-        if top_k is None:
-            top_k = _opt_int(settings.get("top_k"))
-        if top_k is None:
-            top_k = 5
+        top_k = _resolve_top_k(raw, settings)
 
-        # IMPORTANT: parsed filters can never override pipeline-enforced filters.
         base_filters = _merge_filters(settings, state, raw)
         filters = dict(parsed_filters or {})
         filters.update(base_filters)
@@ -334,7 +327,6 @@ class SearchNodesAction(PipelineActionBase):
 
         active_index = getattr(state, "active_index", None) or settings.get("active_index")
 
-        # ✅ Strict contract: use backend only (no direct FAISS/dispatcher access)
         backend = runtime.get_retrieval_backend()
 
         req = SearchRequest(
@@ -349,16 +341,25 @@ class SearchNodesAction(PipelineActionBase):
 
         resp = backend.search(req)
 
-        # Contract output: ONLY IDs for graph expansion steps.
-        state.retrieval_seed_nodes = [h.id for h in (resp.hits or []) if getattr(h, "id", None)]
+        # Contract outputs
+        hits = list(resp.hits or [])
+        state.retrieval_seed_nodes = [h.id for h in hits if getattr(h, "id", None)]
 
-        # History manager is a debug artifact; keep soft-failure behavior.
+        # A simple, stable debug form of hits (contract-friendly)
+        state.retrieval_hits = [
+            {
+                "id": h.id,
+                "score": getattr(h, "score", 0.0),
+                "rank": getattr(h, "rank", 0),
+            }
+            for h in hits
+            if getattr(h, "id", None)
+        ]
+
         try:
-            # Keep a minimal structure similar to old "results" for debugging.
             results_for_history: List[Dict[str, Any]] = []
-            for h in (resp.hits or []):
+            for h in hits:
                 results_for_history.append({"Id": h.id, "score": getattr(h, "score", 0.0), "rank": getattr(h, "rank", 0)})
-
             runtime.history_manager.add_iteration(query, results_for_history)
         except Exception:
             py_logger.exception("soft-failure: history_manager.add_iteration failed; continuing")
