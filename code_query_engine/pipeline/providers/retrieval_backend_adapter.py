@@ -39,12 +39,15 @@ class RetrievalBackendAdapter(IRetrievalBackend):
         decision = RetrievalDecision(mode=req.search_type, query=req.query)
 
         # Note: dispatcher already accepts filters and top_k.
-        results = self._dispatcher.search(
-            decision,
-            top_k=req.top_k,
-            settings=self._settings,
-            filters=req.retrieval_filters,
-        ) or []
+        results = (
+            self._dispatcher.search(
+                decision,
+                top_k=req.top_k,
+                settings=self._settings,
+                filters=req.retrieval_filters,
+            )
+            or []
+        )
 
         hits: list[SearchHit] = []
         for i, item in enumerate(results):
@@ -72,20 +75,38 @@ class RetrievalBackendAdapter(IRetrievalBackend):
         active_index: str | None,
         retrieval_filters: Dict[str, Any],
     ) -> Dict[str, str]:
+        """
+        Contract: mapping node_id -> text.
+
+        Note:
+        - retrieval_filters are currently not applied inside GraphProvider (graph_provider owns ACL).
+        - This adapter keeps deterministic output ordering via the node_ids input list.
+        """
         if self._graph_provider is None:
             raise ValueError("RetrievalBackendAdapter.fetch_texts: graph_provider is required")
 
-        out = self._graph_provider.fetch_node_texts(
-            node_ids=list(node_ids or []),
-            repository=repository,
-            branch=branch,
-            active_index=active_index,
-            max_chars=50_000,
-        ) or []
+        out = (
+            self._graph_provider.fetch_node_texts(
+                node_ids=list(node_ids or []),
+                repository=repository,
+                branch=branch,
+                active_index=active_index,
+                max_chars=50_000,
+            )
+            or []
+        )
+
+        by_id: Dict[str, str] = {}
+        for x in out:
+            if not isinstance(x, dict):
+                continue
+            rid = str(x.get("id") or "").strip()
+            if not rid:
+                continue
+            by_id[rid] = str(x.get("text") or "")
 
         # Contract: mapping id -> text, keep requested order deterministic.
         mapping: Dict[str, str] = {}
-        by_id = {str(x.get("id")): str(x.get("text") or "") for x in out if isinstance(x, dict)}
         for nid in node_ids:
             mapping[nid] = by_id.get(nid, "")
         return mapping

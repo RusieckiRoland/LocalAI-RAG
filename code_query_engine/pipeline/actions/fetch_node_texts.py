@@ -8,7 +8,6 @@ from ..engine import PipelineRuntime
 from ..state import PipelineState
 from .base_action import PipelineActionBase
 
-
 _ALLOWED_PRIORITIZATION_MODES = {"seed_first", "graph_first", "balanced"}
 
 
@@ -25,13 +24,6 @@ def _token_count(token_counter: Any, text: str) -> int:
 
 
 def _resolve_prioritization_mode(step_raw: Dict[str, Any]) -> str:
-    """
-    Contract:
-    - step.raw.prioritization_mode is optional
-    - allowed: seed_first | graph_first | balanced
-    - missing/empty -> balanced
-    - unknown -> runtime error (fail-fast)
-    """
     raw_val = step_raw.get("prioritization_mode", None)
     if raw_val is None:
         mode = "balanced"
@@ -44,7 +36,6 @@ def _resolve_prioritization_mode(step_raw: Dict[str, Any]) -> str:
         raise ValueError(
             f"fetch_node_texts: invalid prioritization_mode='{mode}'. Allowed: {sorted(_ALLOWED_PRIORITIZATION_MODES)}"
         )
-
     return mode
 
 
@@ -55,7 +46,8 @@ def _build_depth_and_parent(
 ) -> Tuple[Dict[str, int], Dict[str, Optional[str]]]:
     """
     Compute BFS depths & parent pointers from edges.
-    If graph is missing edges, depth defaults to 1, parent_id to None.
+    - depth=0 for seed nodes (contract)
+    - depth>=1 for expanded graph nodes
     """
     depth: Dict[str, int] = {}
     parent: Dict[str, Optional[str]] = {}
@@ -66,7 +58,6 @@ def _build_depth_and_parent(
             parent[s] = None
         return depth, parent
 
-
     adj: Dict[str, List[str]] = {}
     for e in edges:
         a = str(e.get("from_id") or "").strip()
@@ -74,8 +65,6 @@ def _build_depth_and_parent(
         if not a or not b:
             raise ValueError("fetch_node_texts: graph_edges items must contain from_id/to_id (contract).")
         adj.setdefault(a, []).append(b)
-
-
 
     q: List[str] = []
     seen: Set[str] = set()
@@ -85,7 +74,6 @@ def _build_depth_and_parent(
         depth[s] = 0
         parent[s] = None
         q.append(s)
-
 
     while q:
         cur = q.pop(0)
@@ -101,21 +89,132 @@ def _build_depth_and_parent(
     return depth, parent
 
 
+def _safe_int(v: Any, default: int) -> int:
+    try:
+        return int(v)
+    except Exception:
+        return default
+
+
+def _dedupe_preserve_order(items: List[str]) -> List[str]:
+    seen: Set[str] = set()
+    out: List[str] = []
+    for x in items or []:
+        s = str(x or "").strip()
+        if not s:
+            continue
+        if s in seen:
+            continue
+        seen.add(s)
+        out.append(s)
+    return out
+
+
+def _build_strategy_order_ids(
+    *,
+    mode: str,
+    seed_nodes: List[str],
+    graph_nodes: List[str],
+    depth_map: Dict[str, int],
+    parent_map: Dict[str, Optional[str]],
+) -> List[str]:
+    """
+    Build deterministic candidate ID order for each strategy.
+
+    Inputs:
+    - seed_nodes: retrieval seeds (ranking order from search_nodes)
+    - graph_nodes: expanded nodes (may be empty if expand_dependency_tree was not used)
+
+    Strategies:
+    - seed_first:
+        1) all seeds (in retrieval order)
+        2) then all graph nodes (depth asc, id asc)
+    - graph_first:
+        For each seed in retrieval order:
+        1) seed
+        2) then all descendants belonging to this seed branch (depth asc, id asc)
+    - balanced:
+        Interleave seeds and graph nodes ~50/50 deterministically:
+        - start with seed
+        - then graph node
+        - repeat
+        Graph nodes ordered by depth asc first ("higher branches first").
+    """
+    seed_nodes = list(seed_nodes or [])
+    graph_nodes = list(graph_nodes or [])
+    seed_set = set(seed_nodes)
+
+    # Graph candidates must not repeat seeds
+    graph_only = [x for x in graph_nodes if x not in seed_set]
+
+    # Deterministic ordering for graph nodes: shallower first, then id
+    graph_sorted = sorted(
+        graph_only,
+        key=lambda node_id: (
+            _safe_int(depth_map.get(node_id, 999999), 999999),
+            str(node_id),
+        ),
+    )
+
+    if mode == "seed_first":
+        return list(seed_nodes) + list(graph_sorted)
+
+    if mode == "graph_first":
+        # Group descendants by root seed
+        def _root_seed(node_id: str) -> Optional[str]:
+            cur = node_id
+            guard = 0
+            while guard < 10000:
+                guard += 1
+                p = parent_map.get(cur, None)
+                if p is None:
+                    if cur in seed_set:
+                        return cur
+                    return None
+                cur = p
+            return None
+
+        descendants: Dict[str, List[str]] = {s: [] for s in seed_nodes}
+
+        for n in graph_sorted:
+            r = _root_seed(n)
+            if r is None:
+                continue
+            if r in descendants:
+                descendants[r].append(n)
+
+        ordered: List[str] = []
+        for s in seed_nodes:
+            ordered.append(s)
+            ordered.extend(descendants.get(s, []))
+        return ordered
+
+    # balanced (default)
+    out: List[str] = []
+    si = 0
+    gi = 0
+    seeds = seed_nodes
+    graphs = graph_sorted
+
+    while si < len(seeds) or gi < len(graphs):
+        if si < len(seeds):
+            out.append(seeds[si])
+            si += 1
+        if gi < len(graphs):
+            out.append(graphs[gi])
+            gi += 1
+
+    return out
+
+
 class FetchNodeTextsAction(PipelineActionBase):
     """
-    Fetches text payloads for nodes from the graph provider.
+    Fetches text payloads for nodes under token/char budget.
 
-    Contract (retrieval_contract.md):
-    - input nodes: state.graph_expanded_nodes preferred, else state.graph_seed_nodes
-    - branch + repository required
-    - passes sacred filters: state.retrieval_filters
-    - budget:
-        - step.raw.budget_tokens OR
-        - step.raw.budget_tokens_from_settings -> pipeline_settings[key] OR
-        - fallback: pipeline_settings["max_context_tokens"] * 0.7 (required)
-      token_counter is required for token enforcement
-    - output: state.node_nexts list[dict] with fields:
-        { id, text, is_seed, depth, parent_id }
+    IMPORTANT (contract alignment):
+    - Text materialization MUST use runtime.retrieval_backend.fetch_texts(...)
+      so backend can later be swapped (FAISS -> Weaviate) without touching the pipeline.
+    - Graph provider is NOT used for text materialization here.
     """
 
     @property
@@ -124,11 +223,14 @@ class FetchNodeTextsAction(PipelineActionBase):
 
     def log_in(self, step: StepDef, state: PipelineState, runtime: PipelineRuntime) -> Dict[str, Any]:
         raw = step.raw or {}
-        node_ids = list(getattr(state, "graph_expanded_nodes", None) or getattr(state, "graph_seed_nodes", None) or [])
+        seeds = list(getattr(state, "retrieval_seed_nodes", None) or [])
+        graph_nodes = list(getattr(state, "graph_expanded_nodes", None) or [])
         return {
-            "node_count": len(node_ids),
+            "seed_count": len(seeds),
+            "graph_expanded_count": len(graph_nodes),
             "budget_tokens": raw.get("budget_tokens"),
             "budget_tokens_from_settings": raw.get("budget_tokens_from_settings"),
+            "max_chars": raw.get("max_chars"),
             "prioritization_mode": raw.get("prioritization_mode"),
         }
 
@@ -154,17 +256,13 @@ class FetchNodeTextsAction(PipelineActionBase):
         # Always ensure the attribute exists (contract)
         state.node_nexts = []
 
-        provider = getattr(runtime, "graph_provider", None)
-        if provider is None:
-            state.graph_debug = {"reason": "missing_graph_provider"}
-            state.node_nexts = []
-            return None
+        backend = getattr(runtime, "retrieval_backend", None)
+        if backend is None:
+            raise ValueError("fetch_node_texts: runtime.retrieval_backend is required by retrieval_contract.")
 
-        node_ids = list(getattr(state, "graph_expanded_nodes", None) or getattr(state, "graph_seed_nodes", None) or [])
-        if not node_ids:
-            state.graph_debug = {"reason": "no_nodes_for_fetch_node_texts"}
-            state.node_nexts = []
-            return None
+        fetch_texts_fn = getattr(backend, "fetch_texts", None)
+        if not callable(fetch_texts_fn):
+            raise ValueError("fetch_node_texts: runtime.retrieval_backend.fetch_texts(...) is required by retrieval_contract.")
 
         settings = getattr(runtime, "pipeline_settings", None) or {}
 
@@ -182,9 +280,12 @@ class FetchNodeTextsAction(PipelineActionBase):
 
         retrieval_filters = dict(getattr(state, "retrieval_filters", None) or {})
 
-        fetch_fn = getattr(provider, "fetch_node_texts", None)
-        if fetch_fn is None:
-            state.graph_debug = {"reason": "graph_provider_missing_fetch_node_texts"}
+        # ---- Inputs: seeds + optional graph expanded nodes ----
+        retrieval_seed_nodes = _dedupe_preserve_order(list(getattr(state, "retrieval_seed_nodes", None) or []))
+        graph_expanded_nodes = _dedupe_preserve_order(list(getattr(state, "graph_expanded_nodes", None) or []))
+
+        if not retrieval_seed_nodes and not graph_expanded_nodes:
+            state.graph_debug = {"reason": "no_nodes_for_fetch_node_texts"}
             state.node_nexts = []
             return None
 
@@ -194,7 +295,6 @@ class FetchNodeTextsAction(PipelineActionBase):
         max_chars_raw = raw.get("max_chars", None)
         max_context_tokens = settings.get("max_context_tokens", None)
 
-        # Contract: max_chars is mutually exclusive with budget_tokens / budget_tokens_from_settings
         if max_chars_raw is not None and (budget_tokens_raw is not None or budget_tokens_from_settings is not None):
             raise ValueError("fetch_node_texts: max_chars cannot be used together with budget_tokens (contract).")
 
@@ -205,7 +305,6 @@ class FetchNodeTextsAction(PipelineActionBase):
                 raise ValueError("fetch_node_texts: max_chars must be >= 1.")
 
         budget_tokens: Optional[int] = None
-
         if budget_tokens_raw is not None:
             budget_tokens = int(budget_tokens_raw)
             if budget_tokens < 1:
@@ -222,44 +321,73 @@ class FetchNodeTextsAction(PipelineActionBase):
         else:
             if max_context_tokens is None:
                 raise ValueError("fetch_node_texts: Missing required pipeline_settings['max_context_tokens'] (contract).")
-
             try:
                 max_ctx = int(max_context_tokens)
             except Exception:
                 raise ValueError("fetch_node_texts: pipeline_settings['max_context_tokens'] must be an integer (contract).")
-
             if max_ctx <= 0:
                 raise ValueError("fetch_node_texts: pipeline_settings['max_context_tokens'] must be > 0 (contract).")
-
             budget_tokens = int(float(max_ctx) * 0.7)
             if budget_tokens <= 0:
                 raise ValueError("fetch_node_texts: computed budget_tokens must be > 0 (contract).")
 
         token_counter = getattr(runtime, "token_counter", None)
 
-        raw_texts = fetch_fn(
-            node_ids=list(node_ids),
+        # ---- Graph enrichment helpers ----
+        edges = list(getattr(state, "graph_edges", None) or [])
+        depth_map, parent_map = _build_depth_and_parent(seed_nodes=retrieval_seed_nodes, edges=edges)
+
+        # ---- Strategy defines which IDs are considered and in what order ----
+        prioritization_mode = _resolve_prioritization_mode(raw)
+
+        ordered_ids = _build_strategy_order_ids(
+            mode=prioritization_mode,
+            seed_nodes=retrieval_seed_nodes,
+            graph_nodes=graph_expanded_nodes,
+            depth_map=depth_map,
+            parent_map=parent_map,
+        )
+
+        candidates_unique = _dedupe_preserve_order(list(ordered_ids))
+
+        # ---- Materialize texts via backend interface (FAISS today, Weaviate-ready) ----
+        id_to_text = fetch_texts_fn(
+            node_ids=list(candidates_unique),
             repository=repository,
             branch=branch,
+            retrieval_filters=retrieval_filters,
             active_index=active_index,
-            filters=retrieval_filters,
-        ) or []
+        ) or {}
 
-        # Enrichment (contract format)
-        seed_nodes = list(getattr(state, "graph_seed_nodes", None) or getattr(state, "retrieval_seed_nodes", None) or [])
-        seed_set = set(seed_nodes)
 
-        edges = list(getattr(state, "graph_edges", None) or [])
-        depth_map, parent_map = _build_depth_and_parent(seed_nodes=seed_nodes, edges=edges)
+        if not isinstance(id_to_text, dict):
+            raise ValueError("fetch_node_texts: retrieval_backend.fetch_texts must return Dict[str, str] (contract).")
 
-        enriched: List[Dict[str, Any]] = []
-        for it in raw_texts:
-            node_id = str((it or {}).get("id") or (it or {}).get("Id") or "").strip()
-            text = str((it or {}).get("text") or (it or {}).get("Text") or (it or {}).get("content") or "").strip()
-            if not node_id:
+        seed_set = set(retrieval_seed_nodes)
+
+        # ---- Budget enforcement (atomic snippets: skip, do not break) ----
+        out: List[Dict[str, Any]] = []
+        used_tokens = 0
+        used_chars = 0
+
+        for node_id in ordered_ids:
+            text = id_to_text.get(node_id, None)
+            if text is None:
                 continue
 
-            enriched.append(
+            text = str(text)
+
+            if max_chars is not None:
+                c_len = len(text)
+                if used_chars + c_len > max_chars:
+                    continue
+
+            if budget_tokens is not None:
+                tok = _token_count(token_counter, text)
+                if used_tokens + tok > budget_tokens:
+                    continue
+
+            out.append(
                 {
                     "id": node_id,
                     "text": text,
@@ -269,60 +397,27 @@ class FetchNodeTextsAction(PipelineActionBase):
                 }
             )
 
-        # ---- Contract: prioritization_mode (deterministic ordering) ----
-        prioritization_mode = _resolve_prioritization_mode(raw)
+            if max_chars is not None:
+                used_chars += len(text)
+            if budget_tokens is not None:
+                used_tokens += _token_count(token_counter, text)
 
-        def _safe_int(v: Any, default: int) -> int:
-            try:
-                return int(v)
-            except Exception:
-                return default
-
-        if prioritization_mode == "seed_first":
-            enriched.sort(
-                key=lambda x: (
-                    0 if bool(x.get("is_seed")) else 1,
-                    _safe_int(x.get("depth"), 999999),
-                    str(x.get("id") or ""),
-                )
-            )
-        elif prioritization_mode == "graph_first":
-            enriched.sort(
-                key=lambda x: (
-                    0 if not bool(x.get("is_seed")) else 1,
-                    _safe_int(x.get("depth"), 999999),
-                    str(x.get("id") or ""),
-                )
-            )
-        else:
-            # balanced
-            enriched.sort(
-                key=lambda x: (
-                    _safe_int(x.get("depth"), 999999),
-                    0 if bool(x.get("is_seed")) else 1,
-                    str(x.get("id") or ""),
-                )
-            )
-
-        # Enforce budget (contract)      
-        if budget_tokens is not None:
-            out: List[Dict[str, Any]] = []
-            used = 0
-            for it in enriched:
-                t = it.get("text") or ""
-                c = _token_count(token_counter, str(t))
-                if used + c > budget_tokens:
-                    # Atomic snippets: skip this candidate and continue checking next ones
-                    continue
-                out.append(it)
-                used += c
-            enriched = out
-
-
-        state.node_nexts = list(enriched)
+        state.node_nexts = list(out)
 
         debug = dict(getattr(state, "graph_debug", None) or {})
-        debug.update({"node_texts_count": len(enriched), "reason": "ok"})
+        debug.update(
+            {
+                "reason": "ok",
+                "prioritization_mode": prioritization_mode,
+                "seed_count": len(retrieval_seed_nodes),
+                "graph_expanded_count": len(graph_expanded_nodes),
+                "node_texts_count": len(out),
+                "budget_tokens": budget_tokens,
+                "used_tokens": used_tokens,
+                "max_chars": max_chars,
+                "used_chars": used_chars,
+            }
+        )
         state.graph_debug = debug
 
         return None
