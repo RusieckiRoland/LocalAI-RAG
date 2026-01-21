@@ -98,6 +98,7 @@ class IGraphProvider(Protocol):
         repository: Optional[str] = None,
         branch: Optional[str] = None,
         active_index: Optional[str] = None,
+        filters: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         ...
 

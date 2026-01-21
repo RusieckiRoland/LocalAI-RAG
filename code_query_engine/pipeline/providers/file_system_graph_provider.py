@@ -280,6 +280,7 @@ class FileSystemGraphProvider(IGraphProvider):
         repository: Optional[str] = None,
         branch: Optional[str] = None,
         active_index: Optional[str] = None,
+        filters: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         # active_index kept for scoping consistency; provider is branch-bundle based for now.
         _ = active_index

@@ -130,15 +130,16 @@ so there is no cross-request state leakage.
 
 The action MUST reset these fields (set to empty values):
 
-- `state.retrieval_seed_nodes = []`
-- `state.graph_seed_nodes = []`
-- `state.graph_expanded_nodes = []`
-- `state.graph_edges = []`
-- `state.graph_debug = {}`
-- `state.node_nexts = []`
-- `state.context_blocks = ""` (or an empty list, depending on the existing type)
+ - `state.retrieval_seed_nodes = []`  
+ - `state.retrieval_hits = []`  
+ - `state.graph_seed_nodes = []`  
+ - `state.graph_expanded_nodes = []`  
+ - `state.graph_edges = []`  
+ - `state.graph_node_texts = []`  
+ - `state.graph_debug = {}`  
+ - `state.node_nexts = []` *(if present)*  
+ - `state.context_blocks = []`
 
-> This cleanup rule is contract-level and is not optional.
 
 ### Input
 
@@ -166,9 +167,10 @@ The action MUST reset these fields (set to empty values):
 - `step.raw.search_type` **(required)**
   - Allowed values: `semantic` | `bm25` | `hybrid`
 
-- `step.raw.top_k` **(optional)**
-  - If present → use it.
-  - If absent → use default **`top_k = 5`**.
+ `step.raw.top_k` *(optional)*  
+ - If present → use it.  
+ - If absent → use `pipeline.settings["top_k"]`.  
+ - If still missing → **runtime error** (`top_k` is required via step or pipeline settings).
 
 - `step.raw.rerank` **(optional; valid only for `search_type: semantic`)**
   - Allowed values:
@@ -424,10 +426,10 @@ Mutual exclusivity:
   - missing → `balanced`
   - unknown → runtime error
 
-Balanced mode is defined as **50/50 alternation**:
-
-- pick 1 candidate from seeds, then 1 from expanded graph, then repeat
-- if one list is exhausted → continue using the remaining list
+ Balanced mode is defined as **deterministic interleaving**:  
+ 1) Build graph-only list sorted by `(depth asc, id asc)`  
+ 2) Interleave: `seed[0]`, `graph[0]`, `seed[1]`, `graph[1]`, ...  
+ 3) If one list is exhausted → append the rest from the other list.
 
 ### Output
 

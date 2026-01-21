@@ -37,7 +37,7 @@ def build_default_action_registry() -> ActionRegistry:
     from .actions.load_conversation_history import LoadConversationHistoryAction
     from .actions.check_context_budget import CheckContextBudgetAction
     from .actions.search_nodes import SearchNodesAction
-    from .actions.expand_dependancy_tree import ExpandDependencyTreeAction
+    from .actions.expand_dependency_tree import ExpandDependencyTreeAction
     from .actions.fetch_node_texts import FetchNodeTextsAction
     from .actions.loop_guard import LoopGuardAction    
     from .actions.finalize import FinalizeAction

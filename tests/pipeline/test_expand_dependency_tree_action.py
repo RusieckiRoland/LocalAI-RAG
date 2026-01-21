@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-from code_query_engine.pipeline.actions.expand_dependancy_tree import ExpandDependencyTreeAction
+from code_query_engine.pipeline.actions.expand_dependency_tree import ExpandDependencyTreeAction
 from code_query_engine.pipeline.definitions import StepDef
 from code_query_engine.pipeline.state import PipelineState
 
