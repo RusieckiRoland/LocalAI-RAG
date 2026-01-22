@@ -65,7 +65,7 @@ def test_fetch_node_texts_missing_graph_provider_sets_reason() -> None:
 
     FetchNodeTextsAction().execute(step, state, rt)
 
-    assert state.node_nexts == []
+    assert state.node_texts == []
     assert state.graph_debug.get("reason") == "ok"
     assert state.graph_debug.get("node_texts_count") == 0
 
@@ -98,8 +98,8 @@ def test_fetch_node_texts_calls_provider_and_stores_result() -> None:
 
     FetchNodeTextsAction().execute(step, state, rt)
 
-    # Contract: action returns node_nexts with metadata fields.
-    assert state.node_nexts == [
+    # Contract: action returns node_texts with metadata fields.
+    assert state.node_texts == [
         {"id": "A", "text": "node A", "is_seed": False, "depth": 1, "parent_id": None},
         {"id": "B", "text": "node B", "is_seed": False, "depth": 1, "parent_id": None},
     ]

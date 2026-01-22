@@ -2,7 +2,7 @@
 
 ## Purpose
 
-`fetch_node_texts` takes a list of node IDs produced earlier in the pipeline and materializes their text content into `state.node_nexts`, respecting a strict evidence budget and a deterministic ordering strategy.
+`fetch_node_texts` takes a list of node IDs produced earlier in the pipeline and materializes their text content into `state.node_texts`, respecting a strict evidence budget and a deterministic ordering strategy.
 
 ---
 
@@ -126,7 +126,7 @@ This applies both to:
 
 ## What this step outputs
 
-### `state.node_nexts`
+### `state.node_texts`
 
 A list of dictionaries in the final selected order:
 
@@ -219,7 +219,7 @@ steps:
 1) **No node IDs available**
 - Symptoms:
   - `state.graph_debug.reason = "no_nodes_for_fetch_node_texts"`
-  - `state.node_nexts = []`
+  - `state.node_texts = []`
 - Cause:
   - `fetch_node_texts` executed before `search_nodes` (and before any expansion)
 - Fix:
@@ -263,4 +263,4 @@ steps:
 - [ ] `prioritization_mode` is one of: `seed_first | graph_first | balanced`
 - [ ] After a run, verify:
   - [ ] `state.graph_debug.reason == "ok"`
-  - [ ] `state.node_nexts` is non-empty when seeds/expanded nodes exist
+  - [ ] `state.node_texts` is non-empty when seeds/expanded nodes exist

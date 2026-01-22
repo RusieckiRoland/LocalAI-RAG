@@ -137,7 +137,7 @@ The action MUST reset these fields (set to empty values):
  - `state.graph_edges = []`  
  - `state.graph_node_texts = []`  
  - `state.graph_debug = {}`  
- - `state.node_nexts = []` *(if present)*  
+ - `state.node_sexts = []` *(if present)*  
  - `state.context_blocks = []`
 
 
@@ -435,7 +435,7 @@ Mutual exclusivity:
 
 `fetch_node_texts` produces:
 
-- `state.node_nexts: List[Dict[str, Any]]` (required)
+- `state.node_texts: List[Dict[str, Any]]` (required)
 
 Each item MUST contain at minimum:
 
@@ -487,5 +487,5 @@ Token estimator:
 
 1) `search_nodes` → `state.retrieval_seed_nodes`
 2) `expand_dependency_tree` → `state.graph_seed_nodes`, `state.graph_expanded_nodes`, `state.graph_edges`, `state.graph_debug`
-3) `fetch_node_texts` → `state.node_nexts`
+3) `fetch_node_texts` → `state.node_texts`
 4) (separate action) `render_context_blocks` → builds final evidence string for the LLM

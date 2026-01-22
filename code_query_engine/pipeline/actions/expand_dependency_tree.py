@@ -76,6 +76,16 @@ def _set_graph_debug(
     state.graph_debug = dbg
 
 
+def _count_edge_types(edges: List[Dict[str, Any]]) -> Dict[str, int]:
+    counts: Dict[str, int] = {}
+    for e in edges or []:
+        if not isinstance(e, dict):
+            continue
+        t = str(e.get("edge_type") or "unknown").strip() or "unknown"
+        counts[t] = counts.get(t, 0) + 1
+    return counts
+
+
 class ExpandDependencyTreeAction(PipelineActionBase):
     """
     Expands graph dependencies for retrieval seed nodes.
@@ -116,12 +126,46 @@ class ExpandDependencyTreeAction(PipelineActionBase):
         next_step_id: Optional[str],
         error: Optional[Dict[str, Any]],
     ) -> Dict[str, Any]:
+        # DEV logging: keep bounded but explicit.
+        seed_nodes = list(getattr(state, "graph_seed_nodes", []) or [])
+        expanded_nodes = list(getattr(state, "graph_expanded_nodes", []) or [])
+        edges = list(getattr(state, "graph_edges", []) or [])
+
+        max_seed_nodes = 200
+        max_expanded_nodes = 400
+        max_edges_preview = 300
+
+        seed_preview = seed_nodes[:max_seed_nodes]
+        expanded_preview = expanded_nodes[:max_expanded_nodes]
+
+        edges_preview: List[Dict[str, Any]] = []
+        for e in edges[:max_edges_preview]:
+            if not isinstance(e, dict):
+                continue
+            edges_preview.append(
+                {
+                    "from_id": e.get("from_id"),
+                    "to_id": e.get("to_id"),
+                    "edge_type": e.get("edge_type"),
+                }
+            )
+
+        edge_type_counts = _count_edge_types(edges)
+
         return {
             "next_step_id": next_step_id,
-            "seed_count": len(getattr(state, "graph_seed_nodes", []) or []),
-            "expanded_count": len(getattr(state, "graph_expanded_nodes", []) or []),
-            "edges_count": len(getattr(state, "graph_edges", []) or []),
+            "seed_count": len(seed_nodes),
+            "expanded_count": len(expanded_nodes),
+            "edges_count": len(edges),
             "graph_debug": dict(getattr(state, "graph_debug", {}) or {}),
+            # === NEW: concrete graph output ===
+            "graph_seed_nodes_logged_count": len(seed_preview),
+            "graph_seed_nodes": seed_preview,
+            "graph_expanded_nodes_logged_count": len(expanded_preview),
+            "graph_expanded_nodes": expanded_preview,
+            "graph_edges_logged_count": len(edges_preview),
+            "graph_edges_preview": edges_preview,
+            "graph_edge_type_counts": edge_type_counts,
             "error": error,
         }
 

@@ -93,7 +93,7 @@ def _mk_state(
         graph_expanded_nodes=list(graph_expanded_nodes or []),
         graph_edges=list(graph_edges or []),
         retrieval_filters=dict(retrieval_filters or {}),
-        node_nexts=[],
+        node_texts=[],
         graph_debug={},
         active_index=None,
     )
@@ -104,8 +104,8 @@ def _mk_step(raw: Dict[str, Any]) -> Any:
 
 
 def _extract_ids(state: Any) -> List[str]:
-    # Contract: node_nexts items have "id" (not "node_id").
-    return [str(x.get("id")) for x in list(getattr(state, "node_nexts", None) or [])]
+    # Contract: tode_nexts items have "id" (not "node_id").
+    return [str(x.get("id")) for x in list(getattr(state, "node_texts", None) or [])]
 
 
 def test_fetch_works_without_expand_dependency_tree_uses_retrieval_seed_nodes() -> None:

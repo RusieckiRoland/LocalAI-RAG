@@ -121,7 +121,7 @@ class Scenario:
     model_outputs: Dict[str, List[str]]
     retriever_results: List[Dict[str, Any]]
     graph_expand_result: Dict[str, Any]
-    node_nexts: List[Dict[str, Any]]
+    node_texts: List[Dict[str, Any]]
     expected: Dict[str, Any]
 
 
@@ -245,7 +245,7 @@ def test_pipeline_scenarios_runner(scenario_name: str) -> None:
         model_outputs=raw.get("model_outputs", {}),
         retriever_results=raw.get("retriever_results", []),
         graph_expand_result=raw.get("graph_expand_result", {"nodes": [], "edges": []}),
-        node_nexts=raw.get("node_nexts", []),
+        node_texts=raw.get("node_texts", []),
         expected=raw.get("expected", {}),
     )
     def _flatten_outputs_by_prompt_key(pipe, outputs_by_key: dict) -> list:
@@ -321,7 +321,7 @@ def test_pipeline_scenarios_runner(scenario_name: str) -> None:
     
     retriever = FakeRetriever(results=sc.retriever_results)
     dispatcher = DummyRetrievalDispatcher(retriever=retriever)
-    graph = FakeGraphProvider(expand_result=sc.graph_expand_result, node_texts=sc.node_nexts)
+    graph = FakeGraphProvider(expand_result=sc.graph_expand_result, node_texts=sc.node_texts)
 
     rt = _runtime(pipe_settings=pipe.settings, model=model, dispatcher=dispatcher, graph=graph)
     engine = PipelineEngine(build_default_action_registry())

@@ -190,7 +190,7 @@ Runtime error if:
 - `state.context_blocks = []`
 
 Additionally (defensive):
-- if `state.node_nexts` exists → set to `[]`
+- if `state.node_texts` exists → set to `[]`
 
 This matches the contract rule: **no accidental reuse of old results**.
 

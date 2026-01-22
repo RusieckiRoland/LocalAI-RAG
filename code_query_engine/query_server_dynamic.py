@@ -170,6 +170,21 @@ _translator_pl_en = Translator(_resolve_cfg_path(str(_runtime_cfg.get("model_tra
 
 _interaction_logger = InteractionLogger(cfg=_logging_cfg)
 
+from code_query_engine.pipeline.token_counter import LlamaCppTokenCounter, require_token_counter
+
+token_counter = None
+
+try:
+    llm = getattr(_model, "llm", None)
+    if llm is None:
+        py_logger.warning("degraded-mode: model has no .llm; token counter disabled")
+    else:
+        token_counter = LlamaCppTokenCounter(llama=llm)
+except Exception as e:
+    py_logger.exception("soft-failure: token counter init failed; continuing without token counter")
+    token_counter = None
+
+
 _runner = DynamicPipelineRunner(
     pipelines_root=os.path.join(PROJECT_ROOT, "pipelines"),
     model=_model,
@@ -177,6 +192,7 @@ _runner = DynamicPipelineRunner(
     bm25_searcher=_bm25_searcher,
     markdown_translator=_markdown_translator,
     translator_pl_en=_translator_pl_en,
+    token_counter=token_counter,
     logger=_interaction_logger,
 )
 

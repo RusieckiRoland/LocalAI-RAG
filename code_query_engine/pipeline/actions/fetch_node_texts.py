@@ -11,6 +11,40 @@ from .base_action import PipelineActionBase
 _ALLOWED_PRIORITIZATION_MODES = {"seed_first", "graph_first", "balanced"}
 
 
+def _detect_token_counter_strategy(token_counter: Any) -> Dict[str, Any]:
+    """
+    Return a small, deterministic description of how token counting is performed.
+    """
+    if token_counter is None:
+        return {
+            "present": False,
+            "strategy": None,
+            "type": None,
+        }
+
+    fn_count_tokens = getattr(token_counter, "count_tokens", None)
+    if callable(fn_count_tokens):
+        return {
+            "present": True,
+            "strategy": "count_tokens(text)",
+            "type": type(token_counter).__name__,
+        }
+
+    fn_count = getattr(token_counter, "count", None)
+    if callable(fn_count):
+        return {
+            "present": True,
+            "strategy": "count(text)",
+            "type": type(token_counter).__name__,
+        }
+
+    return {
+        "present": True,
+        "strategy": "unknown (missing count_tokens/count)",
+        "type": type(token_counter).__name__,
+    }
+
+
 def _token_count(token_counter: Any, text: str) -> int:
     if token_counter is None:
         raise ValueError("fetch_node_texts: token_counter is required by retrieval_contract.")
@@ -160,7 +194,7 @@ def _build_strategy_order_ids(
         return list(seed_nodes) + list(graph_sorted)
 
     if mode == "graph_first":
-        # Group descendants by root seed
+
         def _root_seed(node_id: str) -> Optional[str]:
             cur = node_id
             guard = 0
@@ -215,6 +249,10 @@ class FetchNodeTextsAction(PipelineActionBase):
     - Text materialization MUST use runtime.retrieval_backend.fetch_texts(...)
       so backend can later be swapped (FAISS -> Weaviate) without touching the pipeline.
     - Graph provider is NOT used for text materialization here.
+
+    NOTE:
+    - fetch_texts(...) is called ONCE with all candidate IDs.
+      Token/char budget is applied AFTER fetch, during materialization into state.node_texts.
     """
 
     @property
@@ -243,10 +281,46 @@ class FetchNodeTextsAction(PipelineActionBase):
         next_step_id: Optional[str],
         error: Optional[Dict[str, Any]],
     ) -> Dict[str, Any]:
-        texts = list(getattr(state, "node_nexts", []) or [])
+        texts = list(getattr(state, "node_texts", []) or [])
+
+        # DEV logging: keep it readable and bounded
+        max_items = 50
+        max_text_chars = 4000
+
+        bounded: List[Dict[str, Any]] = []
+        for item in texts[:max_items]:
+            if not isinstance(item, dict):
+                continue
+            raw_text = item.get("text")
+            t = "" if raw_text is None else str(raw_text)
+            text_len = len(t)
+
+            if len(t) > max_text_chars:
+                t = t[:max_text_chars] + f"\n... [truncated, len={text_len}]"
+
+            bounded.append(
+                {
+                    "id": item.get("id"),
+                    "is_seed": item.get("is_seed"),
+                    "depth": item.get("depth"),
+                    "parent_id": item.get("parent_id"),
+                    "text_len": text_len,
+                    "text_empty": (text_len == 0),
+                    "text": t,
+                }
+            )
+
+        debug = dict(getattr(state, "graph_debug", None) or {})
+        materialization = dict(getattr(state, "_fetch_node_texts_debug", None) or {})
+
         return {
             "next_step_id": next_step_id,
             "node_texts_count": len(texts),
+            "node_texts_logged_count": len(bounded),
+            "node_texts": bounded,
+            "graph_debug": debug,
+            # NEW: explicit answer for "why do I have empty texts?"
+            "materialization_debug": materialization,
             "error": error,
         }
 
@@ -254,7 +328,7 @@ class FetchNodeTextsAction(PipelineActionBase):
         raw = step.raw or {}
 
         # Always ensure the attribute exists (contract)
-        state.node_nexts = []
+        state.node_texts = []
 
         backend = getattr(runtime, "retrieval_backend", None)
         if backend is None:
@@ -277,7 +351,6 @@ class FetchNodeTextsAction(PipelineActionBase):
             )
 
         active_index = getattr(state, "active_index", None) or settings.get("active_index")
-
         retrieval_filters = dict(getattr(state, "retrieval_filters", None) or {})
 
         # ---- Inputs: seeds + optional graph expanded nodes ----
@@ -286,7 +359,8 @@ class FetchNodeTextsAction(PipelineActionBase):
 
         if not retrieval_seed_nodes and not graph_expanded_nodes:
             state.graph_debug = {"reason": "no_nodes_for_fetch_node_texts"}
-            state.node_nexts = []
+            state.node_texts = []
+            setattr(state, "_fetch_node_texts_debug", {"reason": "no_nodes_for_fetch_node_texts"})
             return None
 
         # ---- Budget policy (contract) ----
@@ -332,6 +406,7 @@ class FetchNodeTextsAction(PipelineActionBase):
                 raise ValueError("fetch_node_texts: computed budget_tokens must be > 0 (contract).")
 
         token_counter = getattr(runtime, "token_counter", None)
+        token_strategy = _detect_token_counter_strategy(token_counter)
 
         # ---- Graph enrichment helpers ----
         edges = list(getattr(state, "graph_edges", None) or [])
@@ -350,7 +425,7 @@ class FetchNodeTextsAction(PipelineActionBase):
 
         candidates_unique = _dedupe_preserve_order(list(ordered_ids))
 
-        # ---- Materialize texts via backend interface (FAISS today, Weaviate-ready) ----
+        # ---- Materialize texts via backend interface ----
         id_to_text = fetch_texts_fn(
             node_ids=list(candidates_unique),
             repository=repository,
@@ -358,7 +433,6 @@ class FetchNodeTextsAction(PipelineActionBase):
             retrieval_filters=retrieval_filters,
             active_index=active_index,
         ) or {}
-
 
         if not isinstance(id_to_text, dict):
             raise ValueError("fetch_node_texts: retrieval_backend.fetch_texts must return Dict[str, str] (contract).")
@@ -370,23 +444,97 @@ class FetchNodeTextsAction(PipelineActionBase):
         used_tokens = 0
         used_chars = 0
 
+        skipped_due_budget = 0
+        skipped_due_chars = 0
+
+        missing_texts = 0
+        empty_texts = 0
+
+        first_skipped_due_budget_id: Optional[str] = None
+        first_skipped_due_chars_id: Optional[str] = None
+        first_missing_text_id: Optional[str] = None
+        first_empty_text_id: Optional[str] = None
+
+        missing_text_ids_preview: List[str] = []
+        empty_text_ids_preview: List[str] = []
+
+        first_included_id: Optional[str] = None
+        last_included_id: Optional[str] = None
+
+        decision_preview: List[Dict[str, Any]] = []
+        decision_preview_limit = 80
+
         for node_id in ordered_ids:
-            text = id_to_text.get(node_id, None)
-            if text is None:
+            raw_text = id_to_text.get(node_id, None)
+
+            # Backend returned NONE -> missing
+            if raw_text is None:
+                missing_texts += 1
+                if first_missing_text_id is None:
+                    first_missing_text_id = str(node_id)
+                if len(missing_text_ids_preview) < 50:
+                    missing_text_ids_preview.append(str(node_id))
+                if len(decision_preview) < decision_preview_limit:
+                    decision_preview.append(
+                        {
+                            "id": node_id,
+                            "decision": "skip",
+                            "reason": "missing_text_from_backend",
+                        }
+                    )
                 continue
 
-            text = str(text)
+            text = str(raw_text)
 
+            # Backend returned empty string -> empty
+            if text == "":
+                empty_texts += 1
+                if first_empty_text_id is None:
+                    first_empty_text_id = str(node_id)
+                if len(empty_text_ids_preview) < 50:
+                    empty_text_ids_preview.append(str(node_id))
+
+            # max_chars gate
             if max_chars is not None:
                 c_len = len(text)
                 if used_chars + c_len > max_chars:
+                    skipped_due_chars += 1
+                    if first_skipped_due_chars_id is None:
+                        first_skipped_due_chars_id = str(node_id)
+                    if len(decision_preview) < decision_preview_limit:
+                        decision_preview.append(
+                            {
+                                "id": node_id,
+                                "decision": "skip",
+                                "reason": "max_chars_budget",
+                                "snippet_chars": c_len,
+                                "used_chars_before": used_chars,
+                                "max_chars": max_chars,
+                            }
+                        )
                     continue
 
+            # token budget gate
+            tok = _token_count(token_counter, text) if budget_tokens is not None else 0
             if budget_tokens is not None:
-                tok = _token_count(token_counter, text)
                 if used_tokens + tok > budget_tokens:
+                    skipped_due_budget += 1
+                    if first_skipped_due_budget_id is None:
+                        first_skipped_due_budget_id = str(node_id)
+                    if len(decision_preview) < decision_preview_limit:
+                        decision_preview.append(
+                            {
+                                "id": node_id,
+                                "decision": "skip",
+                                "reason": "token_budget",
+                                "snippet_tokens": tok,
+                                "used_tokens_before": used_tokens,
+                                "budget_tokens": budget_tokens,
+                            }
+                        )
                     continue
 
+            # include (even if empty -> you want to see it; the log will mark it)
             out.append(
                 {
                     "id": node_id,
@@ -397,13 +545,31 @@ class FetchNodeTextsAction(PipelineActionBase):
                 }
             )
 
+            if first_included_id is None:
+                first_included_id = str(node_id)
+            last_included_id = str(node_id)
+
+            if len(decision_preview) < decision_preview_limit:
+                decision_preview.append(
+                    {
+                        "id": node_id,
+                        "decision": "include",
+                        "snippet_tokens": tok if budget_tokens is not None else None,
+                        "snippet_chars": len(text),
+                        "text_empty": (len(text) == 0),
+                        "used_tokens_after": (used_tokens + tok) if budget_tokens is not None else None,
+                        "used_chars_after": (used_chars + len(text)) if max_chars is not None else None,
+                    }
+                )
+
             if max_chars is not None:
                 used_chars += len(text)
             if budget_tokens is not None:
-                used_tokens += _token_count(token_counter, text)
+                used_tokens += tok
 
-        state.node_nexts = list(out)
+        state.node_texts = list(out)
 
+        # ---- Update graph_debug ----
         debug = dict(getattr(state, "graph_debug", None) or {})
         debug.update(
             {
@@ -419,5 +585,45 @@ class FetchNodeTextsAction(PipelineActionBase):
             }
         )
         state.graph_debug = debug
+
+        # ---- Extra dev-only materialization diagnostics (bounded) ----
+        setattr(
+            state,
+            "_fetch_node_texts_debug",
+            {
+                "token_counter": token_strategy,
+                "backend_fetch": {
+                    "requested_ids_count": len(candidates_unique),
+                    "requested_ids_preview": candidates_unique[:80],
+                    "returned_texts_count": len(id_to_text.keys()),
+                    "missing_texts_count": missing_texts,
+                    "first_missing_text_id": first_missing_text_id,
+                    "missing_text_ids_preview": missing_text_ids_preview,
+                    "empty_texts_count": empty_texts,
+                    "first_empty_text_id": first_empty_text_id,
+                    "empty_text_ids_preview": empty_text_ids_preview,
+                },
+                "budget": {
+                    "budget_tokens": budget_tokens,
+                    "used_tokens": used_tokens,
+                    "budget_hit": skipped_due_budget > 0,
+                    "skipped_due_budget_count": skipped_due_budget,
+                    "first_skipped_due_budget_id": first_skipped_due_budget_id,
+                },
+                "chars_budget": {
+                    "max_chars": max_chars,
+                    "used_chars": used_chars,
+                    "budget_hit": skipped_due_chars > 0,
+                    "skipped_due_chars_count": skipped_due_chars,
+                    "first_skipped_due_chars_id": first_skipped_due_chars_id,
+                },
+                "materialization": {
+                    "first_included_id": first_included_id,
+                    "last_included_id": last_included_id,
+                    "decision_preview_count": len(decision_preview),
+                    "decision_preview": decision_preview,
+                },
+            },
+        )
 
         return None

@@ -68,6 +68,11 @@ class CallModelAction(PipelineActionBase):
         out["prompt_key"] = raw.get("prompt_key", "")
         out["native_chat"] = bool(raw.get("native_chat", False))
         out["prompt_format"] = str(raw.get("prompt_format", "") or "")
+        
+        model_resp = getattr(state, "last_model_response", None)
+        if isinstance(model_resp, str) and model_resp:
+            out["model_response"] = model_resp[:9999]
+            out["model_response_len"] = len(model_resp)
         return out
 
     def do_execute(self, step: StepDef, state: PipelineState, runtime: PipelineRuntime) -> Optional[str]:

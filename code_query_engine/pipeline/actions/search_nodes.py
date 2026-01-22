@@ -48,8 +48,8 @@ def _cleanup_retrieval_artifacts(state: PipelineState) -> None:
     state.context_blocks = []
 
     # Defensive: some older actions/tests may have this attribute dynamically
-    if hasattr(state, "node_nexts"):
-        setattr(state, "node_nexts", [])
+    if hasattr(state, "node_texts"):
+        setattr(state, "node_texts", [])
 
 
 def _merge_filters(settings: Dict[str, Any], state: PipelineState, step_raw: Dict[str, Any]) -> Dict[str, Any]:

@@ -99,6 +99,7 @@ YAMLpipeline:
 
     - id: fetch_node_texts
       action: fetch_node_texts
+      max_context_tokens: 4096
       top_n_from_settings: "node_text_fetch_top_n"
       next: check_context_budget
 
