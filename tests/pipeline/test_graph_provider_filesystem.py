@@ -45,10 +45,10 @@ def test_filesystem_graph_provider_expands_code_dependencies_from_regular_bundle
         active_index=None,
     )
 
-    assert out["nodes"][:2] == ["A", "B"]
+    assert out["nodes"][:2] == ["r::b::A", "r::b::B"]
     assert out["edges"]
-    assert out["edges"][0]["from"] == "A"
-    assert out["edges"][0]["to"] == "B"
+    assert out["edges"][0]["from"] == "r::b::A"
+    assert out["edges"][0]["to"] == "r::b::B"
     assert out["edges"][0]["type"] == "calls"
 
 
@@ -76,9 +76,9 @@ def test_filesystem_graph_provider_expands_sql_edges_from_sql_bundle(tmp_path: P
         active_index=None,
     )
 
-    assert out["nodes"][:2] == ["S1", "S2"]
+    assert out["nodes"][:2] == ["r::b::S1", "r::b::S2"]
     assert out["edges"]
     e = out["edges"][0]
-    assert e["from"] == "S1"
-    assert e["to"] == "S2"
+    assert e["from"] == "r::b::S1"
+    assert e["to"] == "r::b::S2"
     assert e["type"] == "calls"

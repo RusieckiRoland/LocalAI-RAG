@@ -34,23 +34,32 @@ class RetrievalBackendAdapter(IRetrievalBackend):
         self._dispatcher = dispatcher
         self._graph_provider = graph_provider
         self._settings = pipeline_settings or {}
+        
 
     def search(self, req: SearchRequest) -> SearchResponse:
         decision = RetrievalDecision(mode=req.search_type, query=req.query)
 
-        # Note: dispatcher already accepts filters and top_k.
+        # Branch is a REQUIRED filter because it maps to a different physical dataset folder.
+        if not req.branch:
+            raise ValueError("SearchRequest.branch is required (branch maps to a different dataset folder).")
+
+        enforced_filters: Dict[str, Any] = dict(req.retrieval_filters or {})
+
+        # Ensure branch is always applied as a filter (even if caller forgot).
+        enforced_filters["branch"] = req.branch
+
         results = (
             self._dispatcher.search(
                 decision,
                 top_k=req.top_k,
                 settings=self._settings,
-                filters=req.retrieval_filters,
+                filters=enforced_filters,
             )
             or []
         )
 
         hits: list[SearchHit] = []
-        for i, item in enumerate(results):
+        for i, item in enumerate(results, start=1):  # ✅ 1-based rank
             rid = _extract_id(item)
             if not rid:
                 continue
@@ -65,6 +74,7 @@ class RetrievalBackendAdapter(IRetrievalBackend):
             hits.append(SearchHit(id=rid, score=score, rank=i))
 
         return SearchResponse(hits=hits)
+
 
     def fetch_texts(
         self,

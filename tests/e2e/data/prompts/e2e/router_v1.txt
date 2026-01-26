@@ -1,2 +1,3 @@
-Return exactly one line:
-[DIRECT:]
+You are a router for the RAG pipeline.
+Return exactly one prefix:
+[DIRECT:] or [BM25:] or [SEMANTIC:] or [HYBRID:].

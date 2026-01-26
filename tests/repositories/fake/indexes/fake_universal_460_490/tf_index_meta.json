@@ -1,0 +1,7 @@
+{
+  "format": "tf_inverted_index_v1",
+  "tokenizer": "regex_camel_v1",
+  "doc_count": 420,
+  "vocab_size": 776,
+  "avgdl": 56.72857142857143
+}

@@ -40,6 +40,40 @@ def _strip_part_suffix(node_id: str) -> str:
         return v.split(":part=", 1)[0]
     return v
 
+def _strip_branch_namespace(node_id: str, repo: str, branch: str) -> str:
+    """
+    Convert canonical ids back into local ids for filesystem bundle lookups.
+
+    Canonical format:
+        <repo>::<branch>::<local_id>
+
+    If the node_id is already local, it is returned unchanged.
+    """
+    v = (node_id or "").strip()
+    if not v:
+        return v
+    r = (repo or "").strip()
+    b = (branch or "").strip()
+    if not r or not b:
+        return v
+    prefix = f"{r}::{b}::"
+    if v.startswith(prefix):
+        return v[len(prefix) :]
+    return v
+
+
+def _make_canonical_id(repo: str, branch: str, local_id: str) -> str:
+    """
+    Canonical, globally unique node id. See _strip_branch_namespace() for inverse.
+    """
+    r = (repo or "").strip()
+    b = (branch or "").strip()
+    lid = (local_id or "").strip()
+    if not r or not b or not lid:
+        raise ValueError("_make_canonical_id: repo, branch and local_id are required")
+    return f"{r}::{b}::{lid}"
+
+
 
 @dataclass(frozen=True)
 class _BundlePaths:
@@ -287,7 +321,9 @@ class FileSystemGraphProvider(IGraphProvider):
 
         repo = (repository or "").strip()
         br = (branch or "").strip()
-        seeds = _dedupe_preserve_order(_strip_part_suffix(s) for s in (seed_nodes or []))
+        seeds = _dedupe_preserve_order(
+            _strip_part_suffix(_strip_branch_namespace(str(s), repo, br)) for s in (seed_nodes or [])
+        )
 
         if not seeds:
             return {"nodes": [], "edges": []}
@@ -302,6 +338,28 @@ class FileSystemGraphProvider(IGraphProvider):
         allow_all = (not allow) or ("*" in allow)
 
         adj = self._build_adjacency(repository=repo, branch=br)
+
+        chunks_by_id = self._load_chunks(repository=repo, branch=br)
+        sql_by_key = self._load_sql_bodies(repository=repo, branch=br)
+
+        # Accept nodes that exist in the graph even if their bodies are not present.
+        # This is required for minimal SQL-bundle tests that provide only edges.csv.
+        known_ids: Set[str] = set(chunks_by_id.keys()) | set(sql_by_key.keys()) | set(adj.keys())
+        for _src, _tos in adj.items():
+            for _to in _tos:
+                known_ids.add(_to)
+
+        missing_seeds = [s for s in seeds if s not in known_ids]
+        if missing_seeds:
+            sample = ", ".join(missing_seeds[:10])
+            raise ValueError(
+                "Graph bundle inconsistency: seed node ids not found in branch bundle "
+                f"(repository={repo} branch={br} missing_seeds={len(missing_seeds)} sample={sample})"
+            )
+
+
+        # Fail-fast: if graph points to ids missing in the branch bundle, the bundle is inconsistent.
+        missing_edges: List[Tuple[str, str]] = []
 
         visited: Set[str] = set()
         q: Deque[Tuple[str, int]] = deque()
@@ -323,8 +381,14 @@ class FileSystemGraphProvider(IGraphProvider):
                 if not allow_all and rel_l not in allow:
                     continue
 
-                to_norm = _strip_part_suffix(to)
-                edges_out.append({"from": node, "to": to_norm, "type": rel, "depth": depth + 1})
+                to_norm = _strip_part_suffix(_strip_branch_namespace(str(to), repo, br))
+                from_id = _make_canonical_id(repo, br, node)
+                to_id = _make_canonical_id(repo, br, to_norm)
+                edges_out.append({"from": from_id, "to": to_id, "type": rel, "depth": depth + 1})
+
+                if to_norm not in known_ids:
+                    missing_edges.append((node, to_norm))
+                    continue
 
                 if to_norm in visited:
                     continue
@@ -337,72 +401,95 @@ class FileSystemGraphProvider(IGraphProvider):
 
                 q.append((to_norm, depth + 1))
 
-        return {"nodes": ordered_nodes, "edges": edges_out}
+        if missing_edges:
+            sample = ", ".join([f"{a}->{b}" for a, b in missing_edges[:10]])
+            raise ValueError(
+                "Graph bundle inconsistency: dependencies.json contains edges to missing nodes "
+                f"(repository={repo} branch={br} missing_edges={len(missing_edges)} sample={sample})"
+            )
+
+        return {"nodes": [_make_canonical_id(repo, br, n) for n in ordered_nodes], "edges": edges_out}
 
     def fetch_node_texts(
-        self,
-        *,
-        node_ids: List[str],
-        repository: Optional[str] = None,
-        branch: Optional[str] = None,
-        active_index: Optional[str] = None,
-        max_chars: int = 50_000,
-    ) -> List[Dict[str, Any]]:
-        # active_index kept for scoping consistency; provider is branch-bundle based for now.
-        _ = active_index
+            self,
+            *,
+            node_ids: List[str],
+            repository: Optional[str] = None,
+            branch: Optional[str] = None,
+            active_index: Optional[str] = None,
+            max_chars: int = 50_000,
+        ) -> List[Dict[str, Any]]:
+            # active_index kept for scoping consistency; provider is branch-bundle based for now.
+            _ = active_index
 
-        repo = (repository or "").strip()
-        br = (branch or "").strip()
+            repo = (repository or "").strip()
+            br = (branch or "").strip()
 
-        picked = _dedupe_preserve_order(_strip_part_suffix(str(n)) for n in (node_ids or []))
-        if not picked:
-            return []
+            raw_ids = _dedupe_preserve_order(str(n).strip() for n in (node_ids or []) if str(n).strip())
 
-        # Branch is REQUIRED for fetching node texts (path is branch-scoped).
-        if not repo:
-            raise ValueError("Missing required 'repository' for graph node fetch.")
-        if not br:
-            raise ValueError("Missing required 'branch' for graph node fetch.")
+            # Preserve requested ids (canonical) for the output mapping, but resolve content using local ids.
+            pairs: List[Tuple[str, str]] = [
+                (rid, _strip_part_suffix(_strip_branch_namespace(rid, repo, br))) for rid in raw_ids
+            ]
+            picked = _dedupe_preserve_order(local_id for _, local_id in pairs)
+            if not picked:
+                return []
 
-        chunks = self._load_chunks(repository=repo, branch=br)
-        sql = self._load_sql_bodies(repository=repo, branch=br)
+            # Branch is REQUIRED for fetching node texts (path is branch-scoped).
+            if not repo:
+                raise ValueError("Missing required 'repository' for graph node fetch.")
+            if not br:
+                raise ValueError("Missing required 'branch' for graph node fetch.")
 
-        out: List[Dict[str, Any]] = []
-        used = 0
+            used = 0
+            out: List[Dict[str, Any]] = []
 
-        for nid in picked:
-            t = ""
+            chunks = self._load_chunks(repository=repo, branch=br)
+            sql = self._load_sql_bodies(repository=repo, branch=br)
 
-            # C# chunk (by chunk Id)
-            if nid in chunks:
-                c = chunks[nid]
-                file_path = (c.get("File") or "").strip()
-                body = c.get("Text") or ""
-                if file_path:
-                    t = f"### File: {file_path}\n{body}".strip()
-                else:
-                    t = str(body or "")
-            # SQL node (by Key)
-            elif nid in sql:
-                s = sql[nid]
-                kind = s.get("kind") or s.get("Kind") or "Object"
-                schema = s.get("schema") or s.get("Schema") or "dbo"
-                name = s.get("name") or s.get("Name") or ""
-                body = s.get("body") or s.get("Body") or ""
-                header = f"[SQL {kind}] {schema}.{name}".strip()
-                t = f"{header}\n{body}".strip()
+            # Resolve each unique local node id once, then map back to requested ids.
+            text_by_local: Dict[str, str] = {}
 
-            if t:
-                remaining = max(0, int(max_chars) - used)
-                if remaining <= 0:
+            for nid in picked:
+                t = ""
+
+                # C# chunk (by chunk Id)
+                if nid in chunks:
+                    c = chunks[nid]
+                    file_path = c.get("File") or c.get("file") or ""
+                    body = c.get("Text") or c.get("Content") or ""
+                    body = str(body or "").strip()
+                    if file_path:
+                        t = f"### File: {file_path}\n{body}".strip()
+                    else:
+                        t = str(body or "")
+
+                # SQL node (by Key)
+                elif nid in sql:
+                    s = sql[nid]
+                    kind = s.get("kind") or s.get("Kind") or "Object"
+                    schema = s.get("schema") or s.get("Schema") or "dbo"
+                    name = s.get("name") or s.get("Name") or ""
+                    body = s.get("body") or s.get("Body") or ""
+                    header = f"[SQL {kind}] {schema}.{name}".strip()
+                    t = f"{header}\n{body}".strip()
+
+                if t:
+                    remaining = max(0, int(max_chars) - used)
+                    if remaining <= 0:
+                        break
+                    if len(t) > remaining:
+                        t = t[:remaining]
+                    used += len(t)
+
+                text_by_local[nid] = t
+
+                if used >= max_chars:
                     break
-                if len(t) > remaining:
-                    t = t[:remaining]
-                used += len(t)
 
-            out.append({"id": nid, "text": t})
+            for requested_id, local_id in pairs:
+                t = text_by_local.get(local_id, "")
+                out.append({"id": requested_id, "text": t})
 
-            if used >= max_chars:
-                break
+            return out
 
-        return out

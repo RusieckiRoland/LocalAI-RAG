@@ -1,27 +1,3 @@
-# File: vector_db/build_unified_index.py
-
-"""
-===============================================
-🔹 Unified Index Builder (FAISS + TF/BM25-ready) (C# + SQL + multi-branch)
-===============================================
-
-Repo layout (required):
-repositories/
-  <projectName>/
-    branches/   # source ZIPs + extracted branch folders
-    indexes/    # output indexes (FAISS + TF + metadata + manifest)
-
-Target layout for extracted branches:
-  branches/<BranchName>/...
-
-Target layout for indexes:
-  indexes/<FriendlyNameSlug>/
-
-Index folder name:
-- <FriendlyNameSlug>  e.g. release_490+release_460
-  (NO date prefix)
-"""
-
 from __future__ import annotations
 
 import sys
@@ -105,6 +81,23 @@ def sha256_of_file(path: str) -> str:
 # 🔹 Archive selection
 # ======================================
 
+def make_canonical_id(repo_name: str, branch_name: str, local_id: str) -> str:
+    """
+    Canonical, globally unique node id.
+
+    This prevents ID collisions when multiple branches are indexed into a single unified index.
+
+    Format:
+        <repo>::<branch>::<local_id>
+    """
+    r = (repo_name or "").strip()
+    b = (branch_name or "").strip()
+    lid = str(local_id or "").strip()
+    if not r or not b or not lid:
+        raise ValueError("make_canonical_id: repo_name, branch_name and local_id are required")
+    return f"{r}::{b}::{lid}"
+
+
 def list_archives(branches_dir: str) -> List[str]:
     """Return a list of absolute paths to ZIPs under branches_dir, newest first."""
     if not os.path.isdir(branches_dir):
@@ -183,12 +176,15 @@ def collect_cs_documents(branch_root: str, repo_name: str, branch_name: str) -> 
         entry_id = entry.get("Id")
 
         if entry_id:
-            doc_id = str(entry_id)
+            local_id = str(entry_id)
         else:
-            doc_id = f"cs:{file_path}:{class_name}:{member_name}"
+            local_id = f"cs:{file_path}:{class_name}:{member_name}"
+
+        canonical_id = make_canonical_id(repo_name, branch_name, local_id)
 
         meta: Dict[str, Any] = {
-            "id": doc_id,
+            "id": canonical_id,
+            "local_id": local_id,
             "data_type": "regular_code",
             "file_type": "cs",
             "source_file": file_path,
@@ -251,8 +247,11 @@ def collect_sql_documents(branch_root: str, repo_name: str, branch_name: str) ->
 
             chunks = split_into_chunks(full_text, max_chars=4000)
             for chunk_text, part, parts in chunks:
+                local_id = f"{key}:part={part}"
+                canonical_id = make_canonical_id(repo_name, branch_name, local_id)
                 meta: Dict[str, Any] = {
-                    "id": f"{key}:part={part}",
+                    "id": canonical_id,
+                    "local_id": local_id,
                     "data_type": "db_code",
                     "file_type": "sql",
                     "source_file": file_path,

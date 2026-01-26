@@ -1,4 +1,3 @@
-# vector_db/build_vector_index.py
 from __future__ import annotations
 
 import json
@@ -96,9 +95,13 @@ def extract_to_named_root(zip_path: str, branches_dir: str) -> str:
     branch_name = Path(zip_path).stem
     out_root = branches_dir_p / branch_name
 
-    # Deterministic: if already exists, reuse
-    if out_root.is_dir():
-        return str(out_root.resolve())
+    # Deterministic and safe: always overwrite the branch root on every run.
+    # Reusing an existing folder silently mixes old/new bundles and breaks branch isolation.
+    if out_root.exists():
+        if out_root.is_dir():
+            shutil.rmtree(out_root, ignore_errors=True)
+        else:
+            out_root.unlink(missing_ok=True)
 
     tmp_root = branches_dir_p / f".__extract_tmp__{branch_name}"
     if tmp_root.exists():

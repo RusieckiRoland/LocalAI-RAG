@@ -30,8 +30,8 @@
 
   "use_gpu": true,
   "plantuml_server" : "http://localhost:8080",  
-  "vector_indexes_root": "repositories/nopCommerce/indexes",
-  "active_index_id": "release_490+release_460",
-  "repo_name": "nopCommerce"
+  "vector_indexes_root": "repositories/fake/indexes",
+  "active_index_id": "fake_universal_460_490",
+  "repo_name": "fake"
 }
 
