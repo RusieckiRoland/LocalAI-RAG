@@ -54,10 +54,13 @@ def _print_start_banner(host: str, port: int) -> None:
     print("")
 
 
-# --- Main app import and run ---
-from code_query_engine.query_server_dynamic import app  # <-- nowy serwer
-
 if __name__ == "__main__":
+    # Import the Flask app ONLY inside __main__.
+    # This is required when semantic search uses multiprocessing "spawn":
+    # child processes re-import the main module, and importing the server at top-level
+    # would start new processes during bootstrap (crash / recursion).
+    from code_query_engine.query_server_dynamic import app  # noqa: E402
+
     host = "0.0.0.0"
     port = 5000
 
