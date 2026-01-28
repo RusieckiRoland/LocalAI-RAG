@@ -1,9 +1,9 @@
 {
   "format": "unified_index_manifest_v1",
   "index_id": "fake_universal_460_490",
-  "friendly_name": "FAKE_UNIVERSAL_4.60_4.90",
+  "friendly_name": "fake_universal_460_490",
   "repo_name": "fake",
-  "created_at_utc": "2026-01-24T15:49:06Z",
+  "created_at_utc": "2026-01-27T18:46:54Z",
   "branches": [
     {
       "zip_file": "Release_FAKE_UNIVERSAL_4.90.zip",

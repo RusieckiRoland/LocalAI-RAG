@@ -10,10 +10,19 @@ from typing import Dict, Optional, Tuple
 
 def load_config(
     script_dir: Optional[str] = None,
-    config_path: Optional[str] = None,
-) -> Tuple[Dict[str, object], str]:
+    config_path: Optional[str] = None
+) -> tuple[Dict[str, str], str]:
     """
-    Load config.json. Returns (cfg, config_dir).
+    Load config.json with optional path override.
+
+    Resolution order (deterministic):
+      1) explicit config_path (if provided)
+      2) tests/config.json when running under pytest (if present)
+      3) vector_db/config.json
+      4) repo_root/config.json
+      5) <cwd>/config.json
+
+    Returns: (cfg, config_dir) where config_dir is the directory containing the chosen config file.
     """
     if config_path and os.path.isfile(config_path):
         with open(config_path, "r", encoding="utf-8") as f:
@@ -21,21 +30,37 @@ def load_config(
         return cfg, os.path.dirname(config_path)
 
     script_dir = script_dir or os.path.dirname(os.path.abspath(__file__))
+    repo_root = os.path.dirname(script_dir)
 
-    # Common locations: repo root, or one level up (depending on how scripts are invoked)
-    candidates = [
-        os.path.join(script_dir, "..", "config.json"),
-        os.path.join(script_dir, "..", "..", "config.json"),
+    # Auto-detect pytest without any user-provided flags/env-vars.
+    is_pytest = ("PYTEST_CURRENT_TEST" in os.environ) or ("pytest" in sys.modules)
+
+    candidates: list[str] = []
+
+    test_config = os.path.join(repo_root, "tests", "config.json")
+    if is_pytest and os.path.isfile(test_config):
+        candidates.append(test_config)
+
+    candidates.extend([
+        os.path.join(script_dir, "config.json"),
+        os.path.join(repo_root, "config.json"),
         os.path.join(os.getcwd(), "config.json"),
-    ]
+    ])
 
-    for path in map(os.path.normpath, candidates):
+    # Deduplicate while preserving order
+    seen: set[str] = set()
+    for path in candidates:
+        if path in seen:
+            continue
+        seen.add(path)
+
         if os.path.isfile(path):
             with open(path, "r", encoding="utf-8") as f:
                 cfg = json.load(f)
             return cfg, os.path.dirname(path)
 
-    raise FileNotFoundError("config.json not found (checked script_dir/.., script_dir/../.., cwd)")
+    print("ERROR: config.json not found.", file=sys.stderr)
+    raise SystemExit(1)
 
 
 def resolve_path(path: str, base_dir: str) -> str:

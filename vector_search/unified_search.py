@@ -10,7 +10,7 @@ from .models import VectorSearchRequest, VectorSearchFilters
 
 
 def _matches_list(value: Any, allowed: List[str] | None) -> bool:
-    """Return True if value is allowed by a simple equality list."""
+    """Return True if value is allowed by a simple equality list (scalar equality)."""
     if not allowed:
         return True
     if value is None:
@@ -27,6 +27,22 @@ def _matches_prefix(value: Any, prefixes: List[str] | None) -> bool:
         return False
     s = str(value).lower()
     return any(s.startswith(p.lower()) for p in prefixes)
+
+
+def _matches_all_tags(value: Any, required_all: List[str] | None) -> bool:
+    """Return True if metadata value contains ALL required tags."""
+    if not required_all:
+        return True
+    if value is None:
+        return False
+
+    if isinstance(value, (list, tuple, set)):
+        have = {str(v) for v in value}
+    else:
+        have = {str(value)}
+
+    need = {str(v) for v in required_all if str(v).strip()}
+    return need.issubset(have)
 
 
 def metadata_matches_filters(meta: Dict[str, Any], filters: Any) -> bool:
@@ -49,6 +65,7 @@ def metadata_matches_filters(meta: Dict[str, Any], filters: Any) -> bool:
             "branch",
             "db_key_in",
             "cs_key_in",
+            "permission_tags_all",
             "extra",
         }
         clean = {k: v for k, v in filters.items() if k in allowed}
@@ -56,7 +73,7 @@ def metadata_matches_filters(meta: Dict[str, Any], filters: Any) -> bool:
     else:
         f = VectorSearchFilters()
 
-    # AND across fields
+    # AND across fields (scalar matches)
     if not _matches_list(meta.get("data_type"), f.data_type):
         return False
     if not _matches_list(meta.get("file_type"), f.file_type):
@@ -77,6 +94,15 @@ def metadata_matches_filters(meta: Dict[str, Any], filters: Any) -> bool:
     if f.cs_key_in and meta.get("cs_key") not in set(f.cs_key_in):
         return False
 
+    # --- ACL: require ALL tags ---
+    acl_meta = meta.get("permission_tags_all")
+    if acl_meta is None:
+        acl_meta = meta.get("AclTags") or meta.get("acl_tags") or meta.get("acl_tags_all")
+
+    if not _matches_all_tags(acl_meta, getattr(f, "permission_tags_all", None)):
+        return False
+
+    # Extra key/value matches (scalar only)
     if f.extra:
         for k, allowed in f.extra.items():
             if allowed is None:
@@ -91,6 +117,85 @@ def metadata_matches_filters(meta: Dict[str, Any], filters: Any) -> bool:
     return True
 
 
+def _unwrap_faiss_index(index: Any) -> Any:
+    """
+    Best-effort unwrap for wrappers like IndexIDMap.
+    """
+    cur = index
+    for _ in range(3):
+        inner = getattr(cur, "index", None)
+        if inner is None:
+            break
+        cur = inner
+    return cur
+
+
+def _get_index_vectors_flat_ip(index: Any) -> np.ndarray:
+    """
+    Extract raw vectors from an IndexFlat* (CPU) as a (ntotal, d) float32 array.
+
+    This is required for strict prefilter search where we score only allowed ids.
+    """
+    base = _unwrap_faiss_index(index)
+
+    xb = getattr(base, "xb", None)
+    d = getattr(base, "d", None)
+
+    if xb is None or d is None:
+        raise TypeError(
+            "Strict prefilter search requires a CPU IndexFlat* exposing .xb and .d. "
+            f"Got index type: {type(index)} (unwrapped: {type(base)})."
+        )
+
+        # In real FAISS IndexFlat*, xb is a FAISS *Vector (C++), so vector_to_array works.
+    # In unit tests we may pass xb as a plain numpy array - support that explicitly.
+    if isinstance(xb, np.ndarray):
+        arr = xb.astype(np.float32, copy=False).reshape(-1)
+    else:
+        arr = faiss.vector_to_array(xb)
+
+    if arr.size % int(d) != 0:
+        raise ValueError(f"IndexFlat xb size mismatch: {arr.size} not divisible by d={d}")
+
+    return arr.reshape(-1, int(d)).astype("float32", copy=False)
+
+
+
+def _search_prefiltered_flat_ip(
+    *,
+    index: Any,
+    query_vec: np.ndarray,
+    allowed_ids: List[int],
+    top_k: int,
+) -> tuple[np.ndarray, np.ndarray]:
+    """
+    Strict prefilter vector search for IndexFlatIP:
+    - score ONLY the vectors for allowed_ids
+    - return top_k results among those
+    """
+    if not allowed_ids:
+        return np.empty((1, 0), dtype=np.float32), np.empty((1, 0), dtype=np.int64)
+
+    vectors = _get_index_vectors_flat_ip(index)  # (ntotal, d)
+    sub = vectors[np.array(allowed_ids, dtype=np.int64)]  # (n_allowed, d)
+
+    q = query_vec.reshape(-1)  # (d,)
+    scores = sub @ q  # (n_allowed,)
+
+    k = min(int(top_k), int(scores.shape[0]))
+    if k <= 0:
+        return np.empty((1, 0), dtype=np.float32), np.empty((1, 0), dtype=np.int64)
+
+    # argpartition for top-k, then sort
+    idx_part = np.argpartition(scores, -k)[-k:]
+    idx_sorted = idx_part[np.argsort(scores[idx_part])[::-1]]
+
+    out_scores = scores[idx_sorted].astype(np.float32, copy=False)
+    out_ids = np.array([allowed_ids[int(i)] for i in idx_sorted], dtype=np.int64)
+
+    return out_scores.reshape(1, -1), out_ids.reshape(1, -1)
+
+
 def search_unified(
     *,
     index,
@@ -101,20 +206,14 @@ def search_unified(
     """
     Perform vector search over unified FAISS index using VectorSearchRequest.
 
-    Args:
-        index: FAISS-like object exposing `search(vectors, k)`.
-        metadata: sequence of metadata dicts aligned with FAISS rows.
-        embed_model: embedding model with `encode(texts, convert_to_numpy=True)`.
+    Order:
+      - Default: FAISS search(raw_k) -> filter -> re-rank -> top_k
+      - STRICT (ACL only): filter first (ACL) -> score only allowed subset -> top_k
 
-    Returns:
-        List of result dicts with:
-        - Rank
-        - FaissScore (raw FAISS score)
-        - Distance (1 - similarity, best-effort)
-        - File (source_file if available)
-        - Id (metadata id or FAISS row index)
-        - Content (short preview if available)
-        - Metadata (full raw metadata)
+    NOTE:
+      Strict prefilter-before-scoring is applied ONLY when ACL tags are present
+      (permission_tags_all). Other filters keep the previous contract that relies
+      on raw_k oversampling.
     """
     q = (request.text_query or "").strip()
     if not q:
@@ -124,22 +223,48 @@ def search_unified(
     vec = embed_model.encode([q], convert_to_numpy=True).astype("float32")
     faiss.normalize_L2(vec)
 
-    # --- Raw FAISS search ---
     top_k = int(request.top_k or 5)
     oversample = int(request.oversample_factor or 5)
     raw_k = max(1, top_k * max(1, oversample))
 
-    scores, ids = index.search(vec, raw_k)
+    filt = request.filters or VectorSearchFilters()
+
+    # STRICT mode ONLY for ACL (permission_tags_all)
+    if isinstance(filt, VectorSearchFilters):
+        strict_acl = bool(getattr(filt, "permission_tags_all", None))
+    elif isinstance(filt, dict):
+        strict_acl = bool(filt.get("permission_tags_all"))
+    else:
+        strict_acl = False
+
+    if strict_acl:
+        # 1) Prefilter -> allowed ids (ACL + other filters)
+        allowed_ids: List[int] = []
+        for i, meta in enumerate(metadata):
+            if metadata_matches_filters(meta, filt):
+                allowed_ids.append(int(i))
+
+        # 2) Score only allowed ids (strict order: filter -> scoring)
+        scores, ids = _search_prefiltered_flat_ip(
+            index=index,
+            query_vec=vec[0],
+            allowed_ids=allowed_ids,
+            top_k=top_k,
+        )
+    else:
+        # Default: ask FAISS for raw_k, then filter, then top_k
+        scores, ids = index.search(vec, raw_k)
 
     # --- Filter + score ---
     rows: List[Dict[str, Any]] = []
-    filt = request.filters or VectorSearchFilters()
 
     for raw_score, doc_id in zip(scores[0].tolist(), ids[0].tolist()):
         if doc_id < 0 or doc_id >= len(metadata):
             continue
 
         meta = metadata[int(doc_id)]
+
+        # Always enforce filters (defensive). In strict_acl mode it should already match.
         if not metadata_matches_filters(meta, filt):
             continue
 
@@ -154,26 +279,27 @@ def search_unified(
         else:
             preview = None
 
-        row = {
-            "_score": final_score,
-            "FaissScore": base_score,
-            "Distance": float(1.0 - base_score),
-            "File": meta.get("source_file") or meta.get("File"),
-            "Id": meta.get("id") or meta.get("Id") or str(doc_id),
-            "Content": preview,
-            "Metadata": meta,
-        }
-        rows.append(row)
+        rows.append(
+            {
+                "_score": final_score,
+                "FaissScore": base_score,
+                "Distance": float(1.0 - base_score),
+                "File": meta.get("source_file") or meta.get("File"),
+                "Id": meta.get("id") or meta.get("Id") or str(doc_id),
+                "Content": preview,
+                "Metadata": meta,
+            }
+        )
 
     # Sort and assign Rank
     rows.sort(key=lambda r: r["_score"], reverse=True)
 
     out: List[Dict[str, Any]] = []
     for rank, r in enumerate(rows[:top_k], start=1):
-        r = dict(r)
-        r["Rank"] = rank
-        r.pop("_score", None)
-        out.append(r)
+        rr = dict(r)
+        rr["Rank"] = rank
+        rr.pop("_score", None)
+        out.append(rr)
 
     return out
 
@@ -181,10 +307,6 @@ def search_unified(
 class UnifiedSearch:
     """
     Thin OO wrapper around search_unified(), used by loaders / pipeline.
-
-    - index        → FAISS index
-    - metadata     → list of metadata dicts
-    - embed_model  → embedding model
     """
 
     def __init__(self, *, index, metadata: Sequence[Dict[str, Any]], embed_model):
@@ -203,9 +325,8 @@ class UnifiedSearch:
 
 class UnifiedSearchAdapter:
     """
-    Adapter to keep legacy call sites working:
-        search(query: str, top_k: int = 5, *, widen=None, alpha=..., beta=...)
-    Now also accepts optional `filters` (dict or VectorSearchFilters) for unified index filtering.
+    Adapter to keep legacy call sites working.
+    Now also accepts optional `filters` (dict or VectorSearchFilters).
     """
 
     def __init__(self, unified_search: UnifiedSearch):
@@ -237,6 +358,7 @@ class UnifiedSearchAdapter:
                 "branch",
                 "db_key_in",
                 "cs_key_in",
+                "permission_tags_all",
                 "extra",
             }
             clean = {k: v for k, v in filters.items() if k in allowed}

@@ -12,7 +12,9 @@ class VectorSearchFilters:
     name_prefix: Optional[List[str]] = None
     branch: Optional[List[str]] = None
     db_key_in: Optional[List[str]] = None
-    cs_key_in: Optional[List[str]] = None
+    cs_key_in: Optional[List[str]] = None    
+      # ACL: document must contain ALL required tags.
+    permission_tags_all: Optional[List[str]] = None
     extra: Dict[str, Any] = field(default_factory=dict)
 
 

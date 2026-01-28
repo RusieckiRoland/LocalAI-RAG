@@ -183,19 +183,41 @@ def collect_cs_documents(branch_root: str, repo_name: str, branch_name: str) -> 
         canonical_id = make_canonical_id(repo_name, branch_name, local_id)
 
         meta: Dict[str, Any] = {
-            "id": canonical_id,
-            "local_id": local_id,
-            "data_type": "regular_code",
-            "file_type": "cs",
-            "source_file": file_path,
-            "chunk_part": 0,
-            "chunk_total": 1,
-            "class": class_name,
-            "member": member_name,
-            "repo": repo_name,
-            "branch": branch_name,
-        }
+        "id": canonical_id,
+        "local_id": local_id,
+        "data_type": "regular_code",
+        "file_type": "cs",
+        "source_file": file_path,
+        "chunk_part": 0,
+        "chunk_total": 1,
+        "class": class_name,
+        "member": member_name,
+        "repo": repo_name,
+        "branch": branch_name,
+    }
 
+    # --- ACL propagation to unified metadata ---
+        # chunks.json may contain "AclTags": ["..."] (list of strings)
+        acl_tags = entry.get("AclTags")
+        if acl_tags is None:
+            acl_tags = entry.get("acl_tags")
+
+        if isinstance(acl_tags, list):
+            clean_tags = [str(x).strip() for x in acl_tags if str(x).strip()]
+            if clean_tags:
+                # Contract used by filtering/parsing layer
+                meta["permission_tags_all"] = clean_tags
+        elif acl_tags is not None:
+            # If someone accidentally serialized it as scalar, coerce to a single-item list
+            s = str(acl_tags).strip()
+            if s:
+                meta["permission_tags_all"] = [s]
+    
+    
+    
+    
+    
+    
         docs.append({"text": content, "meta": meta})
 
     print(f"✅ Collected {len(docs)} C# documents from: {branch_root}")

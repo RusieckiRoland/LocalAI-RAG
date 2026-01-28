@@ -283,7 +283,10 @@
     "class": "AclPolicy",
     "member": "IsAllowed",
     "repo": "fake",
-    "branch": "Release_FAKE_UNIVERSAL_4.90"
+    "branch": "Release_FAKE_UNIVERSAL_4.90",
+    "permission_tags_all": [
+      "Security"
+    ]
   },
   {
     "id": "fake::Release_FAKE_UNIVERSAL_4.90::C0051",
@@ -296,7 +299,10 @@
     "class": "AclFilter",
     "member": "FilterDocs",
     "repo": "fake",
-    "branch": "Release_FAKE_UNIVERSAL_4.90"
+    "branch": "Release_FAKE_UNIVERSAL_4.90",
+    "permission_tags_all": [
+      "Security"
+    ]
   },
   {
     "id": "fake::Release_FAKE_UNIVERSAL_4.90::C0060",
@@ -374,7 +380,10 @@
     "class": "PaymentService",
     "member": "ProcessPayment",
     "repo": "fake",
-    "branch": "Release_FAKE_UNIVERSAL_4.90"
+    "branch": "Release_FAKE_UNIVERSAL_4.90",
+    "permission_tags_all": [
+      "Finance"
+    ]
   },
   {
     "id": "fake::Release_FAKE_UNIVERSAL_4.90::C0071",
@@ -387,7 +396,10 @@
     "class": "InvoiceGenerator",
     "member": "GenerateInvoice",
     "repo": "fake",
-    "branch": "Release_FAKE_UNIVERSAL_4.90"
+    "branch": "Release_FAKE_UNIVERSAL_4.90",
+    "permission_tags_all": [
+      "Finance"
+    ]
   },
   {
     "id": "fake::Release_FAKE_UNIVERSAL_4.90::C0072",
@@ -400,7 +412,10 @@
     "class": "VatCalculator",
     "member": "CalculateVat",
     "repo": "fake",
-    "branch": "Release_FAKE_UNIVERSAL_4.90"
+    "branch": "Release_FAKE_UNIVERSAL_4.90",
+    "permission_tags_all": [
+      "Finance"
+    ]
   },
   {
     "id": "fake::Release_FAKE_UNIVERSAL_4.90::C0080",
@@ -413,7 +428,10 @@
     "class": "TokenValidator",
     "member": "ValidateToken",
     "repo": "fake",
-    "branch": "Release_FAKE_UNIVERSAL_4.90"
+    "branch": "Release_FAKE_UNIVERSAL_4.90",
+    "permission_tags_all": [
+      "Security"
+    ]
   },
   {
     "id": "fake::Release_FAKE_UNIVERSAL_4.90::C0081",
@@ -426,7 +444,10 @@
     "class": "PermissionChecker",
     "member": "HasPermission",
     "repo": "fake",
-    "branch": "Release_FAKE_UNIVERSAL_4.90"
+    "branch": "Release_FAKE_UNIVERSAL_4.90",
+    "permission_tags_all": [
+      "Security"
+    ]
   },
   {
     "id": "fake::Release_FAKE_UNIVERSAL_4.90::C0082",
@@ -439,7 +460,10 @@
     "class": "AuditLogger",
     "member": "WriteAuditLog",
     "repo": "fake",
-    "branch": "Release_FAKE_UNIVERSAL_4.90"
+    "branch": "Release_FAKE_UNIVERSAL_4.90",
+    "permission_tags_all": [
+      "Security"
+    ]
   },
   {
     "id": "fake::Release_FAKE_UNIVERSAL_4.90::C0083",
@@ -452,7 +476,10 @@
     "class": "KeyRotation",
     "member": "RotateKeys",
     "repo": "fake",
-    "branch": "Release_FAKE_UNIVERSAL_4.90"
+    "branch": "Release_FAKE_UNIVERSAL_4.90",
+    "permission_tags_all": [
+      "Security"
+    ]
   },
   {
     "id": "fake::Release_FAKE_UNIVERSAL_4.90::C0090",
@@ -465,7 +492,11 @@
     "class": "FraudRiskScorer",
     "member": "ComputeRisk",
     "repo": "fake",
-    "branch": "Release_FAKE_UNIVERSAL_4.90"
+    "branch": "Release_FAKE_UNIVERSAL_4.90",
+    "permission_tags_all": [
+      "Security",
+      "Finance"
+    ]
   },
   {
     "id": "fake::Release_FAKE_UNIVERSAL_4.90::C0100",
@@ -478,7 +509,10 @@
     "class": "CacheC0100",
     "member": "Save",
     "repo": "fake",
-    "branch": "Release_FAKE_UNIVERSAL_4.90"
+    "branch": "Release_FAKE_UNIVERSAL_4.90",
+    "permission_tags_all": [
+      "Security"
+    ]
   },
   {
     "id": "fake::Release_FAKE_UNIVERSAL_4.90::C0101",
@@ -491,7 +525,10 @@
     "class": "ParsingC0101",
     "member": "Load",
     "repo": "fake",
-    "branch": "Release_FAKE_UNIVERSAL_4.90"
+    "branch": "Release_FAKE_UNIVERSAL_4.90",
+    "permission_tags_all": [
+      "Finance"
+    ]
   },
   {
     "id": "fake::Release_FAKE_UNIVERSAL_4.90::C0102",
@@ -504,7 +541,10 @@
     "class": "DiagnosticsC0102",
     "member": "Normalize",
     "repo": "fake",
-    "branch": "Release_FAKE_UNIVERSAL_4.90"
+    "branch": "Release_FAKE_UNIVERSAL_4.90",
+    "permission_tags_all": [
+      "Finance"
+    ]
   },
   {
     "id": "fake::Release_FAKE_UNIVERSAL_4.90::C0103",
@@ -530,7 +570,10 @@
     "class": "ConfigC0104",
     "member": "Compute",
     "repo": "fake",
-    "branch": "Release_FAKE_UNIVERSAL_4.90"
+    "branch": "Release_FAKE_UNIVERSAL_4.90",
+    "permission_tags_all": [
+      "Security"
+    ]
   },
   {
     "id": "fake::Release_FAKE_UNIVERSAL_4.90::C0105",
@@ -712,7 +755,10 @@
     "class": "UtilsC0118",
     "member": "Compute",
     "repo": "fake",
-    "branch": "Release_FAKE_UNIVERSAL_4.90"
+    "branch": "Release_FAKE_UNIVERSAL_4.90",
+    "permission_tags_all": [
+      "Security"
+    ]
   },
   {
     "id": "fake::Release_FAKE_UNIVERSAL_4.90::C0119",
@@ -764,7 +810,10 @@
     "class": "ParsingC0122",
     "member": "Execute",
     "repo": "fake",
-    "branch": "Release_FAKE_UNIVERSAL_4.90"
+    "branch": "Release_FAKE_UNIVERSAL_4.90",
+    "permission_tags_all": [
+      "Security"
+    ]
   },
   {
     "id": "fake::Release_FAKE_UNIVERSAL_4.90::C0123",
@@ -777,7 +826,10 @@
     "class": "CacheC0123",
     "member": "Normalize",
     "repo": "fake",
-    "branch": "Release_FAKE_UNIVERSAL_4.90"
+    "branch": "Release_FAKE_UNIVERSAL_4.90",
+    "permission_tags_all": [
+      "Finance"
+    ]
   },
   {
     "id": "fake::Release_FAKE_UNIVERSAL_4.90::C0124",
@@ -868,7 +920,10 @@
     "class": "DiagnosticsC0130",
     "member": "Build",
     "repo": "fake",
-    "branch": "Release_FAKE_UNIVERSAL_4.90"
+    "branch": "Release_FAKE_UNIVERSAL_4.90",
+    "permission_tags_all": [
+      "Security"
+    ]
   },
   {
     "id": "fake::Release_FAKE_UNIVERSAL_4.90::C0131",
@@ -907,7 +962,11 @@
     "class": "IOC0133",
     "member": "Load",
     "repo": "fake",
-    "branch": "Release_FAKE_UNIVERSAL_4.90"
+    "branch": "Release_FAKE_UNIVERSAL_4.90",
+    "permission_tags_all": [
+      "Security",
+      "Finance"
+    ]
   },
   {
     "id": "fake::Release_FAKE_UNIVERSAL_4.90::C0134",
@@ -920,7 +979,10 @@
     "class": "MathC0134",
     "member": "Create",
     "repo": "fake",
-    "branch": "Release_FAKE_UNIVERSAL_4.90"
+    "branch": "Release_FAKE_UNIVERSAL_4.90",
+    "permission_tags_all": [
+      "Finance"
+    ]
   },
   {
     "id": "fake::Release_FAKE_UNIVERSAL_4.90::C0135",
@@ -998,7 +1060,10 @@
     "class": "DiagnosticsC0140",
     "member": "Compute",
     "repo": "fake",
-    "branch": "Release_FAKE_UNIVERSAL_4.90"
+    "branch": "Release_FAKE_UNIVERSAL_4.90",
+    "permission_tags_all": [
+      "Finance"
+    ]
   },
   {
     "id": "fake::Release_FAKE_UNIVERSAL_4.90::C0141",
@@ -1063,7 +1128,10 @@
     "class": "IOC0145",
     "member": "Create",
     "repo": "fake",
-    "branch": "Release_FAKE_UNIVERSAL_4.90"
+    "branch": "Release_FAKE_UNIVERSAL_4.90",
+    "permission_tags_all": [
+      "Security"
+    ]
   },
   {
     "id": "fake::Release_FAKE_UNIVERSAL_4.90::C0146",
@@ -1076,7 +1144,10 @@
     "class": "ConfigC0146",
     "member": "Normalize",
     "repo": "fake",
-    "branch": "Release_FAKE_UNIVERSAL_4.90"
+    "branch": "Release_FAKE_UNIVERSAL_4.90",
+    "permission_tags_all": [
+      "Finance"
+    ]
   },
   {
     "id": "fake::Release_FAKE_UNIVERSAL_4.90::C0147",
@@ -1219,7 +1290,10 @@
     "class": "TextC0157",
     "member": "Build",
     "repo": "fake",
-    "branch": "Release_FAKE_UNIVERSAL_4.90"
+    "branch": "Release_FAKE_UNIVERSAL_4.90",
+    "permission_tags_all": [
+      "Finance"
+    ]
   },
   {
     "id": "fake::Release_FAKE_UNIVERSAL_4.90::C0158",
@@ -1271,7 +1345,10 @@
     "class": "DiagnosticsC0161",
     "member": "Normalize",
     "repo": "fake",
-    "branch": "Release_FAKE_UNIVERSAL_4.90"
+    "branch": "Release_FAKE_UNIVERSAL_4.90",
+    "permission_tags_all": [
+      "Finance"
+    ]
   },
   {
     "id": "fake::Release_FAKE_UNIVERSAL_4.90::C0162",
@@ -1336,7 +1413,10 @@
     "class": "CacheC0166",
     "member": "Run",
     "repo": "fake",
-    "branch": "Release_FAKE_UNIVERSAL_4.90"
+    "branch": "Release_FAKE_UNIVERSAL_4.90",
+    "permission_tags_all": [
+      "Finance"
+    ]
   },
   {
     "id": "fake::Release_FAKE_UNIVERSAL_4.90::C0167",
@@ -1362,7 +1442,10 @@
     "class": "IOC0168",
     "member": "Create",
     "repo": "fake",
-    "branch": "Release_FAKE_UNIVERSAL_4.90"
+    "branch": "Release_FAKE_UNIVERSAL_4.90",
+    "permission_tags_all": [
+      "Security"
+    ]
   },
   {
     "id": "fake::Release_FAKE_UNIVERSAL_4.90::C0169",
@@ -1388,7 +1471,10 @@
     "class": "MathC0170",
     "member": "Load",
     "repo": "fake",
-    "branch": "Release_FAKE_UNIVERSAL_4.90"
+    "branch": "Release_FAKE_UNIVERSAL_4.90",
+    "permission_tags_all": [
+      "Security"
+    ]
   },
   {
     "id": "fake::Release_FAKE_UNIVERSAL_4.90::C0171",
@@ -1401,7 +1487,10 @@
     "class": "IOC0171",
     "member": "Create",
     "repo": "fake",
-    "branch": "Release_FAKE_UNIVERSAL_4.90"
+    "branch": "Release_FAKE_UNIVERSAL_4.90",
+    "permission_tags_all": [
+      "Finance"
+    ]
   },
   {
     "id": "fake::Release_FAKE_UNIVERSAL_4.90::C0172",
@@ -1570,7 +1659,10 @@
     "class": "IOC0184",
     "member": "Normalize",
     "repo": "fake",
-    "branch": "Release_FAKE_UNIVERSAL_4.90"
+    "branch": "Release_FAKE_UNIVERSAL_4.90",
+    "permission_tags_all": [
+      "Security"
+    ]
   },
   {
     "id": "fake::Release_FAKE_UNIVERSAL_4.90::C0185",
@@ -1596,7 +1688,10 @@
     "class": "HttpC0186",
     "member": "Load",
     "repo": "fake",
-    "branch": "Release_FAKE_UNIVERSAL_4.90"
+    "branch": "Release_FAKE_UNIVERSAL_4.90",
+    "permission_tags_all": [
+      "Security"
+    ]
   },
   {
     "id": "fake::Release_FAKE_UNIVERSAL_4.90::C0187",
@@ -3183,7 +3278,10 @@
     "class": "AclPolicy",
     "member": "IsAllowed",
     "repo": "fake",
-    "branch": "Release_FAKE_UNIVERSAL_4.60"
+    "branch": "Release_FAKE_UNIVERSAL_4.60",
+    "permission_tags_all": [
+      "Security"
+    ]
   },
   {
     "id": "fake::Release_FAKE_UNIVERSAL_4.60::C0051",
@@ -3196,7 +3294,10 @@
     "class": "AclFilter",
     "member": "FilterDocs",
     "repo": "fake",
-    "branch": "Release_FAKE_UNIVERSAL_4.60"
+    "branch": "Release_FAKE_UNIVERSAL_4.60",
+    "permission_tags_all": [
+      "Security"
+    ]
   },
   {
     "id": "fake::Release_FAKE_UNIVERSAL_4.60::C0060",
@@ -3274,7 +3375,10 @@
     "class": "PaymentService",
     "member": "ProcessPayment",
     "repo": "fake",
-    "branch": "Release_FAKE_UNIVERSAL_4.60"
+    "branch": "Release_FAKE_UNIVERSAL_4.60",
+    "permission_tags_all": [
+      "Finance"
+    ]
   },
   {
     "id": "fake::Release_FAKE_UNIVERSAL_4.60::C0071",
@@ -3287,7 +3391,10 @@
     "class": "InvoiceGenerator",
     "member": "GenerateInvoice",
     "repo": "fake",
-    "branch": "Release_FAKE_UNIVERSAL_4.60"
+    "branch": "Release_FAKE_UNIVERSAL_4.60",
+    "permission_tags_all": [
+      "Finance"
+    ]
   },
   {
     "id": "fake::Release_FAKE_UNIVERSAL_4.60::C0072",
@@ -3300,7 +3407,10 @@
     "class": "VatCalculator",
     "member": "CalculateVat",
     "repo": "fake",
-    "branch": "Release_FAKE_UNIVERSAL_4.60"
+    "branch": "Release_FAKE_UNIVERSAL_4.60",
+    "permission_tags_all": [
+      "Finance"
+    ]
   },
   {
     "id": "fake::Release_FAKE_UNIVERSAL_4.60::C0080",
@@ -3313,7 +3423,10 @@
     "class": "TokenValidator",
     "member": "ValidateToken",
     "repo": "fake",
-    "branch": "Release_FAKE_UNIVERSAL_4.60"
+    "branch": "Release_FAKE_UNIVERSAL_4.60",
+    "permission_tags_all": [
+      "Security"
+    ]
   },
   {
     "id": "fake::Release_FAKE_UNIVERSAL_4.60::C0081",
@@ -3326,7 +3439,10 @@
     "class": "PermissionChecker",
     "member": "HasPermission",
     "repo": "fake",
-    "branch": "Release_FAKE_UNIVERSAL_4.60"
+    "branch": "Release_FAKE_UNIVERSAL_4.60",
+    "permission_tags_all": [
+      "Security"
+    ]
   },
   {
     "id": "fake::Release_FAKE_UNIVERSAL_4.60::C0082",
@@ -3339,7 +3455,10 @@
     "class": "AuditLogger",
     "member": "WriteAuditLog",
     "repo": "fake",
-    "branch": "Release_FAKE_UNIVERSAL_4.60"
+    "branch": "Release_FAKE_UNIVERSAL_4.60",
+    "permission_tags_all": [
+      "Security"
+    ]
   },
   {
     "id": "fake::Release_FAKE_UNIVERSAL_4.60::C0083",
@@ -3352,7 +3471,10 @@
     "class": "KeyRotation",
     "member": "RotateKeys",
     "repo": "fake",
-    "branch": "Release_FAKE_UNIVERSAL_4.60"
+    "branch": "Release_FAKE_UNIVERSAL_4.60",
+    "permission_tags_all": [
+      "Security"
+    ]
   },
   {
     "id": "fake::Release_FAKE_UNIVERSAL_4.60::C0090",
@@ -3365,7 +3487,11 @@
     "class": "FraudRiskScorer",
     "member": "ComputeRisk",
     "repo": "fake",
-    "branch": "Release_FAKE_UNIVERSAL_4.60"
+    "branch": "Release_FAKE_UNIVERSAL_4.60",
+    "permission_tags_all": [
+      "Security",
+      "Finance"
+    ]
   },
   {
     "id": "fake::Release_FAKE_UNIVERSAL_4.60::C0100",
@@ -3391,7 +3517,10 @@
     "class": "UtilsC0101",
     "member": "Handle",
     "repo": "fake",
-    "branch": "Release_FAKE_UNIVERSAL_4.60"
+    "branch": "Release_FAKE_UNIVERSAL_4.60",
+    "permission_tags_all": [
+      "Security"
+    ]
   },
   {
     "id": "fake::Release_FAKE_UNIVERSAL_4.60::C0102",
@@ -3482,7 +3611,10 @@
     "class": "DiagnosticsC0108",
     "member": "Execute",
     "repo": "fake",
-    "branch": "Release_FAKE_UNIVERSAL_4.60"
+    "branch": "Release_FAKE_UNIVERSAL_4.60",
+    "permission_tags_all": [
+      "Security"
+    ]
   },
   {
     "id": "fake::Release_FAKE_UNIVERSAL_4.60::C0109",
@@ -3547,7 +3679,10 @@
     "class": "HttpC0113",
     "member": "Save",
     "repo": "fake",
-    "branch": "Release_FAKE_UNIVERSAL_4.60"
+    "branch": "Release_FAKE_UNIVERSAL_4.60",
+    "permission_tags_all": [
+      "Security"
+    ]
   },
   {
     "id": "fake::Release_FAKE_UNIVERSAL_4.60::C0114",
@@ -3612,7 +3747,10 @@
     "class": "MathC0118",
     "member": "Compute",
     "repo": "fake",
-    "branch": "Release_FAKE_UNIVERSAL_4.60"
+    "branch": "Release_FAKE_UNIVERSAL_4.60",
+    "permission_tags_all": [
+      "Security"
+    ]
   },
   {
     "id": "fake::Release_FAKE_UNIVERSAL_4.60::C0119",
@@ -3703,7 +3841,10 @@
     "class": "UtilsC0125",
     "member": "Execute",
     "repo": "fake",
-    "branch": "Release_FAKE_UNIVERSAL_4.60"
+    "branch": "Release_FAKE_UNIVERSAL_4.60",
+    "permission_tags_all": [
+      "Security"
+    ]
   },
   {
     "id": "fake::Release_FAKE_UNIVERSAL_4.60::C0126",
@@ -3950,7 +4091,10 @@
     "class": "CacheC0144",
     "member": "Load",
     "repo": "fake",
-    "branch": "Release_FAKE_UNIVERSAL_4.60"
+    "branch": "Release_FAKE_UNIVERSAL_4.60",
+    "permission_tags_all": [
+      "Security"
+    ]
   },
   {
     "id": "fake::Release_FAKE_UNIVERSAL_4.60::C0145",
@@ -4145,7 +4289,10 @@
     "class": "HttpC0159",
     "member": "Load",
     "repo": "fake",
-    "branch": "Release_FAKE_UNIVERSAL_4.60"
+    "branch": "Release_FAKE_UNIVERSAL_4.60",
+    "permission_tags_all": [
+      "Finance"
+    ]
   },
   {
     "id": "fake::Release_FAKE_UNIVERSAL_4.60::C0160",
@@ -4158,7 +4305,10 @@
     "class": "CacheC0160",
     "member": "Normalize",
     "repo": "fake",
-    "branch": "Release_FAKE_UNIVERSAL_4.60"
+    "branch": "Release_FAKE_UNIVERSAL_4.60",
+    "permission_tags_all": [
+      "Security"
+    ]
   },
   {
     "id": "fake::Release_FAKE_UNIVERSAL_4.60::C0161",
@@ -4249,7 +4399,10 @@
     "class": "ParsingC0167",
     "member": "Save",
     "repo": "fake",
-    "branch": "Release_FAKE_UNIVERSAL_4.60"
+    "branch": "Release_FAKE_UNIVERSAL_4.60",
+    "permission_tags_all": [
+      "Finance"
+    ]
   },
   {
     "id": "fake::Release_FAKE_UNIVERSAL_4.60::C0168",
@@ -4262,7 +4415,11 @@
     "class": "HttpC0168",
     "member": "Execute",
     "repo": "fake",
-    "branch": "Release_FAKE_UNIVERSAL_4.60"
+    "branch": "Release_FAKE_UNIVERSAL_4.60",
+    "permission_tags_all": [
+      "Security",
+      "Finance"
+    ]
   },
   {
     "id": "fake::Release_FAKE_UNIVERSAL_4.60::C0169",
@@ -4353,7 +4510,11 @@
     "class": "TextC0175",
     "member": "Load",
     "repo": "fake",
-    "branch": "Release_FAKE_UNIVERSAL_4.60"
+    "branch": "Release_FAKE_UNIVERSAL_4.60",
+    "permission_tags_all": [
+      "Security",
+      "Finance"
+    ]
   },
   {
     "id": "fake::Release_FAKE_UNIVERSAL_4.60::C0176",
@@ -4483,7 +4644,10 @@
     "class": "IOC0185",
     "member": "Create",
     "repo": "fake",
-    "branch": "Release_FAKE_UNIVERSAL_4.60"
+    "branch": "Release_FAKE_UNIVERSAL_4.60",
+    "permission_tags_all": [
+      "Security"
+    ]
   },
   {
     "id": "fake::Release_FAKE_UNIVERSAL_4.60::C0186",

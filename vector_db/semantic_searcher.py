@@ -61,6 +61,14 @@ def _build_vector_filters(filters: Any | None) -> VectorSearchFilters:
     db_key_in = _as_list(filters.get("db_key_in"))
     cs_key_in = _as_list(filters.get("cs_key_in"))
 
+    # ACL (preferred key: permission_tags_all)
+    permission_tags_all = (
+        _as_list(filters.get("permission_tags_all"))
+        or _as_list(filters.get("acl_tags_all"))
+        or _as_list(filters.get("AclTags"))
+        or _as_list(filters.get("AclTagsAll"))
+    )
+
     # Extra fields: free-form metadata constraints.
     extra: Dict[str, Any] = {}
     extra_in = filters.get("extra")
@@ -83,6 +91,7 @@ def _build_vector_filters(filters: Any | None) -> VectorSearchFilters:
         branch=branch,
         db_key_in=db_key_in,
         cs_key_in=cs_key_in,
+        permission_tags_all=permission_tags_all,
         extra=extra,
     )
 
@@ -98,7 +107,7 @@ def _filters_to_dict(fs: VectorSearchFilters) -> Dict[str, Any]:
         return asdict(fs)
     # Best-effort fallback
     out: Dict[str, Any] = {}
-    for k in ("data_type", "file_type", "kind", "project", "schema", "name_prefix", "branch", "db_key_in", "cs_key_in", "extra"):
+    for k in ("data_type", "file_type", "kind", "project", "schema", "name_prefix", "branch", "db_key_in", "cs_key_in", "permission_tags_all", "extra"):
         out[k] = getattr(fs, k, None)
     return out
 
