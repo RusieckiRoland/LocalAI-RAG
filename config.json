@@ -29,7 +29,14 @@
 },
 
   "use_gpu": true,
-  "plantuml_server" : "http://localhost:8080",  
+  "plantuml_server" : "http://localhost:8080", 
+  "weaviate": {
+  "host": "localhost",
+  "http_port": 18080,
+  "grpc_port": 15005,  
+  "ready_timeout_seconds": 30
+},
+  
   "vector_indexes_root": "repositories/nopCommerce/indexes",
   "active_index_id": "nopcommerce_460_490",
   "repo_name": "nopCommerce"

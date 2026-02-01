@@ -38,6 +38,7 @@ from typing import Any, Dict, Iterable, Iterator, List, Optional, Tuple
 
 import weaviate
 import weaviate.classes as wvc
+from vector_db.weaviate_client import create_client, get_settings, load_dotenv
 from weaviate.util import generate_uuid5
 
 try:
@@ -88,12 +89,16 @@ def canonical_id(repo: str, head_sha: str, kind: str, local_id: str) -> str:
 # Weaviate connect + schema
 # ------------------------------
 
-def connect_weaviate(host: str, http_port: int, grpc_port: int) -> "weaviate.WeaviateClient":
-    # Weaviate v4 client: connect_to_local supports custom ports.
-    client = weaviate.connect_to_local(host=host, port=http_port, grpc_port=grpc_port)
-    if not client.is_ready():
-        raise RuntimeError("Weaviate is not ready (is_ready() == False).")
-    return client
+def connect_weaviate(host: str, http_port: int, grpc_port: int, api_key: str = "") -> "weaviate.WeaviateClient":
+    # Centralized Weaviate connect (config + env + optional API key).
+    overrides = {
+        "host": host.strip() if host else "",
+        "http_port": int(http_port) if http_port else 0,
+        "grpc_port": int(grpc_port) if grpc_port else 0,
+        "api_key": api_key.strip() if api_key else "",
+    }
+    settings = get_settings(overrides={k: v for k, v in overrides.items() if v})
+    return create_client(settings)
 
 
 def ensure_schema(client: "weaviate.WeaviateClient") -> None:
@@ -671,6 +676,7 @@ def run_import(
     weaviate_host: str,
     weaviate_http_port: int,
     weaviate_grpc_port: int,
+    weaviate_api_key: str,
     embed_model: str,
     embed_batch: int,
     weaviate_batch: int,
@@ -682,7 +688,7 @@ def run_import(
     started = utc_now_iso()
     bundle, meta = open_bundle(bundle_path)
 
-    client = connect_weaviate(weaviate_host, weaviate_http_port, weaviate_grpc_port)
+    client = connect_weaviate(weaviate_host, weaviate_http_port, weaviate_grpc_port, api_key=weaviate_api_key)
     try:
         ensure_schema(client)
 
@@ -821,9 +827,11 @@ def run_import(
 def build_arg_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(description="Import LocalAI-RAG branch bundle into Weaviate (BYOV).")
     p.add_argument("--bundle", required=True, help="Path to branch folder OR .zip")
-    p.add_argument("--weaviate-host", default="localhost")
-    p.add_argument("--weaviate-http-port", type=int, default=18080)
-    p.add_argument("--weaviate-grpc-port", type=int, default=15005)
+    p.add_argument("--weaviate-host", default="", help="Optional. Default from config/env.")
+    p.add_argument("--weaviate-http-port", type=int, default=0, help="Optional. Default from config/env.")
+    p.add_argument("--weaviate-grpc-port", type=int, default=0, help="Optional. Default from config/env.")
+    p.add_argument("--weaviate-api-key", default="", help="Optional. Overrides env/config. Prefer WEAVIATE_API_KEY env in production.")
+    p.add_argument("--env", action="store_true", help="Load .env from project root before reading config/env (does not override existing env vars).")
     p.add_argument("--embed-model", required=True, help="SentenceTransformer model path or name (e.g. models/embedding/e5-base-v2)")
     p.add_argument("--embed-batch", type=int, default=64)
     p.add_argument("--weaviate-batch", type=int, default=128)
@@ -842,12 +850,18 @@ def main() -> int:
         format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
     )
 
+    # Optional: load .env for this CLI process (does not override existing env vars).
+    if getattr(args, "env", False):
+        project_root = Path(__file__).resolve().parents[2]
+        load_dotenv(project_root / ".env", override=False)
+
     import_id = args.import_id.strip() or f"import::{utc_now_iso()}"
     run_import(
         bundle_path=args.bundle,
         weaviate_host=args.weaviate_host,
         weaviate_http_port=args.weaviate_http_port,
         weaviate_grpc_port=args.weaviate_grpc_port,
+        weaviate_api_key=args.weaviate_api_key,
         embed_model=args.embed_model,
         embed_batch=args.embed_batch,
         weaviate_batch=args.weaviate_batch,
