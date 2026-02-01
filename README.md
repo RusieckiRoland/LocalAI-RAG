@@ -1,10 +1,13 @@
-# 🧠 GPU‑Accelerated RAG with FAISS + LLaMA
+# 🧠 GPU‑Accelerated RAG with Weaviate (BYOV) + LLaMA
+
+> **Weaviate-only backend:** This project uses **Weaviate** as the single retrieval backend (BM25 + hybrid + vector search + metadata filtering).
+> **FAISS is not used** anywhere in this project.
 
 **Target platform:** Linux or WSL2 • **Python:** 3.11 • **GPU:** NVIDIA (CUDA) • **Package manager:** Conda
 
 **Purpose.** Build a **local, GPU‑accelerated knowledge base for your source code**: index it, analyze it, and **search/query it with AI**. The system runs **fully on‑premises** — no source code leaves your network; models execute on your GPU.
 
-**Hardware target.** Optimized for a **single NVIDIA RTX 4090** (CUDA 12.x). Defaults (e.g., full llama.cpp CUDA offload, FAISS‑GPU) are tuned to comfortably fit 24–32 GB VRAM.
+**Hardware target.** Optimized for a **single NVIDIA RTX 4090** (CUDA 12.x). Defaults (e.g., full llama.cpp CUDA offload) are tuned to comfortably fit 24–32 GB VRAM.
 
 **Stack focus.**
 
@@ -13,7 +16,6 @@
 * **Dependency graph of code fragments** — the index stores **links between chunks** (files, classes, methods) so retrieval can traverse relationships (e.g., callers/callees, type usages, EF entity links) and answer questions with proper context.
 
 **Who is this for?** Organizations that **cannot send code to external services** (e.g., banks, financial institutions, operators of critical infrastructure) and must run **fully local** solutions.
-
 
 ---
 
@@ -51,7 +53,6 @@ cd <PROJECT-FOLDER>
 
 > 🔒 **Models are not committed.** Each target folder already contains a `DOWNLOAD_MODEL.md` with instructions.
 
-
 To index your .NET solution:
 
 ```bash
@@ -74,14 +75,13 @@ dotnet run --project .\RoslynIndexer.Net9\RoslynIndexer.Net9.csproj -- `
 ```
 ---
 
-
 ## 3) Create the environment
 
 > We keep **llama‑cpp‑python** out of `environment.yml` to install the exact CUDA wheel after the env is created.
 
 ```bash
 conda env create -f environment.yml
-conda activate rag-faiss
+conda activate rag-weaviate
 ```
 
 If you see a warning about `sacremoses`, install it (needed for some MarianMT models):
@@ -93,7 +93,7 @@ pip install sacremoses
 ### `environment.yml` (reference)
 
 ```yaml
-name: rag-faiss
+name: rag-weaviate
 channels:
   - pytorch
   - nvidia
@@ -102,7 +102,6 @@ dependencies:
   # --- Core environment pins ---
   - python=3.11.*
   - numpy=1.26.4
-  - faiss-gpu=1.8.0
   - cuda-toolkit=12.1
   - pip
 
@@ -126,6 +125,7 @@ dependencies:
       - jinja2            # ✅ Dependency also needed by llama-cpp-python
       - typing-extensions # ✅ Safe for PyTorch and llama-cpp-python
       - python-dotenv
+      - weaviate-client
 
 > ⚙️ **Note:**  
 > The `environment.yml` shown above is **for reference only**.  
@@ -133,8 +133,6 @@ dependencies:
 > Always use and update the **actual `environment.yml` file** in the repository when creating or updating your Conda environment.
 
 ```
-
-> 💡 If `faiss-gpu` is not available for your platform/Python, temporarily replace it with `faiss-cpu` and proceed. GPU acceleration for FAISS can be enabled later.
 
 ---
 
@@ -210,7 +208,6 @@ Git tracks **only** the `DOWNLOAD_MODEL.md` placeholders; all downloaded weights
 
 **Do not proceed to tests until all four folders contain the downloaded files.**
 
-
 ---
 
 ## 6) Configuration files
@@ -238,7 +235,7 @@ Git tracks **only** the `DOWNLOAD_MODEL.md` placeholders; all downloaded weights
 * `model_path_analysis` — path to the main code-analysis LLaMA model (GGUF).
 * `model_translation_en_pl` / `model_translation_pl_en` — MarianMT model folders for EN→PL and PL→EN translation.
 * `log_path` — file path for AI interaction logs.
-* `use_gpu` — enables GPU acceleration for LLaMA and FAISS when `true`.
+* `use_gpu` — enables GPU acceleration for LLaMA and local embedding computation when `true`.
 * `plantuml_server` — optional local PlantUML server endpoint.
 * `branch` — default Git branch analyzed by the pipeline.
 
@@ -279,8 +276,6 @@ cp .env.example .env
 ```
 ---
 
-
-
 ## 7) Verify GPU acceleration (**run after models are in place**)
 
 ### A) LLaMA (llama‑cpp‑python)
@@ -288,7 +283,7 @@ cp .env.example .env
 Run this **one‑liner quick test** (copy‑paste) **after Step 5**. It auto‑detects the model under `code_analysis/...` or `models/code_analysis/...`, loads with full CUDA offload, and prints a clear success message in English. **Copy‑paste safe — no unfinished strings.**
 
 ```bash
-conda activate rag-faiss
+conda activate rag-weaviate
 python - <<'PY'
 import glob, os, sys, time
 from llama_cpp import Llama
@@ -339,29 +334,6 @@ PY
 
 **Expected:** llama.cpp logs show CUDA offload and a message starting with `✅ OK: Model loaded and generated successfully.`
 
-### B) FAISS‑GPU
-
-Run this **copy‑paste one‑liner** (no files created). It builds a tiny index on GPU 0 and returns nearest‑neighbor IDs. Ends with a clear OK message.
-
-```bash
-conda activate rag-faiss
-python - <<'PY'
-import numpy as np, faiss
-print("FAISS version:", faiss.__version__)
-print("GPUs available:", faiss.get_num_gpus())
-
-D = 128
-xb = np.random.random((10000, D)).astype("float32")
-res = faiss.StandardGpuResources()
-index_cpu = faiss.IndexFlatL2(D)
-index_gpu = faiss.index_cpu_to_gpu(res, 0, index_cpu)
-index_gpu.add(xb)
-Dists, Idxs = index_gpu.search(xb[:5], 5)
-print("Neighbors (first row):", Idxs[0].tolist())
-print("✅ OK: FAISS-GPU index built and queried successfully. You can proceed.")
-PY
-```
-
 ---
 
 ## 8) Typical project layout (models section)
@@ -389,6 +361,12 @@ models/
 ```
 ---
 
+## 8) Weaviate local setup
+
+Weaviate setup is documented in a separate file:
+
+- `WEAVIATE_LOCAL_SETUP.md`
+
 ## 8.5) Branch preparation guide
 
 1. **Create the output folder** defined in your `config.json` — e.g.:
@@ -401,23 +379,13 @@ models/
 
    Create this folder at the repository root (use the exact name from `output_dir`).
 
-2. Follow the instructions in **[`HOW_TO_PREPARE_REPO.md`](./HOW_TO_PREPARE_REPO.md)** located in the repository root. It explains how to index the repository and then build the FAISS vector database from the generated chunks.
-
+2. Follow the instructions in **[`HOW_TO_PREPARE_REPO.md`](./HOW_TO_PREPARE_REPO.md)** located in the repository root. It explains how to index the repository and then build the retrieval store in Weaviate (BYOV) from the generated chunks.
 
 ---
 
 ## 9) Troubleshooting
 
-- **NumPy 2.x ABI error with FAISS**: If you see “A module compiled with NumPy 1.x cannot be run in NumPy 2.x…”, run:
-```bash
-  pip uninstall -y numpy
-  conda install -y numpy=1.26.4
-```
-
-Keep `numpy=1.26.4` pinned in `environment.yml`.
-
 * **`llama-cpp-python` runs on CPU**: You likely installed the CPU wheel. Reinstall a **CUDA** wheel matching your CUDA (e.g., `cu121`). Ensure `verbose=True` and check logs.
-* **FAISS‑GPU not available**: On some platforms/Python combos, `faiss-gpu` may be missing. Use `faiss-cpu` to proceed, or switch Python minor versions, or build FAISS from source.
 * **`nvidia-smi` not found in WSL**: Update WSL and Windows NVIDIA drivers; reboot and retry.
 
 ---
@@ -430,7 +398,6 @@ After configuring your `.env`, start the backend server with:
 python start_AI_server.py --env
 ```
 ---
-
 
 ## 11) Notes for production
 
@@ -460,7 +427,6 @@ python start_AI_server.py --env
 * **GPU concurrency:** for a single GPU, prefer **one process/worker** to avoid loading the model multiple times into VRAM; scale with a queue or per‑GPU processes when needed.
 * **Observability:** expose `/healthz` and `/readyz`, emit structured logs (JSON), and add latency/throughput metrics for retrieval and generation stages.
 
-
 ---
 
 ## 12) Frontend example (RAG.html)
@@ -480,7 +446,7 @@ future versions may include advanced features such as **repository comparison**,
 The frontend (`frontend/RAG.html`) is currently a **single-file implementation** for ease of development and testing. It includes inline CSS, JavaScript, and dependencies loaded via CDNs (e.g., TailwindCSS, Highlight.js, Marked.js). This setup allows quick iteration and local testing without build tools, but it is **not production-ready**. For deployment in a production environment, perform the following steps to optimize, secure, and maintain the code:
 
 1. **Separate assets:** Extract inline CSS and JS into separate files (e.g., `styles.css`, `script.js`) for better organization and caching.
-   
+
 2. **Use a bundler:** Integrate a tool like Vite, Parcel, or Webpack to minify assets, bundle dependencies, and eliminate CDNs. This reduces load times and avoids external dependencies.
    - Example: Set up Vite with `vite.config.js` for Tailwind PostCSS integration.
 
@@ -535,7 +501,7 @@ Once these changes are applied, the frontend can be treated as production code. 
 
 ```bash
 # 1) Create & activate env (matches environment.yml)
-conda env create -f environment.yml && conda activate rag-faiss
+conda env create -f environment.yml && conda activate rag-weaviate
 
 # 2) Install CUDA wheel of llama-cpp-python (cu121, Python 3.11)
 pip uninstall -y llama-cpp-python
@@ -554,7 +520,6 @@ chmod +x download_models.sh
 
 # 4) Verify GPU acceleration (after models are present)
 python tests/test_llama_gpu.py
-python tests/test_faiss_gpu.py
 
 # 5) Run the server (env vars from .env)
 cp -n .env.example .env 2>/dev/null || true
@@ -569,6 +534,3 @@ python start_AI_server.py --env
 * If FAISS‑GPU is unavailable on your platform/Python, you can temporarily use `faiss-cpu` and proceed.
 * If the CUDA wheel doesn’t match your CUDA/Python, pick the appropriate one from the `llama-cpp-python` release page (keep `--no-deps`).
 * The downloader writes **only** into the existing directories and Git ignores the fetched weights.
-
-
-

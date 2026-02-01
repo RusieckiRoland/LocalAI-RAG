@@ -1,4 +1,4 @@
-name: rag-faiss
+name: rag-weaviate
 channels:
   - pytorch
   - nvidia
@@ -7,7 +7,6 @@ dependencies:
   # --- Core environment pins ---
   - python=3.11.*
   - numpy=1.26.4
-  - faiss-gpu=1.8.0
   - cuda-toolkit=12.1
   - pip
 
@@ -33,13 +32,16 @@ dependencies:
       - jinja2            # ✅ Dependency also needed by llama-cpp-python
       - typing-extensions # ✅ Safe for PyTorch and llama-cpp-python
       - python-dotenv
+      - weaviate-client
+
 # === Notes ===
 # 1) After creating the environment, install llama-cpp-python manually:
-#       conda activate rag-faiss
+#       conda activate rag-weaviate
 #       pip install --no-deps https://github.com/abetlen/llama-cpp-python/releases/download/v0.3.16-cu121/llama_cpp_python-0.3.16-cp311-cp311-linux_x86_64.whl
 #
 # 2) Verify GPU visibility:
 #       nvidia-smi
 #       python -c "import torch; print(torch.version.cuda, torch.cuda.is_available())"
 #
-# 3) Keep numpy pinned (<2.0) until all modules (FAISS, llama_cpp_python, torch, etc.) officially support NumPy 2.x
+# 3) Keep numpy pinned (<2.0) until all native modules you use officially support NumPy 2.x
+#    (e.g., llama_cpp_python, torch).
