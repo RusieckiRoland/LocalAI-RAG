@@ -22,7 +22,6 @@ from .providers.ports import (
     ITranslatorPlEn,
     IRetrievalBackend,
 )
-from .providers.retrieval import RetrievalDispatcher
 
 py_logger = logging.getLogger(__name__)
 
@@ -48,9 +47,8 @@ class PipelineRuntime:
     Runtime DI container expected by existing actions and tests.
 
     IMPORTANT:
-    - New retrieval contract uses `retrieval_backend` (strict).
-    - Legacy actions/tests still call `get_retrieval_dispatcher()`.
-      We keep it until actions/tests are migrated fully to retrieval_backend.
+    - Retrieval contract uses `retrieval_backend` (strict).
+    - Legacy dispatcher wiring was removed (Weaviate-only, single retrieval entrypoint).
     """
 
     def __init__(
@@ -65,29 +63,25 @@ class PipelineRuntime:
         logger: Optional[IInteractionLogger],
         constants: Any,
         retrieval_backend: Optional[IRetrievalBackend] = None,
-        retrieval_dispatcher: Optional[RetrievalDispatcher] = None,
-        bm25_searcher: Optional[IRetriever] = None,
-        semantic_rerank_searcher: Optional[IRetriever] = None,
         graph_provider: Optional[IGraphProvider] = None,
         token_counter: Optional[ITokenCounter] = None,
         add_plant_link: Optional[Any] = None,
     ) -> None:
         self.pipeline_settings = pipeline_settings or {}
         self.model = model
+
+        # NOTE: kept for now because some call sites still pass it.
+        # It will be removed once all actions use retrieval_backend only.
         self.searcher = searcher
+
         self.markdown_translator = markdown_translator
         self.translator_pl_en = translator_pl_en
         self.history_manager = history_manager
         self.logger = logger
         self.constants = constants
 
-        # New contract: retrieval backend (preferred)
+        # New contract: retrieval backend (required by retrieval_contract)
         self.retrieval_backend = retrieval_backend
-
-        # Legacy wiring still used by some actions/tests
-        self.retrieval_dispatcher = retrieval_dispatcher
-        self.bm25_searcher = bm25_searcher
-        self.semantic_rerank_searcher = semantic_rerank_searcher
 
         self.graph_provider = graph_provider
         self.token_counter = token_counter
@@ -96,43 +90,12 @@ class PipelineRuntime:
         self.add_plant_link = add_plant_link or (lambda x, consultant=None: x)
 
     # ---------------------------------------------------------------------
-    # New strict retrieval contract entrypoint
+    # Strict retrieval contract entrypoint
     # ---------------------------------------------------------------------
     def get_retrieval_backend(self) -> IRetrievalBackend:
         if self.retrieval_backend is None:
             raise ValueError("PipelineRuntime: retrieval_backend is required by retrieval_contract")
         return self.retrieval_backend
-
-    # ---------------------------------------------------------------------
-    # Legacy compatibility for older actions/tests (will be removed later)
-    # ---------------------------------------------------------------------
-    def get_retrieval_dispatcher(self) -> RetrievalDispatcher:
-        """
-        Legacy: SearchNodesAction historically used dispatcher directly.
-        Kept to avoid breaking tests while migrating actions to retrieval_backend.
-        """
-        if self.retrieval_dispatcher is not None:
-            return self.retrieval_dispatcher
-
-        # Try to build a dispatcher from individual retrievers (best-effort).
-        # NOTE: semantic_rerank_searcher is optional; if missing and semantic exists,
-        # it can be wrapped (soft-failure).
-        semantic_rerank = self.semantic_rerank_searcher
-
-        if semantic_rerank is None and self.searcher is not None:
-            try:
-                from common.semantic_rerank_wrapper import SemanticRerankWrapper
-
-                semantic_rerank = SemanticRerankWrapper(self.searcher)
-            except Exception:
-                py_logger.exception("soft-failure: SemanticRerankWrapper init failed; semantic_rerank disabled")
-                semantic_rerank = None
-
-        return RetrievalDispatcher(
-            semantic=self.searcher,
-            bm25=self.bm25_searcher,
-            semantic_rerank=semantic_rerank,
-        )
 
 
 class PipelineEngine:

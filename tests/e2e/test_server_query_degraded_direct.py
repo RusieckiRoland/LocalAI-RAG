@@ -22,20 +22,14 @@ def _stub_module(monkeypatch: pytest.MonkeyPatch, module_name: str, attrs: Dict[
     monkeypatch.setitem(sys.modules, module_name, m)
 
 
-def test_query_endpoint_works_in_degraded_mode(monkeypatch: pytest.MonkeyPatch):
+def test_query_endpoint_works_with_stubbed_runner(monkeypatch: pytest.MonkeyPatch):
     """
-    E2E-ish: when unified index can't be loaded at startup, server should still respond to /search
-    (e.g., DIRECT pipelines) and return a well-formed JSON response.
+    E2E-ish: server should respond to /search even when the pipeline runner is stubbed.
+    This ensures the HTTP surface works and the server module can be imported without heavy deps.
     """
 
     monkeypatch.setenv("APP_USE_REDIS", "false")
     monkeypatch.setenv("API_TOKEN", "")
-
-    # Force unified index loader failure (missing faiss)
-    def _fail_load_unified_search(*args: Any, **kwargs: Any) -> Any:
-        raise FileNotFoundError("FAISS index not found: /tmp/x/unified_index.faiss")
-
-    _stub_module(monkeypatch, "vector_db.unified_index_loader", {"load_unified_search": _fail_load_unified_search})
 
     # Stub translators (avoid torch)
     _stub_module(monkeypatch, "common.markdown_translator_en_pl", {"MarkdownTranslator": lambda *a, **k: object()})
@@ -61,7 +55,7 @@ def test_query_endpoint_works_in_degraded_mode(monkeypatch: pytest.MonkeyPatch):
 
         def run(self, **kwargs: Any):
             # runner.run is expected to return either tuple or dict; support both.
-            return ("E2E OK (degraded)", "DIRECT", ["boot"], "model_input_stub")
+            return ("E2E OK", "DIRECT", ["boot"], "model_input_stub")
 
     _stub_module(monkeypatch, "code_query_engine.dynamic_pipeline", {"DynamicPipelineRunner": _DummyRunner})
 
@@ -88,6 +82,6 @@ def test_query_endpoint_works_in_degraded_mode(monkeypatch: pytest.MonkeyPatch):
     data = resp.get_json()
     assert isinstance(data, dict)
 
-    assert data.get("results") == "E2E OK (degraded)"
+    assert data.get("results") == "E2E OK"
     assert data.get("session_id") == "test-session"
     assert data.get("consultant") == "e2e_smoke"

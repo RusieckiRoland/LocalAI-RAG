@@ -125,8 +125,8 @@ _active_index_id = str(_runtime_cfg.get("active_index_id") or "").strip()
 _semantic_searcher = None
 _semantic_searcher_error: Optional[str] = None
 
-_bm25_searcher = None
-_bm25_searcher_error: Optional[str] = None
+
+
 
 try:
     # SemanticSearcher implements IRetriever-like contract:
@@ -137,14 +137,7 @@ except Exception as e:
     _semantic_searcher = None
     _semantic_searcher_error = str(e)
 
-try:
-    # BM25Searcher implements IRetriever-like contract:
-    #   search(query, top_k, filters=...)
-    _bm25_searcher = load_bm25_search(_active_index_id or None)
-except Exception as e:
-    py_logger.exception("soft-failure: load_bm25_search failed; bm25 retrieval will be disabled (fallback mode)")
-    _bm25_searcher = None
-    _bm25_searcher_error = str(e)
+
 
 
 # ------------------------------------------------------------
@@ -188,8 +181,7 @@ except Exception as e:
 _runner = DynamicPipelineRunner(
     pipelines_root=os.path.join(PROJECT_ROOT, "pipelines"),
     model=_model,
-    searcher=_semantic_searcher,
-    bm25_searcher=_bm25_searcher,
+    searcher=_semantic_searcher,    
     markdown_translator=_markdown_translator,
     translator_pl_en=_translator_pl_en,
     token_counter=token_counter,

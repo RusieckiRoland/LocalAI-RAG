@@ -38,8 +38,7 @@ def test_server_import_does_not_import_torch(monkeypatch: pytest.MonkeyPatch):
     _stub_module(monkeypatch, "common.markdown_translator_en_pl", {"MarkdownTranslator": _DummyMarkdownTranslator})
     _stub_module(monkeypatch, "common.translator_pl_en", {"TranslatorPlEn": _DummyTranslatorPlEn, "Translator": _DummyTranslatorPlEn})
 
-    # Stub index loader too (often pulls sentence-transformers/torch)
-    _stub_module(monkeypatch, "vector_db.unified_index_loader", {"load_unified_search": lambda *a, **k: object()})
+    
 
     # Stub model/logger to avoid heavyweight init
     _stub_module(monkeypatch, "code_query_engine.model", {"Model": lambda *a, **k: object()})

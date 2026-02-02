@@ -55,8 +55,7 @@ class DynamicPipelineRunner:
         searcher: Any = None,
         markdown_translator: Any = None,
         translator_pl_en: Any = None,
-        logger: Any = None,
-        bm25_searcher: Any = None,
+        logger: Any = None,        
         semantic_rerank_searcher: Any = None,
         graph_provider: Any = None,
         token_counter: Any = None,
@@ -69,8 +68,7 @@ class DynamicPipelineRunner:
         self.pipelines_root = os.fspath(root)
 
         self.model = model
-        self.searcher = searcher
-        self.bm25_searcher = bm25_searcher
+        self.searcher = searcher        
         self.semantic_rerank_searcher = semantic_rerank_searcher
 
         if graph_provider is None:
@@ -156,11 +154,7 @@ class DynamicPipelineRunner:
             user_id=user_id,
         )
 
-        retrieval_dispatcher = RetrievalDispatcher(
-            semantic=self.searcher,
-            bm25=self.bm25_searcher,
-            semantic_rerank=self.semantic_rerank_searcher,
-        )
+        retrieval_dispatcher = None
 
         retrieval_backend = RetrievalBackendAdapter(
             dispatcher=retrieval_dispatcher,

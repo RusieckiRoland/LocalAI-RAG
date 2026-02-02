@@ -17,8 +17,7 @@ def _run_pipeline(*, pipelines_root: Path, model: FakeModelClient, retriever: Fa
         searcher=retriever,  # kept for backward-compat; retrieval dispatcher uses it only in some actions
         markdown_translator=None,
         translator_pl_en=None,
-        logger=InteractionLogger(log_file),
-        bm25_searcher=retriever,
+        logger=InteractionLogger(log_file),        
         semantic_rerank_searcher=retriever,
         graph_provider=None,
         token_counter=None,
