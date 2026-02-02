@@ -20,7 +20,7 @@ from common.markdown_translator_en_pl import MarkdownTranslator
 from common.translator_pl_en import Translator
 
 from vector_db.semantic_searcher import load_semantic_search
-from vector_db.bm25_searcher import load_bm25_search
+
 
 from .dynamic_pipeline import DynamicPipelineRunner
 from history.redis_backend import RedisBackend
