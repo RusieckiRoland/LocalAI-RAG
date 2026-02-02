@@ -113,7 +113,6 @@ class ExpandDependencyTreeAction(PipelineActionBase):
             "edge_allowlist_from_settings": raw.get("edge_allowlist_from_settings"),
             "settings_keys_present": {
                 "repository": bool((state.repository or settings.get("repository"))),
-                "branch": bool((state.branch or settings.get("branch"))),
             },
         }
 
@@ -237,15 +236,21 @@ class ExpandDependencyTreeAction(PipelineActionBase):
         if max_nodes < 1:
             raise ValueError("expand_dependency_tree: resolved max_nodes must be >= 1.")
 
-        branch = (state.branch or settings.get("branch") or "").strip()
-        if not branch:
-            raise ValueError("expand_dependency_tree: state.branch is required by retrieval_contract")
-
         repository = (state.repository or settings.get("repository") or "").strip()
         if not repository:
             raise ValueError(
                 "expand_dependency_tree: Missing required 'repository' (state.repository or pipeline settings['repository'])."
             )
+
+        snapshot_id = (
+            getattr(state, "snapshot_id", None)
+            or settings.get("snapshot_id")
+            or getattr(state, "active_index", None)
+            or settings.get("active_index")
+            or ""
+        ).strip()
+        if not snapshot_id:
+            raise ValueError("expand_dependency_tree: Missing required 'snapshot_id' (state.snapshot_id or pipeline settings['snapshot_id']).")
 
         active_index = getattr(state, "active_index", None) or settings.get("active_index")
 
@@ -272,8 +277,9 @@ class ExpandDependencyTreeAction(PipelineActionBase):
             expand_fn(
                 seed_nodes=list(seed_nodes),
                 repository=repository,
-                branch=branch,
+                branch=None,
                 active_index=active_index,
+                snapshot_id=snapshot_id,
                 max_depth=max_depth,
                 max_nodes=max_nodes,
                 edge_allowlist=edge_allowlist,
@@ -285,6 +291,24 @@ class ExpandDependencyTreeAction(PipelineActionBase):
         nodes = list(result.get("nodes") or [])
         edges_raw = list(result.get("edges") or [])
         edges = _normalize_graph_edges(edges_raw)
+
+        # Optional ACL filter hook (provider-defined).
+        filter_fn = getattr(provider, "filter_by_permissions", None)
+        if callable(filter_fn):
+            allowed_nodes = list(
+                filter_fn(
+                    node_ids=list(nodes),
+                    retrieval_filters=retrieval_filters,
+                    repository=repository,
+                    branch=None,
+                    snapshot_id=snapshot_id,
+                    active_index=active_index,
+                )
+                or []
+            )
+            allowed_set = set(allowed_nodes)
+            nodes = [n for n in nodes if n in allowed_set]
+            edges = [e for e in edges if e.get("from_id") in allowed_set and e.get("to_id") in allowed_set]
 
         state.graph_seed_nodes = list(seed_nodes)
         state.graph_expanded_nodes = list(nodes)

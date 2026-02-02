@@ -6,19 +6,18 @@ import pytest
 
 from code_query_engine.dynamic_pipeline import DynamicPipelineRunner
 from code_query_engine.log_utils import InteractionLogger
-from code_query_engine.pipeline.providers.fakes import FakeModelClient, FakeRetriever
+from code_query_engine.pipeline.providers.fakes import FakeModelClient, FakeRetrievalBackend
 from history.mock_redis import InMemoryMockRedis
 
 
-def _run_pipeline(*, pipelines_root: Path, model: FakeModelClient, retriever: FakeRetriever, log_file: Path):
+def _run_pipeline(*, pipelines_root: Path, model: FakeModelClient, backend: FakeRetrievalBackend, log_file: Path):
     runner = DynamicPipelineRunner(
         pipelines_root=str(pipelines_root),
         model=model,
-        searcher=retriever,  # kept for backward-compat; retrieval dispatcher uses it only in some actions
+        retrieval_backend=backend,
         markdown_translator=None,
         translator_pl_en=None,
         logger=InteractionLogger(log_file),        
-        semantic_rerank_searcher=retriever,
         graph_provider=None,
         token_counter=None,
         allow_test_pipelines=True,
@@ -30,7 +29,8 @@ def _run_pipeline(*, pipelines_root: Path, model: FakeModelClient, retriever: Fa
         user_query="E2E: smoke",
         session_id="test-session",
         consultant="e2e_smoke",
-        branch="develop",
+        branch="",
+        snapshot_id="test-snapshot",
         translate_chat=False,
         mock_redis=mock_redis,
     )
@@ -52,12 +52,12 @@ def test_e2e_smoke_direct_answer(tmp_path: Path) -> None:
 )
 
 
-    retriever = FakeRetriever(results=[])
+    backend = FakeRetrievalBackend()
 
     final_answer, query_type, steps_used, model_input_en = _run_pipeline(
         pipelines_root=pipelines_root,
         model=model,
-        retriever=retriever,
+        backend=backend,
         log_file=log_file,
     )
 
@@ -78,7 +78,7 @@ def test_e2e_test_pipeline_is_blocked_without_opt_in(tmp_path: Path) -> None:
     runner = DynamicPipelineRunner(
         pipelines_root=str(pipelines_root),
         model=FakeModelClient(outputs=["[DIRECT:]"]),
-        searcher=FakeRetriever(results=[]),
+        retrieval_backend=FakeRetrievalBackend(),
         markdown_translator=None,
         translator_pl_en=None,
         logger=InteractionLogger(log_file),
@@ -90,7 +90,8 @@ def test_e2e_test_pipeline_is_blocked_without_opt_in(tmp_path: Path) -> None:
             user_query="E2E: should fail",
             session_id="test-session",
             consultant="e2e_smoke",
-            branch="develop",
+            branch="",
+            snapshot_id="test-snapshot",
             translate_chat=False,
             mock_redis=InMemoryMockRedis(),
         )

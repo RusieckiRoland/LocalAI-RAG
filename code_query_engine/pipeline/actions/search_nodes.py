@@ -65,16 +65,22 @@ def _merge_filters(settings: Dict[str, Any], state: PipelineState, step_raw: Dic
     filters.update(getattr(state, "retrieval_filters", None) or {})
 
     repo = (state.repository or settings.get("repository") or "").strip()
-    branch = (state.branch or settings.get("branch") or "").strip()
+    snapshot_id = (
+        getattr(state, "snapshot_id", None)
+        or settings.get("snapshot_id")
+        or getattr(state, "active_index", None)
+        or settings.get("active_index")
+        or ""
+    ).strip()
 
     if not repo:
         raise ValueError("search_nodes: Missing required 'repository' (state.repository or pipeline settings['repository']).")
-    if not branch:
-        raise ValueError("search_nodes: Missing required 'branch' (state.branch or pipeline settings['branch']).")
+    if not snapshot_id:
+        raise ValueError("search_nodes: Missing required 'snapshot_id' (state.snapshot_id or pipeline settings['snapshot_id']).")
 
     # Keep metadata keys compatible with existing unified-index layout
     filters["repo"] = repo
-    filters["branch"] = branch
+    filters["snapshot_id"] = snapshot_id
 
     # Optional multi-tenant / auth-ish filters from pipeline settings
     tenant_id = (settings.get("tenant_id") or "").strip()
@@ -312,11 +318,18 @@ class SearchNodesAction(PipelineActionBase):
             raise ValueError("search_nodes: Empty query after parsing/normalization is not allowed by retrieval_contract.")
 
         repo = (state.repository or settings.get("repository") or "").strip()
-        branch = (state.branch or settings.get("branch") or "").strip()
+        snapshot_id = (getattr(state, "snapshot_id", None) or settings.get("snapshot_id") or "").strip()
+        active_index = getattr(state, "active_index", None) or settings.get("active_index")
+        snapshot_set_id = (getattr(state, "snapshot_set_id", None) or settings.get("snapshot_set_id") or "").strip()
+
+        # Legacy alias: active_index may carry a snapshot_id in older setups.
+        if not snapshot_id and active_index:
+            snapshot_id = str(active_index).strip()
+
         if not repo:
             raise ValueError("search_nodes: Missing required 'repository' (state.repository or pipeline settings['repository']).")
-        if not branch:
-            raise ValueError("search_nodes: Missing required 'branch' (state.branch or pipeline settings['branch']).")
+        if not snapshot_id:
+            raise ValueError("search_nodes: Missing required 'snapshot_id' (state.snapshot_id or pipeline settings['snapshot_id']).")
 
         top_k = _resolve_top_k(raw, settings)
 
@@ -325,8 +338,6 @@ class SearchNodesAction(PipelineActionBase):
         filters.update(base_filters)
         filters = _normalize_and_validate_filters(filters)
 
-        active_index = getattr(state, "active_index", None) or settings.get("active_index")
-
         backend = runtime.get_retrieval_backend()
 
         req = SearchRequest(
@@ -334,7 +345,8 @@ class SearchNodesAction(PipelineActionBase):
             query=query,
             top_k=int(top_k),
             repository=repo,
-            branch=branch,
+            snapshot_id=snapshot_id,
+            snapshot_set_id=snapshot_set_id or None,
             retrieval_filters=filters,
             active_index=str(active_index).strip() if active_index else None,
         )

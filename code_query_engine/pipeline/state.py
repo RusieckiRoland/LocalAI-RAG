@@ -13,12 +13,14 @@ class PipelineState:
     user_query: str
     session_id: str
     consultant: str
-    branch: str
-    translate_chat: bool
+    branch: Optional[str] = None
+    translate_chat: bool = False
 
     # Optional identity
     user_id: Optional[str] = None
     repository: Optional[str] = None
+    snapshot_id: Optional[str] = None
+    snapshot_set_id: Optional[str] = None
 
     # Router outputs / parse artifacts
     router_raw: Optional[str] = None

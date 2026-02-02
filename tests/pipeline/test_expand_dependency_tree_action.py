@@ -17,6 +17,7 @@ class FakeGraphProvider:
         seed_nodes,
         repository,
         branch,
+        snapshot_id,
         active_index=None,
         max_depth,
         max_nodes,
@@ -28,6 +29,7 @@ class FakeGraphProvider:
                 "seed_nodes": list(seed_nodes or []),
                 "repository": repository,
                 "branch": branch,
+                "snapshot_id": snapshot_id,
                 "active_index": active_index,
                 "max_depth": max_depth,
                 "max_nodes": max_nodes,
@@ -51,7 +53,7 @@ def test_expand_dependency_tree_calls_provider_and_updates_state() -> None:
         },
     )
 
-    state = PipelineState(user_query="q", session_id="s", consultant="c", branch="develop", translate_chat=False)
+    state = PipelineState(user_query="q", session_id="s", consultant="c", branch=None, translate_chat=False, snapshot_id="snap")
     state.retrieval_seed_nodes = ["A"]
 
     fake = FakeGraphProvider()

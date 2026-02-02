@@ -21,8 +21,9 @@ B) Older/legacy SQL layout (nodes.csv + docs/bodies/*):
    - sql_code_bundle/docs/bodies/<...>.sql files referenced by body_path
 
 Partitioning rule (agreed):
-- Every query is scoped to a concrete head_sha.
-- We store repo + branch + head_sha on every object.
+- Every query is scoped to a concrete snapshot_id.
+- We store repo + branch + snapshot_id on every object.
+- head_sha (if present) is stored as optional metadata.
 """
 
 import argparse
@@ -59,6 +60,7 @@ COL_EDGE = "RagEdge"
 class RepoMeta:
     repo: str
     branch: str
+    snapshot_id: str
     head_sha: str
     generated_at_utc: str
 
@@ -80,9 +82,9 @@ def utc_now_iso() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
-def canonical_id(repo: str, head_sha: str, kind: str, local_id: str) -> str:
+def canonical_id(repo: str, snapshot_id: str, kind: str, local_id: str) -> str:
     # Stable & user-visible ID format used across the system.
-    return f"{repo}::{head_sha}::{kind}::{local_id}"
+    return f"{repo}::{snapshot_id}::{kind}::{local_id}"
 
 
 # ------------------------------
@@ -113,6 +115,7 @@ def ensure_schema(client: "weaviate.WeaviateClient") -> None:
                 wvc.config.Property(name="import_id", data_type=wvc.config.DataType.TEXT),
                 wvc.config.Property(name="repo", data_type=wvc.config.DataType.TEXT),
                 wvc.config.Property(name="branch", data_type=wvc.config.DataType.TEXT),
+                wvc.config.Property(name="snapshot_id", data_type=wvc.config.DataType.TEXT),
                 wvc.config.Property(name="head_sha", data_type=wvc.config.DataType.TEXT),
                 wvc.config.Property(name="ref_type", data_type=wvc.config.DataType.TEXT),
                 wvc.config.Property(name="ref_name", data_type=wvc.config.DataType.TEXT),
@@ -138,6 +141,7 @@ def ensure_schema(client: "weaviate.WeaviateClient") -> None:
                 wvc.config.Property(name="import_id", data_type=wvc.config.DataType.TEXT),
                 wvc.config.Property(name="repo", data_type=wvc.config.DataType.TEXT),
                 wvc.config.Property(name="branch", data_type=wvc.config.DataType.TEXT),
+                wvc.config.Property(name="snapshot_id", data_type=wvc.config.DataType.TEXT),
                 wvc.config.Property(name="head_sha", data_type=wvc.config.DataType.TEXT),
 
                 # Filters (apply BEFORE ranking)
@@ -178,6 +182,7 @@ def ensure_schema(client: "weaviate.WeaviateClient") -> None:
             properties=[
                 wvc.config.Property(name="import_id", data_type=wvc.config.DataType.TEXT),
                 wvc.config.Property(name="repo", data_type=wvc.config.DataType.TEXT),
+                wvc.config.Property(name="snapshot_id", data_type=wvc.config.DataType.TEXT),
                 wvc.config.Property(name="head_sha", data_type=wvc.config.DataType.TEXT),
                 wvc.config.Property(name="edge_type", data_type=wvc.config.DataType.TEXT),
                 wvc.config.Property(name="from_canonical_id", data_type=wvc.config.DataType.TEXT),
@@ -203,11 +208,12 @@ def upsert_import_run(
 ) -> None:
     coll = client.collections.use(COL_IMPORT)
 
-    friendly = tag if tag else f"{meta.repo}:{meta.head_sha[:12]}"
+    friendly = tag if tag else f"{meta.repo}:{meta.snapshot_id[:12]}"
     props = {
         "import_id": import_id,
         "repo": meta.repo,
         "branch": meta.branch,
+        "snapshot_id": meta.snapshot_id,
         "head_sha": meta.head_sha,
         "ref_type": ref_type,
         "ref_name": ref_name or meta.branch,
@@ -220,7 +226,7 @@ def upsert_import_run(
         "stats_json": json.dumps(stats or {}, ensure_ascii=False),
     }
 
-    run_uuid = generate_uuid5(f"{meta.repo}::{meta.head_sha}::{import_id}")
+    run_uuid = generate_uuid5(f"{meta.repo}::{meta.snapshot_id}::{import_id}")
     try:
         coll.data.insert(uuid=run_uuid, properties=props, vector=[0.0])
     except Exception:
@@ -305,16 +311,33 @@ def open_bundle(path: str) -> Tuple[BundleReader, RepoMeta]:
     if not repo_name:
         repo_name = "unknown-repo"
 
+    branch = str(meta_json.get("Branch") or meta_json.get("branch") or "").strip()
+    generated_at = str(meta_json.get("GeneratedAtUtc") or meta_json.get("GeneratedAtUTC") or "").strip()
+    head_sha = str(meta_json.get("HeadSha") or meta_json.get("HeadSHA") or meta_json.get("head_sha") or "").strip()
+    snapshot_id = str(
+        meta_json.get("SnapshotId")
+        or meta_json.get("snapshot_id")
+        or meta_json.get("snapshotId")
+        or ""
+    ).strip()
+
+    if not branch:
+        branch = "(unknown)"
+
+    if not snapshot_id:
+        snapshot_id = head_sha
+
+    if not snapshot_id:
+        # Deterministic fallback when head_sha is not available.
+        snapshot_id = generate_uuid5(f"{repo_name}::{branch}::{generated_at or 'unknown'}")
+
     meta = RepoMeta(
         repo=repo_name,
-        branch=str(meta_json.get("Branch") or meta_json.get("branch") or ""),
-        head_sha=str(meta_json.get("HeadSha") or meta_json.get("HeadSHA") or meta_json.get("head_sha") or ""),
-        generated_at_utc=str(meta_json.get("GeneratedAtUtc") or meta_json.get("GeneratedAtUTC") or ""),
+        branch=branch,
+        snapshot_id=snapshot_id,
+        head_sha=head_sha,
+        generated_at_utc=generated_at,
     )
-    if not meta.head_sha:
-        raise ValueError("repo_meta.json missing HeadSha/head_sha.")
-    if not meta.branch:
-        meta = RepoMeta(repo=meta.repo, branch="(unknown)", head_sha=meta.head_sha, generated_at_utc=meta.generated_at_utc)
 
     return BundleReader(root, zf), meta
 
@@ -342,7 +365,7 @@ def iter_cs_nodes(bundle: BundleReader, meta: RepoMeta) -> Iterator[Dict[str, An
         local_id = str(d.get("Id") or d.get("id") or "")
         if not local_id:
             continue
-        cid = canonical_id(meta.repo, meta.head_sha, "cs", local_id)
+        cid = canonical_id(meta.repo, meta.snapshot_id, "cs", local_id)
         yield {
             "canonical_id": cid,
             "data_type": "regular_code",
@@ -375,7 +398,7 @@ def _iter_sql_nodes_from_jsonl(bundle: BundleReader, meta: RepoMeta, jsonl_rel: 
             key = str(d.get("key") or d.get("Key") or "")
             if not key:
                 continue
-            cid = canonical_id(meta.repo, meta.head_sha, "sql", key)
+            cid = canonical_id(meta.repo, meta.snapshot_id, "sql", key)
             yield {
                 "canonical_id": cid,
                 "data_type": str(d.get("data_type") or "sql_code"),
@@ -416,7 +439,7 @@ def _iter_sql_nodes_from_nodes_csv(bundle: BundleReader, meta: RepoMeta, nodes_c
                 if bundle.exists(alt):
                     body = bundle.read_text(alt)
 
-        cid = canonical_id(meta.repo, meta.head_sha, "sql", key)
+        cid = canonical_id(meta.repo, meta.snapshot_id, "sql", key)
         yield {
             "canonical_id": cid,
             "data_type": "sql_code",
@@ -483,9 +506,9 @@ def iter_cs_edges(bundle: BundleReader, meta: RepoMeta) -> Iterator[Tuple[str, s
     raw = bundle.read_text(dep_rel)
     deps = json.loads(raw)
     for from_local, to_list in deps.items():
-        from_cid = canonical_id(meta.repo, meta.head_sha, "cs", str(from_local))
+        from_cid = canonical_id(meta.repo, meta.snapshot_id, "cs", str(from_local))
         for to_local in to_list or []:
-            to_cid = canonical_id(meta.repo, meta.head_sha, "cs", str(to_local))
+            to_cid = canonical_id(meta.repo, meta.snapshot_id, "cs", str(to_local))
             yield ("cs_dep", from_cid, to_cid)
 
 
@@ -506,8 +529,8 @@ def _iter_edges_from_edges_csv(bundle: BundleReader, meta: RepoMeta, edges_rel: 
         rel = pick(row, ["edge_type", "relation", "Relation", "type"])
         if not frm or not to:
             continue
-        from_cid = canonical_id(meta.repo, meta.head_sha, "sql", frm)
-        to_cid = canonical_id(meta.repo, meta.head_sha, "sql", to)
+        from_cid = canonical_id(meta.repo, meta.snapshot_id, "sql", frm)
+        to_cid = canonical_id(meta.repo, meta.snapshot_id, "sql", to)
         yield (f"sql_{rel or 'edge'}", from_cid, to_cid)
 
 
@@ -575,6 +598,7 @@ def insert_nodes(
             p["import_id"] = import_id
             p["repo"] = meta.repo
             p["branch"] = meta.branch
+            p["snapshot_id"] = meta.snapshot_id
             p["head_sha"] = meta.head_sha
 
             obj_uuid = generate_uuid5(p["canonical_id"])
@@ -651,12 +675,13 @@ def insert_edges(
         props = {
             "import_id": import_id,
             "repo": meta.repo,
+            "snapshot_id": meta.snapshot_id,
             "head_sha": meta.head_sha,
             "edge_type": edge_type,
             "from_canonical_id": from_cid,
             "to_canonical_id": to_cid,
         }
-        edge_uuid = generate_uuid5(f"{meta.repo}::{meta.head_sha}::{edge_key}")
+        edge_uuid = generate_uuid5(f"{meta.repo}::{meta.snapshot_id}::{edge_key}")
         buf.append(wvc.data.DataObject(uuid=edge_uuid, properties=props, vector=[0.0]))
 
         if len(buf) >= weaviate_batch:
@@ -793,8 +818,8 @@ def run_import(
         )
 
         LOG.info(
-            "DONE: repo=%s branch=%s head_sha=%s import_id=%s",
-            meta.repo, meta.branch, meta.head_sha, import_id
+            "DONE: repo=%s branch=%s snapshot_id=%s head_sha=%s import_id=%s",
+            meta.repo, meta.branch, meta.snapshot_id, meta.head_sha, import_id
         )
 
     except Exception as ex:

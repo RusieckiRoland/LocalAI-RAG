@@ -4,6 +4,7 @@ import logging
 import os
 from typing import Any, Optional
 
+from code_query_engine.pipeline.providers.ports import IRetrievalBackend
 import constants
 from history.history_manager import HistoryManager
 from integrations.plant_uml.plantuml_check import add_plant_link
@@ -12,7 +13,6 @@ from .pipeline.action_registry import build_default_action_registry
 from .pipeline.engine import PipelineEngine, PipelineRuntime
 from .pipeline.loader import PipelineLoader
 from .pipeline.providers.retrieval import RetrievalDispatcher
-from .pipeline.providers.retrieval_backend_adapter import RetrievalBackendAdapter
 from .pipeline.state import PipelineState
 from .pipeline.validator import PipelineValidator
 
@@ -52,7 +52,7 @@ class DynamicPipelineRunner:
         pipelines_dir: Optional[str] = None,
         pipelines_root: Optional[str] = None,
         model: Any = None,
-        searcher: Any = None,
+        retrieval_backend: IRetrievalBackend | None = None,
         markdown_translator: Any = None,
         translator_pl_en: Any = None,
         logger: Any = None,        
@@ -66,19 +66,13 @@ class DynamicPipelineRunner:
             raise TypeError("DynamicPipelineRunner requires pipelines_root/pipelines_dir")
 
         self.pipelines_root = os.fspath(root)
-
-        self.model = model
-        self.searcher = searcher        
+        self.model = model       
+        self.retrieval_backend = retrieval_backend       
         self.semantic_rerank_searcher = semantic_rerank_searcher
 
         if graph_provider is None:
-            try:
-                from .pipeline.providers.file_system_graph_provider import FileSystemGraphProvider
-
-                graph_provider = FileSystemGraphProvider()
-            except Exception:
-              py_logger.exception("soft-failure: default FileSystemGraphProvider init failed; graph features disabled")
-              graph_provider = None
+            # No fallback: graph provider must be injected explicitly.
+            graph_provider = None
 
         self.graph_provider = graph_provider
         self.token_counter = token_counter
@@ -101,12 +95,14 @@ class DynamicPipelineRunner:
         user_query: str,
         session_id: str,
         consultant: str,
-        branch: str,
+        branch: str = "",
         translate_chat: bool = False,
         user_id: Optional[str] = None,
         pipeline_name: Optional[str] = None,
         repository: Optional[str] = None,
         active_index: Optional[str] = None,
+        snapshot_id: Optional[str] = None,
+        snapshot_set_id: Optional[str] = None,
         overrides: Optional[dict[str, Any]] = None,
         mock_redis: Any = None,
     ):
@@ -132,6 +128,8 @@ class DynamicPipelineRunner:
             translate_chat=bool(translate_chat),
             user_id=user_id,
             repository=repository,
+            snapshot_id=snapshot_id,
+            snapshot_set_id=snapshot_set_id,
         )
 
         if repository:
@@ -146,6 +144,10 @@ class DynamicPipelineRunner:
                 setattr(state, "branch_b", overrides.get("branch_b"))
             if "active_index" in overrides and not active_index:
                 setattr(state, "active_index", overrides.get("active_index"))
+            if "snapshot_id" in overrides and not snapshot_id:
+                setattr(state, "snapshot_id", overrides.get("snapshot_id"))
+            if "snapshot_set_id" in overrides and not snapshot_set_id:
+                setattr(state, "snapshot_set_id", overrides.get("snapshot_set_id"))
 
         history_manager = _create_history_manager(
             mock_redis=mock_redis,
@@ -154,28 +156,23 @@ class DynamicPipelineRunner:
             user_id=user_id,
         )
 
-        retrieval_dispatcher = None
+        
 
-        retrieval_backend = RetrievalBackendAdapter(
-            dispatcher=retrieval_dispatcher,
-            graph_provider=self.graph_provider,
-            pipeline_settings=effective_settings,
-        )
+        retrieval_backend = self.retrieval_backend
+        if retrieval_backend is None:
+            raise ValueError("DynamicPipelineRunner: retrieval_backend is required.")
 
         # ✅ Match PipelineRuntime signature (no action_registry kwarg here)
         runtime = PipelineRuntime(
             pipeline_settings=effective_settings,
             model=self.model,
-            searcher=self.searcher,
+            searcher=None,
             markdown_translator=self.markdown_translator,
             translator_pl_en=self.translator_pl_en,
             history_manager=history_manager,
             logger=self.logger,
             constants=constants,
             retrieval_backend=retrieval_backend,
-            retrieval_dispatcher=None,  # contract: retrieval actions must use backend only
-            bm25_searcher=self.bm25_searcher,
-            semantic_rerank_searcher=self.semantic_rerank_searcher,
             graph_provider=self.graph_provider,
             token_counter=self.token_counter,
             add_plant_link=add_plant_link,

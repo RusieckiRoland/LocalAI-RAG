@@ -6,8 +6,6 @@ from code_query_engine.pipeline.engine import PipelineEngine, PipelineRuntime
 from code_query_engine.pipeline.loader import PipelineLoader
 from code_query_engine.pipeline.state import PipelineState
 from code_query_engine.pipeline.validator import PipelineValidator
-from code_query_engine.pipeline.providers.fakes import FakeRetriever
-from code_query_engine.pipeline.providers.retrieval import RetrievalDispatcher
 
 
 class DummyTranslator:
@@ -89,8 +87,6 @@ YAMLpipeline:
             return self._outputs.pop(0) if self._outputs else ""
 
     model = _PromptModel(outputs=["[DIRECT:]"])
-    dispatcher = RetrievalDispatcher(semantic=FakeRetriever(results=[]))
-
     rt = PipelineRuntime(
         pipeline_settings=pipe.settings,
         model=model,
@@ -110,7 +106,8 @@ YAMLpipeline:
         user_query="hi",
         session_id="s",
         consultant="rejewski",
-        branch="develop",
+        branch=None,
+        snapshot_id="snap",
         translate_chat=False,
     )
 

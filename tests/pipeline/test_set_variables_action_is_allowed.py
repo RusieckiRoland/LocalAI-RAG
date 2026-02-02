@@ -53,8 +53,6 @@ YAMLpipeline:
         history_manager=None,
         logger=_NoopLogger(),
         constants=None,
-        retrieval_dispatcher=None,        
-        semantic_rerank_searcher=None,
         graph_provider=None,
         token_counter=None,
         add_plant_link=lambda x: x,

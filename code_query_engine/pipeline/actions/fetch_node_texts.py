@@ -340,15 +340,21 @@ class FetchNodeTextsAction(PipelineActionBase):
 
         settings = getattr(runtime, "pipeline_settings", None) or {}
 
-        branch = (state.branch or settings.get("branch") or "").strip()
-        if not branch:
-            raise ValueError("fetch_node_texts: state.branch is required by retrieval_contract")
-
         repository = (state.repository or settings.get("repository") or "").strip()
         if not repository:
             raise ValueError(
                 "fetch_node_texts: Missing required 'repository' (state.repository or pipeline settings['repository'])."
             )
+
+        snapshot_id = (
+            getattr(state, "snapshot_id", None)
+            or settings.get("snapshot_id")
+            or getattr(state, "active_index", None)
+            or settings.get("active_index")
+            or ""
+        ).strip()
+        if not snapshot_id:
+            raise ValueError("fetch_node_texts: Missing required 'snapshot_id' (state.snapshot_id or pipeline settings['snapshot_id']).")
 
         active_index = getattr(state, "active_index", None) or settings.get("active_index")
         retrieval_filters = dict(getattr(state, "retrieval_filters", None) or {})
@@ -429,7 +435,7 @@ class FetchNodeTextsAction(PipelineActionBase):
         id_to_text = fetch_texts_fn(
             node_ids=list(candidates_unique),
             repository=repository,
-            branch=branch,
+            snapshot_id=snapshot_id,
             retrieval_filters=retrieval_filters,
             active_index=active_index,
         ) or {}

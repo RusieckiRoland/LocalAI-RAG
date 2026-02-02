@@ -74,7 +74,7 @@ def test_dynamic_pipeline_runner_runs_via_engine(monkeypatch: pytest.MonkeyPatch
     runner = DynamicPipelineRunner(
         pipelines_dir="tests/_does_not_matter_here",
         model=Dummy(),
-        searcher=Dummy(),
+        retrieval_backend=Dummy(),
         markdown_translator=Dummy(),
         translator_pl_en=Dummy(),
         logger=Dummy(),
@@ -89,7 +89,8 @@ def test_dynamic_pipeline_runner_runs_via_engine(monkeypatch: pytest.MonkeyPatch
         session_id="s",
         user_id=None,
         consultant="rejewski",
-        branch="develop",
+        branch="",
+        snapshot_id="test-snapshot",
         translate_chat=False,
         mock_redis=object(),
     )

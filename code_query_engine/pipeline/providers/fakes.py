@@ -4,7 +4,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional, Sequence
 
-from .ports import IModelClient, IRetriever
+from .ports import IModelClient, IRetriever, IRetrievalBackend
+from .retrieval_backend_contract import SearchHit, SearchRequest, SearchResponse
 
 
 @dataclass
@@ -159,3 +160,50 @@ class FakeRetriever(IRetriever):
             return list(batch)[: int(top_k)]
 
         return list(self._results)[: int(top_k)]
+
+
+class FakeRetrievalBackend(IRetrievalBackend):
+    """
+    Minimal retrieval backend fake:
+    - search() returns deterministic hits by query or a fixed list.
+    - fetch_texts() returns provided texts by id (missing -> empty string).
+    """
+
+    def __init__(
+        self,
+        *,
+        hits_by_query: Optional[Dict[str, List[str]]] = None,
+        default_hits: Optional[List[str]] = None,
+        texts_by_id: Optional[Dict[str, str]] = None,
+    ) -> None:
+        self._hits_by_query = {k: list(v) for k, v in (hits_by_query or {}).items()}
+        self._default_hits = list(default_hits or [])
+        self._texts_by_id = dict(texts_by_id or {})
+
+    def search(self, req: SearchRequest) -> SearchResponse:
+        q = str(req.query or "")
+        ids = self._hits_by_query.get(q)
+        if ids is None:
+            ids = list(self._default_hits)
+        hits: List[SearchHit] = []
+        for i, hid in enumerate(ids, start=1):
+            hits.append(SearchHit(id=str(hid), score=0.0, rank=i))
+        return SearchResponse(hits=hits)
+
+    def fetch_texts(
+        self,
+        *,
+        node_ids: List[str],
+        repository: str,
+        snapshot_id: Optional[str],
+        active_index: Optional[str],
+        retrieval_filters: Dict[str, Any],
+    ) -> Dict[str, str]:
+        _ = repository
+        _ = snapshot_id
+        _ = active_index
+        _ = retrieval_filters
+        out: Dict[str, str] = {}
+        for nid in node_ids:
+            out[nid] = str(self._texts_by_id.get(nid, ""))
+        return out

@@ -19,13 +19,16 @@ from common.logging_setup import LoggingConfig, configure_logging, logging_confi
 from common.markdown_translator_en_pl import MarkdownTranslator
 from common.translator_pl_en import Translator
 
-from vector_db.semantic_searcher import load_semantic_search
-
 
 from .dynamic_pipeline import DynamicPipelineRunner
 from history.redis_backend import RedisBackend
 from history.mock_redis import InMemoryMockRedis
 from .log_utils import InteractionLogger
+from vector_db.weaviate_client import get_settings as get_weaviate_settings, create_client as create_weaviate_client
+from code_query_engine.pipeline.providers.weaviate_retrieval_backend import WeaviateRetrievalBackend
+from code_query_engine.pipeline.providers.weaviate_graph_provider import WeaviateGraphProvider
+from weaviate.classes.query import Filter
+
 
 py_logger = logging.getLogger(__name__)
 
@@ -122,21 +125,6 @@ _history_backend = _make_history_backend()
 
 _active_index_id = str(_runtime_cfg.get("active_index_id") or "").strip()
 
-_semantic_searcher = None
-_semantic_searcher_error: Optional[str] = None
-
-
-
-
-try:
-    # SemanticSearcher implements IRetriever-like contract:
-    #   search(query, top_k, filters=...)
-    _semantic_searcher = load_semantic_search(_active_index_id or None)
-except Exception as e:
-    py_logger.exception("soft-failure: load_semantic_search failed; semantic retrieval will be disabled (fallback mode)")
-    _semantic_searcher = None
-    _semantic_searcher_error = str(e)
-
 
 
 
@@ -177,15 +165,35 @@ except Exception as e:
     py_logger.exception("soft-failure: token counter init failed; continuing without token counter")
     token_counter = None
 
+_weaviate_client = None
+_retrieval_backend = None
+_graph_provider = None
+
+_skip_weaviate_init = (os.getenv("WEAVIATE_SKIP_INIT") or "").strip().lower() in ("1", "true", "yes", "on")
+_skip_weaviate_init = _skip_weaviate_init or bool(os.getenv("PYTEST_CURRENT_TEST"))
+
+if _skip_weaviate_init:
+    py_logger.warning("degraded-mode: skipping Weaviate init (test mode)")
+else:
+    try:
+        _weaviate_settings = get_weaviate_settings()
+        _weaviate_client = create_weaviate_client(_weaviate_settings)
+    except Exception:
+        py_logger.exception("fatal: cannot initialize Weaviate client (vector_db/weaviate_client.py)")
+        raise
+
+    _retrieval_backend = WeaviateRetrievalBackend(client=_weaviate_client)
+    _graph_provider = WeaviateGraphProvider(client=_weaviate_client)
 
 _runner = DynamicPipelineRunner(
     pipelines_root=os.path.join(PROJECT_ROOT, "pipelines"),
     model=_model,
-    searcher=_semantic_searcher,    
+    retrieval_backend=_retrieval_backend,   
     markdown_translator=_markdown_translator,
     translator_pl_en=_translator_pl_en,
     token_counter=token_counter,
     logger=_interaction_logger,
+    graph_provider=_graph_provider,
 )
 
 
@@ -196,6 +204,44 @@ _runner = DynamicPipelineRunner(
 app = Flask(__name__)
 CORS(app, origins=ALLOWED_ORIGINS)
 
+
+def _resolve_snapshot_id_from_set(*, snapshot_set_id: str, repository: str | None) -> str:
+    sid = (snapshot_set_id or "").strip()
+    if not sid:
+        return ""
+
+    coll = _weaviate_client.collections.use("SnapshotSet")
+    filters = Filter.by_property("snapshot_set_id").equal(sid)
+    if repository:
+        filters = Filter.all_of([filters, Filter.by_property("repo").equal(repository.strip())])
+
+    res = coll.query.fetch_objects(
+        filters=filters,
+        limit=1,
+        return_properties=["snapshot_set_id", "repo", "allowed_snapshot_ids", "allowed_head_shas"],
+    )
+    if not res.objects:
+        raise ValueError(f"Unknown snapshot_set_id '{sid}'.")
+
+    props = res.objects[0].properties or {}
+    allowed = list(props.get("allowed_snapshot_ids") or [])
+
+    # Legacy fallback (pre-snapshot_id)
+    if not allowed:
+        allowed = list(props.get("allowed_head_shas") or [])
+
+    allowed = [str(x).strip() for x in allowed if str(x).strip()]
+
+    if not allowed:
+        raise ValueError(f"SnapshotSet '{sid}' has no allowed snapshot ids.")
+
+    if len(allowed) > 1:
+        raise ValueError(
+            f"SnapshotSet '{sid}' contains {len(allowed)} snapshots. "
+            "Provide 'snapshot_id' explicitly to select one."
+        )
+
+    return allowed[0]
 
 def _auth_ok() -> bool:
     if not API_TOKEN:
@@ -211,15 +257,9 @@ def health():
     return jsonify(
         {
             "ok": True,
-            "active_index_id": _active_index_id,
-            # Backward-compat (tests expect these keys)
-            "searcher_ok": _semantic_searcher is not None,
-            "searcher_error": _semantic_searcher_error,
-            # Clearer, explicit status
-            "semantic_ok": _semantic_searcher is not None,
-            "semantic_error": _semantic_searcher_error,
-            "bm25_ok": _bm25_searcher is not None,
-            "bm25_error": _bm25_searcher_error,
+            "active_index_id": "Add some important checks to do",      
+       
+            
         }
     )
 
@@ -246,6 +286,8 @@ def _ensure_limits(payload: dict) -> tuple[bool, str]:
         "branchA",
         "branchB",
         "branches",  # NEW contract: list[0..2]
+        "snapshot_id",
+        "snapshot_set_id",
         "pipelineName",
         "templateId",
         "language",
@@ -536,6 +578,10 @@ def query():
             pipeline_name = ""
 
     repository = _get_str_field(payload, "repository", str(_runtime_cfg.get("repo_name") or ""))
+    snapshot_id = _get_str_field(payload, "snapshot_id", _get_str_field(payload, "snapshotId", ""))
+    snapshot_set_id = _get_str_field(payload, "snapshot_set_id", _get_str_field(payload, "snapshotSetId", ""))
+    if not snapshot_id and snapshot_set_id:
+        snapshot_id = _resolve_snapshot_id_from_set(snapshot_set_id=snapshot_set_id, repository=repository or None)
 
     session_id = _valid_session_id(request.headers.get("X-Session-ID") or _get_str_field(payload, "session_id", ""))
     user_id = _valid_user_id(_get_str_field(payload, "user_id", ""))
@@ -561,6 +607,8 @@ def query():
             pipeline_name=pipeline_name or None,
             repository=repository or None,
             active_index=_active_index_id or None,
+            snapshot_id=snapshot_id or None,
+            snapshot_set_id=snapshot_set_id or None,
             overrides=overrides or None,
             mock_redis=_history_backend,
         )

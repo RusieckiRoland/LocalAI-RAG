@@ -7,12 +7,12 @@ SnapshotSet management CLI for LocalAI-RAG / Weaviate.
 What is a SnapshotSet?
 - A named allowlist of repo snapshots that can be queried (e.g., two tags/branches).
 - This is NOT a Weaviate vector index. It is a logical selector that later becomes a
-  filter on RagNode/RagEdge by head_sha.
+  filter on RagNode/RagEdge by snapshot_id.
 
 Design notes:
-- SnapshotSet stores both human-friendly refs (branches/tags) and immutable head_sha values.
-- Refs can move over time in Git; head_sha is the source of truth for query filters.
-- We resolve refs -> head_sha using ImportRun entries (created by the importer).
+- SnapshotSet stores both human-friendly refs (branches/tags) and immutable snapshot_id values.
+- Refs can move over time in Git; snapshot_id is the source of truth for query filters.
+- We resolve refs -> snapshot_id using ImportRun entries (created by the importer).
 
 Collections used:
 - ImportRun (already created by importer)
@@ -25,18 +25,18 @@ Examples:
   # Show one SnapshotSet
   python -m tools.weaviate.snapshot_sets --env show --id nopCommerce_4-60_4-90
 
-  # Create SnapshotSet from refs (resolved to head_sha via ImportRun)
+  # Create SnapshotSet from refs (resolved to snapshot_id via ImportRun)
   python -m tools.weaviate.snapshot_sets --env add \
     --id nopCommerce_4-60_4-90 \
     --repo nopCommerce \
     --refs release-4.60.0 release-4.90.0 \
     --description "Public browsing: nopCommerce 4.60 + 4.90"
 
-  # Create SnapshotSet from explicit SHA allowlist (no resolver)
+  # Create SnapshotSet from explicit snapshot_id allowlist (no resolver)
   python -m tools.weaviate.snapshot_sets --env add \
     --id nopCommerce_custom \
     --repo nopCommerce \
-    --head-shas dcfb... 1234...
+    --snapshot-ids dcfb... 1234...
 
   # Delete
   python -m tools.weaviate.snapshot_sets --env delete --id nopCommerce_4-60_4-90
@@ -130,6 +130,8 @@ def ensure_schema(client: "weaviate.WeaviateClient") -> None:
                 wvc.config.Property(name="snapshot_set_id", data_type=wvc.config.DataType.TEXT),
                 wvc.config.Property(name="repo", data_type=wvc.config.DataType.TEXT),
                 wvc.config.Property(name="allowed_refs", data_type=wvc.config.DataType.TEXT_ARRAY),
+                wvc.config.Property(name="allowed_snapshot_ids", data_type=wvc.config.DataType.TEXT_ARRAY),
+                # Legacy compatibility (pre-snapshot_id)
                 wvc.config.Property(name="allowed_head_shas", data_type=wvc.config.DataType.TEXT_ARRAY),
                 wvc.config.Property(name="description", data_type=wvc.config.DataType.TEXT),
                 wvc.config.Property(name="created_utc", data_type=wvc.config.DataType.TEXT),
@@ -145,6 +147,7 @@ class SnapshotSetRecord:
     snapshot_set_id: str
     repo: str
     allowed_refs: List[str]
+    allowed_snapshot_ids: List[str]
     allowed_head_shas: List[str]
     description: str
     created_utc: str
@@ -156,6 +159,7 @@ class SnapshotSetRecord:
             "snapshot_set_id": self.snapshot_set_id,
             "repo": self.repo,
             "allowed_refs": self.allowed_refs,
+            "allowed_snapshot_ids": self.allowed_snapshot_ids,
             "allowed_head_shas": self.allowed_head_shas,
             "description": self.description,
             "created_utc": self.created_utc,
@@ -194,14 +198,14 @@ def _filter_for_ref(ref: str) -> Filter:
     )
 
 
-def resolve_refs_to_head_shas(
+def resolve_refs_to_snapshot_ids(
     client: "weaviate.WeaviateClient",
     *,
     repo: str,
     refs: Sequence[str],
 ) -> Dict[str, str]:
     """
-    Resolve each ref (branch/tag label) to an immutable head_sha using ImportRun.
+    Resolve each ref (branch/tag label) to an immutable snapshot_id using ImportRun.
 
     Strategy:
     - Find ImportRun where (tag==ref OR ref_name==ref OR branch==ref)
@@ -223,13 +227,13 @@ def resolve_refs_to_head_shas(
         res = coll.query.fetch_objects(
             filters=filters,
             limit=10,
-            return_properties=["head_sha", "finished_utc", "started_utc", "tag", "ref_name", "branch"],
+            return_properties=["snapshot_id", "head_sha", "finished_utc", "started_utc", "tag", "ref_name", "branch"],
         )
 
         if not res.objects:
             raise RuntimeError(
-                f"Cannot resolve ref '{ref}' to head_sha via ImportRun (repo={repo}). "
-                f"Import the bundle first, or pass --head-shas explicitly."
+                f"Cannot resolve ref '{ref}' to snapshot_id via ImportRun (repo={repo}). "
+                f"Import the bundle first, or pass --snapshot-ids explicitly."
             )
 
         def key(o: wvc.data.DataObject) -> str:
@@ -238,11 +242,14 @@ def resolve_refs_to_head_shas(
 
         best = sorted(res.objects, key=key, reverse=True)[0]
         props = best.properties or {}
-        head_sha = str(props.get("head_sha") or "").strip()
-        if not head_sha:
-            raise RuntimeError(f"ImportRun record for ref '{ref}' has empty head_sha (repo={repo}).")
+        snapshot_id = str(props.get("snapshot_id") or "").strip()
+        if not snapshot_id:
+            # Fallback to head_sha if snapshot_id is missing (legacy imports).
+            snapshot_id = str(props.get("head_sha") or "").strip()
+        if not snapshot_id:
+            raise RuntimeError(f"ImportRun record for ref '{ref}' has empty snapshot_id (repo={repo}).")
 
-        out[ref] = head_sha
+        out[ref] = snapshot_id
 
     return out
 
@@ -268,6 +275,7 @@ def fetch_snapshot_set(client: "weaviate.WeaviateClient", *, snapshot_set_id: st
             "snapshot_set_id",
             "repo",
             "allowed_refs",
+            "allowed_snapshot_ids",
             "allowed_head_shas",
             "description",
             "created_utc",
@@ -295,6 +303,7 @@ def list_snapshot_sets(client: "weaviate.WeaviateClient", *, repo: str = "", lim
             "snapshot_set_id",
             "repo",
             "allowed_refs",
+            "allowed_snapshot_ids",
             "allowed_head_shas",
             "description",
             "created_utc",
@@ -348,6 +357,7 @@ def _list_import_runs(
             "tag",
             "ref_type",
             "ref_name",
+            "snapshot_id",
             "head_sha",
             "friendly_name",
             "status",
@@ -435,9 +445,12 @@ def _cmd_list(args: argparse.Namespace) -> int:
                 sid = it.get("snapshot_set_id")
                 r = it.get("repo")
                 refs = it.get("allowed_refs") or []
-                shas = it.get("allowed_head_shas") or []
+                snapshot_ids = it.get("allowed_snapshot_ids") or []
+                legacy_shas = it.get("allowed_head_shas") or []
                 active = it.get("is_active")
-                print(f"- repo={r}  active={active}  refs={len(refs)}  shas={len(shas)}")
+                print(
+                    f"- repo={r}  active={active}  refs={len(refs)}  snapshot_ids={len(snapshot_ids)}  legacy_shas={len(legacy_shas)}"
+                )
                 print(f"  id: {sid}")
             if args.details:
                 print("")
@@ -474,10 +487,11 @@ def _cmd_add(args: argparse.Namespace) -> int:
         raise SystemExit("--repo is required")
 
     refs = _normalize_list(args.refs)
+    snapshot_ids = _normalize_list(args.snapshot_ids)
     head_shas = _normalize_list(args.head_shas)
 
-    if not refs and not head_shas:
-        raise SystemExit("Provide --refs and/or --head-shas")
+    if not refs and not snapshot_ids and not head_shas:
+        raise SystemExit("Provide --refs and/or --snapshot-ids (or legacy --head-shas)")
 
     client = connect_weaviate(
         args.weaviate_host, args.weaviate_http_port, args.weaviate_grpc_port, api_key=args.weaviate_api_key
@@ -487,9 +501,9 @@ def _cmd_add(args: argparse.Namespace) -> int:
 
         resolved: Dict[str, str] = {}
         if refs:
-            resolved = resolve_refs_to_head_shas(client, repo=repo, refs=refs)
+            resolved = resolve_refs_to_snapshot_ids(client, repo=repo, refs=refs)
 
-        merged_head_shas = _normalize_list(list(resolved.values()) + head_shas)
+        merged_snapshot_ids = _normalize_list(list(resolved.values()) + snapshot_ids + head_shas)
 
         now = utc_now_iso()
         existing = fetch_snapshot_set(client, snapshot_set_id=snapshot_set_id)
@@ -499,7 +513,8 @@ def _cmd_add(args: argparse.Namespace) -> int:
             snapshot_set_id=snapshot_set_id,
             repo=repo,
             allowed_refs=refs,
-            allowed_head_shas=merged_head_shas,
+            allowed_snapshot_ids=merged_snapshot_ids,
+            allowed_head_shas=head_shas,
             description=str(args.description or "").strip(),
             created_utc=created,
             updated_utc=now,
@@ -557,11 +572,13 @@ def _cmd_snapshots(args: argparse.Namespace) -> int:
         # Print numbered list
         for i, p in enumerate(items, start=1):
             repo = str(p.get("repo") or "").strip()
+            snapshot_id = str(p.get("snapshot_id") or "").strip()
             head_sha = str(p.get("head_sha") or "").strip()
             label = _choose_ref_label(p)
             fin = str(p.get("finished_utc") or p.get("started_utc") or "")
             kind = "tag" if str(p.get("tag") or "").strip() else ("branch" if str(p.get("branch") or "").strip() else "ref")
-            print(f"{i:>3}. repo={repo}  {kind}={label}  head_sha={head_sha[:12]}...  finished={fin}")
+            sid = snapshot_id or head_sha
+            print(f"{i:>3}. repo={repo}  {kind}={label}  snapshot_id={sid[:12]}...  finished={fin}")
 
         max_n = len(items)
 
@@ -590,7 +607,13 @@ def _cmd_snapshots(args: argparse.Namespace) -> int:
         repo = repos[0]
 
         labels = [_choose_ref_label(p) for p in selected]
-        head_shas = _normalize_list([str(p.get("head_sha") or "").strip() for p in selected if str(p.get("head_sha") or "").strip()])
+        snapshot_ids = _normalize_list(
+            [
+                str(p.get("snapshot_id") or p.get("head_sha") or "").strip()
+                for p in selected
+                if str(p.get("snapshot_id") or p.get("head_sha") or "").strip()
+            ]
+        )
         allowed_refs = _normalize_list(labels)
 
         suggested_id = _suggest_snapshot_set_id(repo, labels)
@@ -618,7 +641,8 @@ def _cmd_snapshots(args: argparse.Namespace) -> int:
             snapshot_set_id=snapshot_set_id,
             repo=repo,
             allowed_refs=allowed_refs,
-            allowed_head_shas=head_shas,
+            allowed_snapshot_ids=snapshot_ids,
+            allowed_head_shas=[],
             description=desc,
             created_utc=created,
             updated_utc=now,
@@ -671,9 +695,13 @@ def build_arg_parser() -> argparse.ArgumentParser:
     p_add = sub.add_parser("add", help="Create or update a SnapshotSet")
     p_add.add_argument("--id", required=True, help="snapshot_set_id")
     p_add.add_argument("--repo", required=True, help="repo name (must match ImportRun.repo)")
-    p_add.add_argument("--refs", nargs="*", default=[], help="Allowed branch/tag refs (resolved to head_sha via ImportRun)")
+    p_add.add_argument("--refs", nargs="*", default=[], help="Allowed branch/tag refs (resolved to snapshot_id via ImportRun)")
     p_add.add_argument(
-        "--head-shas", nargs="*", default=[], help="Allowed immutable head_sha values (merged with resolved refs)"
+        "--snapshot-ids", nargs="*", default=[], help="Allowed immutable snapshot_id values (merged with resolved refs)"
+    )
+    # Legacy compatibility (head_sha -> snapshot_id)
+    p_add.add_argument(
+        "--head-shas", nargs="*", default=[], help="(Legacy) Allowed immutable head_sha values (merged with resolved refs)"
     )
     p_add.add_argument("--description", default="", help="Optional description")
     p_add.add_argument("--inactive", action="store_true", help="Create/update as inactive")

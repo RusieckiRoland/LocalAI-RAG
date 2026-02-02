@@ -15,15 +15,22 @@ It also defines **security rules (ACL)** and the **reranking feature contract** 
 
 ## Definitions
 
-- **Seed nodes** — canonical node IDs (chunk/node IDs) returned by retrieval (`search_nodes`).
+- **Seed nodes** — canonical node IDs (chunk/node IDs) returned by retrieval (`search_nodes`).  
+  Canonical IDs are snapshot-scoped (they include `snapshot_id`).
 - **Expanded nodes** — seed nodes plus graph dependencies after expansion (`expand_dependency_tree`).
 - **ACL / security filters** — tenant/permissions/group allowlist/tags, etc.
   Source is **`state.retrieval_filters`** and these filters are **"sacred"**.
 - **Scope** — minimal context where `ID → text` is unique.
-  Minimum is **`repository + branch`** (plus ACL components if they separate data).
-  Therefore **`state.repository` and `state.branch` are required** for all three steps.
+  Minimum is **`repository + snapshot_id`** (plus ACL components if they separate data).
+  Therefore **`state.repository` and a concrete snapshot (`snapshot_id`) are required** for all three steps.
 - **Token budget** — maximum number of tokens allowed for node-text materialization produced by `fetch_node_texts`.
   This is the budget for *retrieval context only* (independent from history/system prompt budgets).
+
+### Snapshot rules (authoritative)
+
+- A **snapshot** is identified by `snapshot_id` and is the only valid scope for graph correctness.
+- A **SnapshotSet** is a named allowlist of `snapshot_id` values. It is the preferred way to allow queries across multiple snapshots.
+- Human-friendly refs (e.g., branch names) are **not** a scope.
 
 ---
 
@@ -58,13 +65,18 @@ class SearchRequest:
     query: str
     top_k: int
     repository: str
-    branch: str
+    # Snapshot scope (preferred):
+    snapshot_id: Optional[str] = None
+    snapshot_set_id: Optional[str] = None
+
+    # no branch field in request payloads
 
     # Security-first filters (sacred): enforced by backend
     retrieval_filters: Dict[str, Any]
 
     # Optional feature flags
-    active_index: Optional[str] = None
+    # Optional feature flags
+    active_index: Optional[str] = None  # legacy alias for snapshot_set_id (compat)
 
 @dataclass(frozen=True)
 class SearchHit:
@@ -96,14 +108,15 @@ class IRetrievalBackend:
         *,
         ids: List[str],
         repository: str,
-        branch: str,
+        snapshot_id: str | None,
+        snapshot_set_id: str | None = None,
         retrieval_filters: Dict[str, Any],
         active_index: str | None = None,
     ) -> Dict[str, str]:
         """Returns a mapping {id -> text}.
 
         MUST enforce retrieval_filters (ACL).
-        MUST return only texts for IDs visible under the given scope.
+        MUST return only texts for IDs visible under the given scope (repository + snapshot_id + ACL).
         """
 ```
 
@@ -149,11 +162,17 @@ The action MUST reset these fields (set to empty values):
     - a plain text query (default), or
     - a payload parseable by `JsonishQueryParser` (if enabled in YAML).
 
-- `state.branch` **(required)**
-
 - `state.repository` **(required)**
   - Part of Scope.
   - If missing/empty → **runtime error**.
+
+- `state.snapshot_id` **(required, unless resolvable via snapshot_set_id)**
+  - Part of Scope.
+  - If missing/empty and cannot be resolved → **runtime error**.
+
+- `state.snapshot_set_id` **(optional, preferred for multi-snapshot access)**
+  - When present, the system MUST resolve it to a concrete `snapshot_id` before retrieval.
+  - Resolution rules are implementation-specific but must be deterministic.
 
 - `state.retrieval_filters` **(optional but pipeline-enforced and "sacred")**
   - ACL/tenant/permissions filters.
@@ -183,17 +202,18 @@ The action MUST reset these fields (set to empty values):
 
 ### Filter merge rules (security-first)
 
-- `base_filters = state.retrieval_filters + repository/branch filters`
+- `base_filters = state.retrieval_filters + repository/snapshot_id filters`
 - `parsed_filters` may **only add** non-security constraints (e.g., `data_type`).
 - `base_filters` always wins.
 
 **Invariant:**
 - `state.retrieval_filters` is sacred.
-- Parsing may only *extend*, never remove/override.
+  - Parsing may only *extend*, never remove/override.
 
 ### Behavior (fail-fast)
 
 - Empty query after parsing/normalization → **runtime error**.
+- Missing concrete snapshot (no `snapshot_id` and no resolvable `snapshot_set_id`) → **runtime error**.
 
 ### Output
 
@@ -301,7 +321,7 @@ For `semantic` with `rerank != none`:
 
 If reranking needs text materialization (for keyword/CodeBERT), it MUST use the exact same Scope as retrieval:
 
-- `repository + branch` (and ACL components if they separate data)
+- `repository + snapshot_id` (and ACL components if they separate data)
 
 This prevents `ID → text` mismatches.
 
@@ -314,14 +334,15 @@ The system has two dependency sources:
 - C# dependencies
 - DB/SQL dependencies
 
-During index build, they are merged into a **single unified graph** under `active_index`.
-Therefore `expand_dependency_tree` does not choose a "graph mode" — it always expands the unified graph.
+During index build, they are merged into a **single unified graph** under a snapshot (`snapshot_id`).
+Therefore `expand_dependency_tree` does not choose a "graph mode" — it always expands the unified graph
+for the current snapshot (or SnapshotSet selection).
 
 Contract requirements:
 
-- node IDs are unique within `active_index`
+- node IDs are unique within a snapshot (`snapshot_id`)
 - edge types may differ (C# vs DB), but are filtered via a single `edge_allowlist`
-- all steps operate in the same Scope (`repository + branch + ACL`)
+- all steps operate in the same Scope (`repository + snapshot_id + ACL`)
 
 ---
 
@@ -330,8 +351,9 @@ Contract requirements:
 ### Input
 
 - `state.retrieval_seed_nodes: List[str]` (required)
-- `state.branch` (required)
 - `state.repository` (required; empty → runtime error)
+- `state.snapshot_id` (required; empty → runtime error unless resolvable via snapshot_set_id)
+- `state.snapshot_set_id` (optional; if present, must be resolved to `snapshot_id` before expansion)
 - `state.retrieval_filters` (optional but sacred; must be passed to provider)
 
 ### Expansion parameters from YAML (no guesswork)
@@ -381,6 +403,7 @@ Fail-fast:
 ### Security
 
 `expand_dependency_tree` MUST apply the same ACL filters as `search_nodes`.
+This may be done by the graph provider (preferred) or an explicit graph-permission filter.
 
 ---
 
@@ -400,8 +423,10 @@ that a separate action (e.g., `render_context_blocks`) can convert into:
 
 - `state.graph_expanded_nodes: List[str]` (preferred)
 - `state.graph_seed_nodes: List[str]` (used if expanded list is empty)
-- `state.branch` (required)
 - `state.repository` (required; empty → runtime error)
+- `state.snapshot_id` (required; empty → runtime error unless resolvable via snapshot_set_id)
+- `state.snapshot_set_id` (optional; if present, must be resolved to `snapshot_id` before fetch)
+- `state.snapshot_id` (required; empty → runtime error unless resolvable via snapshot_set_id)
 
 ### Token budget (required)
 
@@ -477,7 +502,7 @@ Token estimator:
 
 ### Invariants
 
-- `fetch_node_texts` must enforce Scope (`repository + branch + ACL` where applicable).
+- `fetch_node_texts` must enforce Scope (`repository + snapshot_id + ACL` where applicable).
 - It must not materialize unbounded text and rely on a later trimming step.
 - It must not modify the ID lists (seed/expanded). It only materializes text for selected IDs.
 

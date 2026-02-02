@@ -27,7 +27,7 @@ class _RetrievalBackendStub:
         *,
         node_ids: List[str],
         repository: str,
-        branch: str,
+        snapshot_id: Optional[str],
         active_index: Optional[str],
         retrieval_filters: Dict[str, Any],
     ) -> Dict[str, str]:
@@ -37,7 +37,7 @@ class _RetrievalBackendStub:
         out = self._graph_provider.fetch_node_texts(
             node_ids=list(node_ids or []),
             repository=repository,
-            branch=branch,
+            snapshot_id=snapshot_id,
             active_index=active_index,
             filters=dict(retrieval_filters or {}),
         ) or []
@@ -54,7 +54,7 @@ def test_fetch_node_texts_missing_graph_provider_sets_reason() -> None:
         raw={"id": "fetch_texts", "action": "fetch_node_texts", "max_chars": 100},
     )
 
-    state = PipelineState(user_query="q", session_id="s", consultant="c", branch="develop", translate_chat=False)
+    state = PipelineState(user_query="q", session_id="s", consultant="c", branch=None, translate_chat=False, snapshot_id="snap")
     state.graph_expanded_nodes = ["A", "B"]
 
     rt = SimpleNamespace(
@@ -80,7 +80,7 @@ def test_fetch_node_texts_calls_provider_and_stores_result() -> None:
         },
     )
 
-    state = PipelineState(user_query="q", session_id="s", consultant="c", branch="develop", translate_chat=False)
+    state = PipelineState(user_query="q", session_id="s", consultant="c", branch=None, translate_chat=False, snapshot_id="snap")
     state.graph_expanded_nodes = ["A", "B"]
 
     fake = FakeGraphProvider(node_texts=[{"id": "A", "text": "node A"}, {"id": "B", "text": "node B"}])
