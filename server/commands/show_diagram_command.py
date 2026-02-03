@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import re
 
-from integrations.plant_uml.plantuml_check import PLANTUML_SERVER, encode_plantuml
+from integrations.plant_uml import plantuml_check
 
 from .base_command import BaseCommand
 
@@ -16,7 +16,7 @@ class ShowDiagramCommand(BaseCommand):
         if not isinstance(answer_text, str) or not answer_text.strip():
             return None
 
-        server = (PLANTUML_SERVER or "").strip().rstrip("/")
+        server = (plantuml_check.PLANTUML_SERVER or "").strip().rstrip("/")
         if not server:
             return None
 
@@ -25,7 +25,7 @@ class ShowDiagramCommand(BaseCommand):
             return None
 
         diagram = match.group(0)
-        encoded = encode_plantuml(diagram)
+        encoded = plantuml_check.encode_plantuml(diagram)
         link = f"{server}/uml/{encoded}"
 
         if link in answer_text:
