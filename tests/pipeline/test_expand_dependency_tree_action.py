@@ -18,7 +18,6 @@ class FakeGraphProvider:
         repository,
         branch,
         snapshot_id,
-        active_index=None,
         max_depth,
         max_nodes,
         edge_allowlist,
@@ -30,7 +29,6 @@ class FakeGraphProvider:
                 "repository": repository,
                 "branch": branch,
                 "snapshot_id": snapshot_id,
-                "active_index": active_index,
                 "max_depth": max_depth,
                 "max_nodes": max_nodes,
                 "edge_allowlist": edge_allowlist,
@@ -60,7 +58,7 @@ def test_expand_dependency_tree_calls_provider_and_updates_state() -> None:
     rt = SimpleNamespace(
         pipeline_settings={
             "repository": "nopCommerce",
-            "active_index": "nop_main_index",
+            "snapshot_id": "snap",
             "graph_max_depth": 3,
             "graph_max_nodes": 10,
             "graph_edge_allowlist": ["Calls"],

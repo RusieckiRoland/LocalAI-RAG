@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-import ast
 import json
 import os
 import re
@@ -27,13 +26,14 @@ from .log_utils import InteractionLogger
 from vector_db.weaviate_client import get_settings as get_weaviate_settings, create_client as create_weaviate_client
 from code_query_engine.pipeline.providers.weaviate_retrieval_backend import WeaviateRetrievalBackend
 from code_query_engine.pipeline.providers.weaviate_graph_provider import WeaviateGraphProvider
-from weaviate.classes.query import Filter
 from server.auth import get_default_user_access_provider, UserAccessContext
+from server.app_config import AppConfigService, BranchResolver, default_templates_store
+from server.pipelines import PipelineAccessService, PipelineSnapshotStore
+from server.snapshots import SnapshotRegistry
 
 
 py_logger = logging.getLogger(__name__)
 
-_logged_branch_literal_eval_error = False
 
 
 # ------------------------------------------------------------
@@ -126,7 +126,6 @@ _history_backend = _make_history_backend()
 # Searchers (Semantic + BM25)
 # ------------------------------------------------------------
 
-_active_index_id = str(_runtime_cfg.get("active_index_id") or "").strip()
 
 
 
@@ -188,6 +187,38 @@ else:
     _retrieval_backend = WeaviateRetrievalBackend(client=_weaviate_client)
     _graph_provider = WeaviateGraphProvider(client=_weaviate_client)
 
+_templates_store = default_templates_store(PROJECT_ROOT)
+_branch_resolver = BranchResolver(project_root=PROJECT_ROOT)
+_pipeline_access = PipelineAccessService()
+_snapshot_registry = SnapshotRegistry(_weaviate_client) if _weaviate_client else None
+_pipeline_settings_by_name = {}
+try:
+    from code_query_engine.pipeline.loader import PipelineLoader
+    from code_query_engine.pipeline.validator import PipelineValidator
+    _loader = PipelineLoader(pipelines_root=os.path.join(PROJECT_ROOT, "pipelines"))
+    _validator = PipelineValidator()
+    for name in _loader.list_pipeline_names():
+        try:
+            pipe = _loader.load_by_name(name)
+            _validator.validate(pipe)
+            _pipeline_settings_by_name[name] = dict(pipe.settings or {})
+        except Exception:
+            py_logger.exception("soft-failure: failed to load pipeline settings for %s", name)
+except Exception:
+    py_logger.exception("soft-failure: failed to build pipeline settings registry")
+
+_pipeline_snapshot_store = PipelineSnapshotStore(_pipeline_settings_by_name)
+_snapshot_policy = str(_runtime_cfg.get("snapshot_policy") or "single").strip() or "single"
+_app_config_service = AppConfigService(
+    templates_store=_templates_store,
+    access_provider=_user_access_provider,
+    branch_resolver=_branch_resolver,
+    pipeline_access=_pipeline_access,
+    snapshot_registry=_snapshot_registry,
+    pipeline_snapshot_store=_pipeline_snapshot_store,
+    snapshot_policy=_snapshot_policy,
+)
+
 _runner = DynamicPipelineRunner(
     pipelines_root=os.path.join(PROJECT_ROOT, "pipelines"),
     model=_model,
@@ -209,42 +240,9 @@ CORS(app, origins=ALLOWED_ORIGINS)
 
 
 def _resolve_snapshot_id_from_set(*, snapshot_set_id: str, repository: str | None) -> str:
-    sid = (snapshot_set_id or "").strip()
-    if not sid:
+    if not _snapshot_registry:
         return ""
-
-    coll = _weaviate_client.collections.use("SnapshotSet")
-    filters = Filter.by_property("snapshot_set_id").equal(sid)
-    if repository:
-        filters = Filter.all_of([filters, Filter.by_property("repo").equal(repository.strip())])
-
-    res = coll.query.fetch_objects(
-        filters=filters,
-        limit=1,
-        return_properties=["snapshot_set_id", "repo", "allowed_snapshot_ids", "allowed_head_shas"],
-    )
-    if not res.objects:
-        raise ValueError(f"Unknown snapshot_set_id '{sid}'.")
-
-    props = res.objects[0].properties or {}
-    allowed = list(props.get("allowed_snapshot_ids") or [])
-
-    # Legacy fallback (pre-snapshot_id)
-    if not allowed:
-        allowed = list(props.get("allowed_head_shas") or [])
-
-    allowed = [str(x).strip() for x in allowed if str(x).strip()]
-
-    if not allowed:
-        raise ValueError(f"SnapshotSet '{sid}' has no allowed snapshot ids.")
-
-    if len(allowed) > 1:
-        raise ValueError(
-            f"SnapshotSet '{sid}' contains {len(allowed)} snapshots. "
-            "Provide 'snapshot_id' explicitly to select one."
-        )
-
-    return allowed[0]
+    return _snapshot_registry.resolve_snapshot_id(snapshot_set_id=snapshot_set_id, repository=repository)
 
 def _auth_ok() -> bool:
     if not API_TOKEN:
@@ -260,9 +258,6 @@ def health():
     return jsonify(
         {
             "ok": True,
-            "active_index_id": "Add some important checks to do",      
-       
-            
         }
     )
 
@@ -383,150 +378,19 @@ def _normalize_runner_result(result: Any) -> Dict[str, Any]:
 # UI templates + branches (Option A)
 # ------------------------------------------------------------
 
-def _list_repositories() -> List[str]:
-    try:
-        out: List[str] = []
-        if not os.path.isdir(REPOSITORIES_ROOT):
-            return out
-        for name in sorted(os.listdir(REPOSITORIES_ROOT)):
-            p = os.path.join(REPOSITORIES_ROOT, name)
-            if os.path.isdir(p):
-                out.append(name)
-        return out
-    except Exception:
-        py_logger.exception("soft-failure: failed to list repositories under %s", REPOSITORIES_ROOT)
-        return []
-
-
-def _load_ui_templates() -> dict:
-    # minimal, but keep: ui_contracts/... if present
-    candidates = [
-        os.path.join(PROJECT_ROOT, "ui_contracts", "templates.json"),
-        os.path.join(PROJECT_ROOT, "ui_contracts", "frontend_requirements", "templates.json"),
-    ]
-    for p in candidates:
-        if os.path.isfile(p):
-            return _load_json_file(p) or {}
-    return {}
-
-
-def _read_active_index_branches(cfg: dict) -> List[str]:
-    try:
-        root = str(cfg.get("vector_indexes_root") or "").strip()
-        active = str(cfg.get("active_index_id") or "").strip()
-        if not root or not active:
-            return []
-
-        manifest_path = os.path.join(root, active, "manifest.json")
-        if not os.path.isfile(manifest_path):
-            return []
-
-        manifest = _load_json_file(manifest_path) or {}
-        raw = manifest.get("branches") or []
-
-        def _extract_name(x: Any) -> Optional[str]:
-            if isinstance(x, dict):
-                bn = str(x.get("branch_name") or x.get("branch") or "").strip()
-                return bn or None
-
-            if isinstance(x, str):
-                s = x.strip()
-
-                # legacy: python-literal dict string
-                if s.startswith("{") and "branch_name" in s:
-                    try:
-                        d = ast.literal_eval(s)
-                        if isinstance(d, dict):
-                            bn2 = str(d.get("branch_name") or d.get("branch") or "").strip()
-                            if bn2:
-                                return bn2
-                    except Exception:
-                        global _logged_branch_literal_eval_error
-                        if not _logged_branch_literal_eval_error:
-                            _logged_branch_literal_eval_error = True
-                            py_logger.exception(
-                                "soft-failure: failed to parse branch literal via ast.literal_eval; value=%r", s
-                            )
-                        pass
-
-                # already a plain branch string
-                return s or None
-
-            return None
-
-        out: List[str] = []
-        for item in raw:
-            bn = _extract_name(item)
-            if bn:
-                out.append(bn)
-
-        # stable order + dedupe
-        seen = set()
-        uniq: List[str] = []
-        for b in out:
-            if b not in seen:
-                seen.add(b)
-                uniq.append(b)
-        return uniq
-    except Exception:
-        py_logger.exception("soft-failure: failed to resolve branches list; returning empty list")
-        return []
-
-
-def _pick_default_branch(branches: List[str], cfg: dict) -> str:
-    # prefer config.active_index_id or empty, but simplest: first branch
-    if branches:
-        return branches[0]
-    return ""
-
-
 @app.route("/app-config", methods=["GET"])
 def app_config():
-    cfg = _runtime_cfg
-    templates = _load_ui_templates()
-
     session_id = _valid_session_id(request.headers.get("X-Session-ID") or "app-config")
     auth_header = (request.headers.get("Authorization") or "").strip()
-    access_ctx: UserAccessContext = _user_access_provider.resolve(
-        user_id=None,
-        token=auth_header,
-        session_id=session_id,
-    )
-
-    repos = _list_repositories()
-    repo_name = str(cfg.get("repo_name") or "").strip() or (repos[0] if repos else "")
-
-    branches = _read_active_index_branches(cfg)
-    default_branch = _pick_default_branch(branches, cfg)
-
-    consultants = []
-    default_consultant_id = ""
-    if isinstance(templates, dict):
-        consultants = templates.get("consultants") or []
-        if access_ctx.allowed_pipelines:
-            allowed = set(access_ctx.allowed_pipelines)
-            consultants = [
-                c for c in consultants
-                if isinstance(c, dict) and str(c.get("pipelineName") or "").strip() in allowed
-            ]
-        default_consultant_id = str(templates.get("defaultConsultantId") or "")
-        if default_consultant_id:
-            if not any(str(c.get("id") or "") == default_consultant_id for c in consultants if isinstance(c, dict)):
-                default_consultant_id = ""
-        if not default_consultant_id and consultants:
-            default_consultant_id = str(consultants[0].get("id") or "")
-
+    cfg = dict(_runtime_cfg)
+    cfg["project_root"] = PROJECT_ROOT
+    cfg["repositories_root"] = REPOSITORIES_ROOT
     return jsonify(
-        {
-            "repositories": repos,
-            "defaultRepository": repo_name,
-            "branches": branches,
-            "defaultBranch": default_branch,
-            "consultants": consultants,
-            "defaultConsultantId": default_consultant_id,
-            "templates": templates,
-            "translateChat": True,
-        }
+        _app_config_service.build_app_config(
+            runtime_cfg=cfg,
+            session_id=session_id,
+            auth_header=auth_header,
+        )
     )
 
 
@@ -589,7 +453,7 @@ def query():
     if not pipeline_name:
         # resolve from templates if possible
         try:
-            templates = _load_ui_templates() or {}
+            templates = _templates_store.load() or {}
             if isinstance(templates, dict):
                 for t in (templates.get("consultants") or []):
                     if isinstance(t, dict) and str(t.get("id") or "") == consultant_id:
@@ -602,6 +466,27 @@ def query():
     repository = _get_str_field(payload, "repository", str(_runtime_cfg.get("repo_name") or ""))
     snapshot_id = _get_str_field(payload, "snapshot_id", _get_str_field(payload, "snapshotId", ""))
     snapshot_set_id = _get_str_field(payload, "snapshot_set_id", _get_str_field(payload, "snapshotSetId", ""))
+    if _pipeline_snapshot_store and _snapshot_registry:
+        exists, pipeline_snapshot_set_id = _pipeline_snapshot_store.get_snapshot_set_id(pipeline_name)
+        if not exists:
+            return jsonify({"ok": False, "error": f"pipeline '{pipeline_name}' not found in loaded pipeline settings"}), 400
+
+        if pipeline_snapshot_set_id:
+            # Ensure snapshot set exists in Weaviate.
+            rec = _snapshot_registry.fetch_snapshot_set(
+                snapshot_set_id=pipeline_snapshot_set_id,
+                repository=repository or None,
+            )
+            if rec is None:
+                return jsonify({"ok": False, "error": f"unknown snapshot_set_id '{pipeline_snapshot_set_id}'"}), 400
+
+            if snapshot_set_id and snapshot_set_id != pipeline_snapshot_set_id:
+                return jsonify({"ok": False, "error": "snapshot_set_id mismatch for selected pipeline"}), 400
+            snapshot_set_id = pipeline_snapshot_set_id
+        else:
+            if snapshot_set_id:
+                return jsonify({"ok": False, "error": "pipeline has no snapshot_set_id configured"}), 400
+
     if not snapshot_id and snapshot_set_id:
         snapshot_id = _resolve_snapshot_id_from_set(snapshot_set_id=snapshot_set_id, repository=repository or None)
 
@@ -645,7 +530,6 @@ def query():
             translate_chat=translate_chat,
             pipeline_name=pipeline_name or None,
             repository=repository or None,
-            active_index=_active_index_id or None,
             snapshot_id=snapshot_id or None,
             snapshot_set_id=snapshot_set_id or None,
             overrides=overrides or None,

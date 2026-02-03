@@ -5,8 +5,6 @@ YAMLpipeline:
   extends: ./base/marian_rejewski_code_analysis_base.yaml
 
   settings:
-    repository: "nopCommerce"
-    active_index: "2025-12-14_develop"
-
     entry_step_id: maybe_translate_in
     model_language: en
+    snapshot_set_id: "nopCommerce_4-60_4-90"

@@ -119,12 +119,10 @@ class WeaviateRetrievalBackend(IRetrievalBackend):
         repository: str,
         snapshot_id: str,
         retrieval_filters: Optional[Dict[str, Any]] = None,
-        active_index: Optional[str] = None,
     ) -> Dict[str, str]:
         """
         Fetch full texts by node ids. Returns dict[node_id] = text.
         """
-        _ = active_index
         if not node_ids:
             return {}
 

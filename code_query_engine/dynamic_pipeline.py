@@ -100,7 +100,6 @@ class DynamicPipelineRunner:
         user_id: Optional[str] = None,
         pipeline_name: Optional[str] = None,
         repository: Optional[str] = None,
-        active_index: Optional[str] = None,
         snapshot_id: Optional[str] = None,
         snapshot_set_id: Optional[str] = None,
         overrides: Optional[dict[str, Any]] = None,
@@ -135,15 +134,10 @@ class DynamicPipelineRunner:
         if repository:
             state.repository = repository
 
-        if active_index:
-            setattr(state, "active_index", active_index)
-
         if overrides:
             # Common ad-hoc request fields used by UI (best-effort).
             if "branch_b" in overrides:
                 setattr(state, "branch_b", overrides.get("branch_b"))
-            if "active_index" in overrides and not active_index:
-                setattr(state, "active_index", overrides.get("active_index"))
             if "snapshot_id" in overrides and not snapshot_id:
                 setattr(state, "snapshot_id", overrides.get("snapshot_id"))
             if "snapshot_set_id" in overrides and not snapshot_set_id:

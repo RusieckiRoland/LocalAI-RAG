@@ -2,7 +2,6 @@
   "output_dir": "branches",
   
   "vector_indexes_root": "repositories/fake/indexes",
-  "active_index_id": "fake_universal_460_490",
   "repo_name": "fake",
   "model_path_embd": "../models/embedding/e5-base-v2",
   "use_gpu": false

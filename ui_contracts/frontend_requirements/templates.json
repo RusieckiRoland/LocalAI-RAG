@@ -3,7 +3,7 @@
   "consultants": [
     {
       "id": "rejewski",
-      "pipelineName": "marian_rejewski_code_analysis_base",
+      "pipelineName": "rejewski",
       "branchPickerMode": "single",
       "icon": "🧠",
       "displayName": "Marian Rejewski",
@@ -20,8 +20,8 @@
     },
     {
       "id": "ada",
-      "pipelineName": "ada_uml_base",
-      "branchPickerMode": "single",
+      "pipelineName": "ada",
+      "branchPickerMode": "none",
       "icon": "📐",
       "displayName": "Ada Lovelace",
       "cardDescription": { "pl": "Diagramy UML", "en": "UML diagrams" },
@@ -37,7 +37,7 @@
     },
     {
       "id": "shannon",
-      "pipelineName": "branch_compare_base",
+      "pipelineName": "shannon",
       "branchPickerMode": "compare",
       "icon": "🔀",
       "displayName": "Claude Shannon",

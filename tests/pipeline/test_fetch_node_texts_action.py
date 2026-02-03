@@ -28,7 +28,6 @@ class _RetrievalBackendStub:
         node_ids: List[str],
         repository: str,
         snapshot_id: Optional[str],
-        active_index: Optional[str],
         retrieval_filters: Dict[str, Any],
     ) -> Dict[str, str]:
         if self._graph_provider is None:
@@ -38,7 +37,6 @@ class _RetrievalBackendStub:
             node_ids=list(node_ids or []),
             repository=repository,
             snapshot_id=snapshot_id,
-            active_index=active_index,
             filters=dict(retrieval_filters or {}),
         ) or []
 
@@ -58,7 +56,7 @@ def test_fetch_node_texts_missing_graph_provider_sets_reason() -> None:
     state.graph_expanded_nodes = ["A", "B"]
 
     rt = SimpleNamespace(
-        pipeline_settings={"repository": "nopCommerce", "active_index": "nop_main_index", "max_context_tokens": 4096},
+        pipeline_settings={"repository": "nopCommerce", "snapshot_id": "snap", "max_context_tokens": 4096},
         graph_provider=None,
         retrieval_backend=_RetrievalBackendStub(None),
     )
@@ -88,7 +86,7 @@ def test_fetch_node_texts_calls_provider_and_stores_result() -> None:
     rt = SimpleNamespace(
         pipeline_settings={
             "repository": "nopCommerce",
-            "active_index": "nop_main_index",
+            "snapshot_id": "snap",
             "max_context_tokens": 4096,
         },
         graph_provider=fake,

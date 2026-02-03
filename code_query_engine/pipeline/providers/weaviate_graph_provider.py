@@ -111,11 +111,8 @@ class WeaviateGraphProvider(IGraphProvider):
         repository: Optional[str] = None,
         branch: Optional[str] = None,
         snapshot_id: Optional[str] = None,
-        active_index: Optional[str] = None,
         filters: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
-        # active_index kept for scoping consistency; provider is snapshot-based.
-        _ = active_index
         _ = branch
         _ = filters
 
@@ -192,11 +189,9 @@ class WeaviateGraphProvider(IGraphProvider):
         repository: Optional[str] = None,
         branch: Optional[str] = None,
         snapshot_id: Optional[str] = None,
-        active_index: Optional[str] = None,
     ) -> List[str]:
         _ = repository
         _ = branch
-        _ = active_index
         _ = snapshot_id
 
         tags = []
@@ -241,12 +236,10 @@ class WeaviateGraphProvider(IGraphProvider):
         repository: Optional[str] = None,
         branch: Optional[str] = None,
         snapshot_id: Optional[str] = None,
-        active_index: Optional[str] = None,
         max_chars: int = 50_000,
     ) -> List[Dict[str, Any]]:
         _ = repository
         _ = branch
-        _ = active_index
         _ = snapshot_id
 
         ids = _dedupe_preserve_order(node_ids or [])

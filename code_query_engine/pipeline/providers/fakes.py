@@ -196,12 +196,10 @@ class FakeRetrievalBackend(IRetrievalBackend):
         node_ids: List[str],
         repository: str,
         snapshot_id: Optional[str],
-        active_index: Optional[str],
         retrieval_filters: Dict[str, Any],
     ) -> Dict[str, str]:
         _ = repository
         _ = snapshot_id
-        _ = active_index
         _ = retrieval_filters
         out: Dict[str, str] = {}
         for nid in node_ids:

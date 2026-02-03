@@ -487,9 +487,14 @@
   let appConfig = null;
   let consultantsById = {};
   let branches = [];
+  let snapshotPolicy = "single";
+  let currentSnapshotSetId = localStorage.getItem("snapshotSetId") || null;
+  let currentSnapshotId = localStorage.getItem("snapshotId") || null;
+  let currentSnapshotLabel = localStorage.getItem("snapshotLabel") || null;
 
   let selectedBranchA = null;
   let selectedBranchB = null;
+  let selectedSnapshotId = null;
 
   let fakeAuthEnabled = false;
   const DEV_AUTH_USER_ID = "dev-user-1";
@@ -523,6 +528,7 @@
       copy: "Kopiuj",
       copied: "Skopiowano!",
       branchLabel: "Branch",
+      snapshotLabel: "Snapshot",
       branchDisabled: "no retrieval",
       vs: "vs",
       compareChooseTwo: "Wybierz dwa branche do porównania.",
@@ -541,6 +547,7 @@
       copy: "Copy",
       copied: "Copied!",
       branchLabel: "Branch",
+      snapshotLabel: "Snapshot",
       branchDisabled: "no retrieval",
       vs: "vs",
       compareChooseTwo: "Choose two branches to compare.",
@@ -584,6 +591,7 @@
       consultantsById[c.id] = c;
     }
     branches = Array.isArray(appConfig?.branches) ? appConfig.branches : [];
+    snapshotPolicy = String(appConfig?.snapshotPolicy || "single").trim() || "single";
   }
 
   function buildConsultantsBar(lang) {
@@ -679,6 +687,47 @@
     return branches.length ? branches[0] : null;
   }
 
+  function getConsultantSnapshots(c) {
+    return Array.isArray(c?.snapshots) ? c.snapshots : [];
+  }
+
+  function hasSnapshots(c) {
+    return getConsultantSnapshots(c).length > 0;
+  }
+
+  function getSnapshotSetId(c) {
+    const sid = String(c?.snapshotSetId || "").trim();
+    return sid || null;
+  }
+
+  function updateSnapshotState(id, label, snapshotSetId) {
+    if (id) {
+      currentSnapshotId = id;
+      localStorage.setItem("snapshotId", id);
+    }
+    if (label) {
+      currentSnapshotLabel = label;
+      localStorage.setItem("snapshotLabel", label);
+    }
+    if (snapshotSetId) {
+      currentSnapshotSetId = snapshotSetId;
+      localStorage.setItem("snapshotSetId", snapshotSetId);
+    }
+  }
+
+  function addSystemMessage(text) {
+    const lang = getCurrentLang();
+    const t = getTexts(lang);
+    const timestamp = new Date().toLocaleString(t.locale);
+    const html = `
+      <div class="bg-yellow-50 p-4 rounded-xl shadow-sm border border-yellow-200 response-entry">
+        <div class="text-sm text-yellow-800 mb-2">${timestamp}</div>
+        <div class="text-sm text-yellow-900">${escapeHtml(text)}</div>
+      </div>
+    `;
+    responseDiv.innerHTML = html + responseDiv.innerHTML;
+  }
+
   // Autosize select width to its selected option text (clamped).
   const __selectMeasureSpan = (() => {
     const s = document.createElement("span");
@@ -760,7 +809,7 @@
     return String(s).replace(/[_\-.\/\\\s]+$/, "");
   }
 
-  function computeClosedBranchLabel(fullName, mode) {
+  function computeClosedBranchLabel(fullName, mode, allLabels) {
     const name = String(fullName ?? "");
     if (!name) return "";
 
@@ -771,13 +820,13 @@
     const shouldShorten = inCompare || (name.length > MAX_BRANCH_LABEL_LEN);
     if (!shouldShorten) return name;
 
-    if (!Array.isArray(branches) || branches.length <= 1) {
+    if (!Array.isArray(allLabels) || allLabels.length <= 1) {
       if (name.length <= MAX_BRANCH_LABEL_LEN) return name;
       return "…" + name.slice(-(MAX_BRANCH_LABEL_LEN - 1));
     }
 
-    const pref = commonPrefixLen(branches);
-    const suff = commonSuffixLen(branches);
+    const pref = commonPrefixLen(allLabels);
+    const suff = commonSuffixLen(allLabels);
 
     // Candidate A: cut common PREFIX, keep the differing tail.
     let candPrefix = null;
@@ -817,15 +866,15 @@
     }
   }
 
-  function applyClosedLabelToSelected(selectEl, mode) {
+  function applyClosedLabelToSelected(selectEl, mode, allLabels) {
     if (!selectEl) return;
 
     setAllOptionsToFull(selectEl);
 
-    const full = String(selectEl.value ?? "");
-    const label = computeClosedBranchLabel(full, mode);
-
     const opt = selectEl.options?.[selectEl.selectedIndex];
+    const full = String(opt?.getAttribute("data-full") ?? "");
+    const label = computeClosedBranchLabel(full, mode, allLabels);
+
     if (opt) opt.textContent = label;
 
     selectEl.title = full || "";
@@ -842,7 +891,8 @@
     const t = getTexts(lang);
 
     const c = consultantsById[selectedConsultant];
-    const mode = (c && c.branchPickerMode) ? c.branchPickerMode : "single";
+    let mode = (c && c.branchPickerMode) ? c.branchPickerMode : "single";
+    if (hasSnapshots(c)) mode = "single";
 
     if (!submitButton) return;
 
@@ -875,10 +925,12 @@
 
     const label = document.createElement("div");
     label.className = "branch-label";
-    label.innerHTML = `🔀 <span>${t.branchLabel}</span>`;
+    const labelText = hasSnapshots(c) ? t.snapshotLabel : t.branchLabel;
+    label.innerHTML = `🔀 <span>${labelText}</span>`;
     branchControls.appendChild(label);
 
-    const mode = (c && c.branchPickerMode) ? c.branchPickerMode : "single";
+    let mode = (c && c.branchPickerMode) ? c.branchPickerMode : "single";
+    if (hasSnapshots(c)) mode = "single";
     branchControls.classList.toggle("compare", mode === "compare");
 
     if (mode === "none") {
@@ -894,31 +946,41 @@
       return;
     }
 
-    if (!selectedBranchA) selectedBranchA = firstBranchOrNull();
-    if (mode === "compare") {
-      if (!selectedBranchB) selectedBranchB = secondBranchOrFirst();
+    const snapshots = getConsultantSnapshots(c);
+    const usingSnapshots = snapshots.length > 0;
+
+    if (usingSnapshots) {
+      if (!selectedSnapshotId) {
+        selectedSnapshotId = snapshots[0]?.id || null;
+      }
     } else {
-      selectedBranchB = null;
+      if (!selectedBranchA) selectedBranchA = firstBranchOrNull();
+      if (mode === "compare") {
+        if (!selectedBranchB) selectedBranchB = secondBranchOrFirst();
+      } else {
+        selectedBranchB = null;
+      }
     }
 
     updateSendButtonState();
 
-    const makeSelect = (currentValue, onChange) => {
+    const makeSelect = (options, currentValue, onChange) => {
       const sel = document.createElement("select");
       sel.className = "branch-select";
 
-      for (const b of branches) {
+      for (const optItem of options) {
         const opt = document.createElement("option");
-        opt.value = b;
-        opt.textContent = b;
-        opt.setAttribute("data-full", b);
+        opt.value = optItem.value;
+        opt.textContent = optItem.label;
+        opt.setAttribute("data-full", optItem.label);
         sel.appendChild(opt);
       }
 
-      if (currentValue && branches.includes(currentValue)) {
+      const values = options.map(o => o.value);
+      if (currentValue && values.includes(currentValue)) {
         sel.value = currentValue;
-      } else if (branches.length) {
-        sel.value = branches[0];
+      } else if (options.length) {
+        sel.value = options[0].value;
       }
 
       sel.addEventListener("focus", () => prepareOpenSelect(sel));
@@ -932,17 +994,43 @@
       sel.addEventListener("change", (e) => {
         onChange(e.target.value);
         updateSendButtonState();
-        setTimeout(() => applyClosedLabelToSelected(sel, mode), 0);
+        setTimeout(() => applyClosedLabelToSelected(sel, mode, options.map(o => o.label)), 0);
       });
 
-      sel.addEventListener("blur", () => applyClosedLabelToSelected(sel, mode));
+      sel.addEventListener("blur", () => applyClosedLabelToSelected(sel, mode, options.map(o => o.label)));
 
-      applyClosedLabelToSelected(sel, mode);
+      applyClosedLabelToSelected(sel, mode, options.map(o => o.label));
 
       return sel;
     };
 
-    const selA = makeSelect(selectedBranchA, v => selectedBranchA = v);
+    if (usingSnapshots) {
+      const snapSet = getSnapshotSetId(c);
+      if (snapSet && currentSnapshotSetId && snapSet === currentSnapshotSetId && !selectedSnapshotId) {
+        selectedSnapshotId = currentSnapshotId;
+      }
+      const snapshotOptions = snapshots.map(s => ({
+        value: s.id,
+        label: s.label || s.id,
+      }));
+      const sel = makeSelect(snapshotOptions, selectedSnapshotId, v => {
+        const prevId = selectedSnapshotId;
+        const prevLabel = currentSnapshotLabel || prevId;
+        selectedSnapshotId = v;
+        const chosen = snapshots.find(s => s.id === v);
+        const nextLabel = chosen?.label || v;
+        updateSnapshotState(v, nextLabel, getSnapshotSetId(c));
+        if (responseDiv.children.length > 0 && prevId && prevId !== v) {
+          addSystemMessage(`Snapshot changed: ${prevLabel || prevId} → ${nextLabel}`);
+        }
+      });
+      branchControls.appendChild(sel);
+      requestAnimationFrame(autoSizeAllBranchSelects);
+      return;
+    }
+
+    const branchOptions = branches.map(b => ({ value: b, label: b }));
+    const selA = makeSelect(branchOptions, selectedBranchA, v => selectedBranchA = v);
     branchControls.appendChild(selA);
 
     if (mode === "compare") {
@@ -951,7 +1039,7 @@
       vs.textContent = t.vs;
       branchControls.appendChild(vs);
 
-      const selB = makeSelect(selectedBranchB, v => selectedBranchB = v);
+      const selB = makeSelect(branchOptions, selectedBranchB, v => selectedBranchB = v);
       branchControls.appendChild(selB);
     }
 
@@ -988,6 +1076,30 @@
   }
 
   function selectConsultant(id) {
+    const prevConsultant = selectedConsultant;
+    const prev = consultantsById[prevConsultant];
+    const next = consultantsById[id];
+    const prevSet = getSnapshotSetId(prev);
+    const nextSet = getSnapshotSetId(next);
+    const effectivePrevSet = prevSet || currentSnapshotSetId;
+
+    if (nextSet && effectivePrevSet && nextSet !== effectivePrevSet) {
+      if (snapshotPolicy === "single") {
+        const ok = confirm("Zmiana snapshot setu wymaga rozpoczęcia nowej rozmowy. Rozpocząć nową rozmowę?");
+        if (!ok) return;
+        newChat();
+      } else if (snapshotPolicy === "multi_confirm") {
+        const ok = confirm("Zmiana snapshot setu w trakcie rozmowy. Kontynuować?");
+        if (!ok) return;
+        if (responseDiv.children.length > 0) {
+          addSystemMessage(`SnapshotSet changed: ${prevSet} → ${nextSet}`);
+        }
+      }
+      currentSnapshotSetId = nextSet;
+      localStorage.setItem("snapshotSetId", nextSet);
+      selectedSnapshotId = null;
+    }
+
     selectedConsultant = id;
 
     document.querySelectorAll(".consultant-card").forEach(el => {
@@ -1073,7 +1185,8 @@
     submitButton.innerText = t.wait;
 
     const c = consultantsById[selectedConsultant];
-    const mode = (c && c.branchPickerMode) ? c.branchPickerMode : "single";
+    let mode = (c && c.branchPickerMode) ? c.branchPickerMode : "single";
+    if (hasSnapshots(c)) mode = "single";
 
     // Build branches payload (0/1/2). In "none" mode we omit branches completely.
     const branchesPayload = [];
@@ -1098,8 +1211,15 @@
       translateChat: (lang === "pl"),
     };
 
-    if (branchesPayload.length > 0) {
-      body.branches = branchesPayload;
+    if (!hasSnapshots(c)) {
+      if (branchesPayload.length > 0) {
+        body.branches = branchesPayload;
+      }
+    } else {
+      const snapSet = getSnapshotSetId(c);
+      const snapId = selectedSnapshotId || currentSnapshotId;
+      if (snapSet) body.snapshot_set_id = snapSet;
+      if (snapId) body.snapshot_id = snapId;
     }
 
     try {
@@ -1176,6 +1296,7 @@
 
       selectedBranchA = firstBranchOrNull();
       selectedBranchB = secondBranchOrFirst();
+      selectedSnapshotId = currentSnapshotId;
 
       const savedLang = getCurrentLang();
       applyLang(savedLang);

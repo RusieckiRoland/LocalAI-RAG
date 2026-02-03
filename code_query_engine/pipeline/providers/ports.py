@@ -52,7 +52,6 @@ class IRetrievalBackend(Protocol):
         node_ids: List[str],
         repository: str,
         snapshot_id: Optional[str],
-        active_index: Optional[str],
         retrieval_filters: Dict[str, Any],
     ) -> Dict[str, str]:
         ...
@@ -98,7 +97,6 @@ class IGraphProvider(Protocol):
         repository: Optional[str] = None,
         branch: Optional[str] = None,
         snapshot_id: Optional[str] = None,
-        active_index: Optional[str] = None,
         filters: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         ...
@@ -111,7 +109,6 @@ class IGraphProvider(Protocol):
         repository: Optional[str] = None,
         branch: Optional[str] = None,
         snapshot_id: Optional[str] = None,
-        active_index: Optional[str] = None,
     ) -> List[str]:
         ...
 
@@ -122,7 +119,6 @@ class IGraphProvider(Protocol):
         repository: Optional[str] = None,
         branch: Optional[str] = None,
         snapshot_id: Optional[str] = None,
-        active_index: Optional[str] = None,
         max_chars: int = 50_000,
     ) -> List[Dict[str, Any]]:
         ...

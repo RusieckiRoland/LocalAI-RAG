@@ -1,0 +1,18 @@
+YAMLpipeline:
+  name: shannon
+
+  settings:
+    entry_step_id: set_response
+    snapshot_set_id: "fakeSnapSet"
+
+  steps:
+    - id: set_response
+      action: set_variables
+      rules:
+        - set: last_model_response
+          value: "Testowa odopowiedź dla piplinu Shanon"
+      next: finalize
+
+    - id: finalize
+      action: finalize
+      end: true

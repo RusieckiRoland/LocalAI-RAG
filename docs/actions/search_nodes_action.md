@@ -112,7 +112,6 @@ Required:
 - `state.retrieval_filters` *(optional but “sacred” ACL)*
 
 Optional:
-- `state.active_index` *(optional override vs settings)*
 
 ---
 

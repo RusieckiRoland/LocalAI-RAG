@@ -245,14 +245,10 @@ class ExpandDependencyTreeAction(PipelineActionBase):
         snapshot_id = (
             getattr(state, "snapshot_id", None)
             or settings.get("snapshot_id")
-            or getattr(state, "active_index", None)
-            or settings.get("active_index")
             or ""
         ).strip()
         if not snapshot_id:
             raise ValueError("expand_dependency_tree: Missing required 'snapshot_id' (state.snapshot_id or pipeline settings['snapshot_id']).")
-
-        active_index = getattr(state, "active_index", None) or settings.get("active_index")
 
         # Sacred ACL filters
         retrieval_filters = dict(getattr(state, "retrieval_filters", None) or {})
@@ -278,7 +274,6 @@ class ExpandDependencyTreeAction(PipelineActionBase):
                 seed_nodes=list(seed_nodes),
                 repository=repository,
                 branch=None,
-                active_index=active_index,
                 snapshot_id=snapshot_id,
                 max_depth=max_depth,
                 max_nodes=max_nodes,
@@ -296,14 +291,13 @@ class ExpandDependencyTreeAction(PipelineActionBase):
         filter_fn = getattr(provider, "filter_by_permissions", None)
         if callable(filter_fn):
             allowed_nodes = list(
-                filter_fn(
-                    node_ids=list(nodes),
-                    retrieval_filters=retrieval_filters,
-                    repository=repository,
-                    branch=None,
-                    snapshot_id=snapshot_id,
-                    active_index=active_index,
-                )
+            filter_fn(
+                node_ids=list(nodes),
+                retrieval_filters=retrieval_filters,
+                repository=repository,
+                branch=None,
+                snapshot_id=snapshot_id,
+            )
                 or []
             )
             allowed_set = set(allowed_nodes)

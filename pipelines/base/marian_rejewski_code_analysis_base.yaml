@@ -6,8 +6,6 @@ YAMLpipeline:
     model_language: en
 
     # Defaults (must be overridden in child pipeline)
-    repository: ""
-    active_index: ""
 
     # Loop guard
     max_turn_loops: 4
@@ -91,7 +89,6 @@ YAMLpipeline:
 
     - id: expand_dependency_tree
       action: expand_dependency_tree
-      active_index_from_settings: true
       max_depth_from_settings: "graph_max_depth"
       max_nodes_from_settings: "graph_max_nodes"
       edge_allowlist_from_settings: "graph_edge_allowlist"

@@ -65,13 +65,7 @@ def _merge_filters(settings: Dict[str, Any], state: PipelineState, step_raw: Dic
     filters.update(getattr(state, "retrieval_filters", None) or {})
 
     repo = (state.repository or settings.get("repository") or "").strip()
-    snapshot_id = (
-        getattr(state, "snapshot_id", None)
-        or settings.get("snapshot_id")
-        or getattr(state, "active_index", None)
-        or settings.get("active_index")
-        or ""
-    ).strip()
+    snapshot_id = (getattr(state, "snapshot_id", None) or settings.get("snapshot_id") or "").strip()
 
     if not repo:
         raise ValueError("search_nodes: Missing required 'repository' (state.repository or pipeline settings['repository']).")
@@ -319,12 +313,7 @@ class SearchNodesAction(PipelineActionBase):
 
         repo = (state.repository or settings.get("repository") or "").strip()
         snapshot_id = (getattr(state, "snapshot_id", None) or settings.get("snapshot_id") or "").strip()
-        active_index = getattr(state, "active_index", None) or settings.get("active_index")
         snapshot_set_id = (getattr(state, "snapshot_set_id", None) or settings.get("snapshot_set_id") or "").strip()
-
-        # Legacy alias: active_index may carry a snapshot_id in older setups.
-        if not snapshot_id and active_index:
-            snapshot_id = str(active_index).strip()
 
         if not repo:
             raise ValueError("search_nodes: Missing required 'repository' (state.repository or pipeline settings['repository']).")
@@ -348,7 +337,6 @@ class SearchNodesAction(PipelineActionBase):
             snapshot_id=snapshot_id,
             snapshot_set_id=snapshot_set_id or None,
             retrieval_filters=filters,
-            active_index=str(active_index).strip() if active_index else None,
         )
 
         resp = backend.search(req)

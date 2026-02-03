@@ -226,6 +226,13 @@ class PipelineLoader:
         info = idx[pipeline_name]
         return self.load_from_path(str(info.file_path), pipeline_name=info.pipeline_name)
 
+    def list_pipeline_names(self) -> List[str]:
+        """
+        Returns all known pipeline names under pipelines_root.
+        """
+        idx = self._get_or_build_index()
+        return sorted(idx.keys())
+
     def load_from_path(self, path: str, *, pipeline_name: Optional[str] = None) -> PipelineDef:
         p = Path(path)
         doc = self._load_doc_with_extends(path=p, pipeline_name=pipeline_name, depth=0)

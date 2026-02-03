@@ -55,10 +55,6 @@ Example: `"develop"`.
 Root directory where vector indexes are stored.  
 Example: `"repositories/nopCommerce/indexes"`.
 
-### `active_index_id` (string)
-Identifier of the currently active index (e.g., snapshot/version id).  
-Example: `"2025-12-14__develop"`.
-
 ### `repo_name` (string)
 Repository name (metadata / identification in logs).  
 Example: `"nopCommerce"`.

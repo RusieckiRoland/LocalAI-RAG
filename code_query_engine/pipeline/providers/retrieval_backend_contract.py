@@ -17,7 +17,6 @@ class SearchRequest:
     repository: str
     snapshot_id: Optional[str] = None
     snapshot_set_id: Optional[str] = None
-    active_index: Optional[str] = None
 
     # Hybrid-only tuning (YAML: step.raw.rrf_k). Default behavior must be deterministic.
     rrf_k: Optional[int] = None

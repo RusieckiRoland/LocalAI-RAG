@@ -24,7 +24,6 @@ This action is typically used between:
 ### Optional (but common)
 - `state.retrieval_seed_nodes: list[str]` — if empty, expansion is skipped
 - `state.retrieval_filters: dict` — ACL/tenant filters passed through to the graph provider (if present)
-- `state.active_index: str | None` — optional override of pipeline `settings.active_index`
 
 ---
 
@@ -82,7 +81,6 @@ result = graph_provider.expand_dependency_tree(
     seed_nodes=[...],
     repository=...,
     branch=...,
-    active_index=...,
     max_depth=...,
     max_nodes=...,
     edge_allowlist=...,

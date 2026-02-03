@@ -75,8 +75,6 @@ class SearchRequest:
     retrieval_filters: Dict[str, Any]
 
     # Optional feature flags
-    # Optional feature flags
-    active_index: Optional[str] = None  # legacy alias for snapshot_set_id (compat)
 
 @dataclass(frozen=True)
 class SearchHit:
@@ -111,7 +109,6 @@ class IRetrievalBackend:
         snapshot_id: str | None,
         snapshot_set_id: str | None = None,
         retrieval_filters: Dict[str, Any],
-        active_index: str | None = None,
     ) -> Dict[str, str]:
         """Returns a mapping {id -> text}.
 

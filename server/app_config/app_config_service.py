@@ -1,0 +1,156 @@
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Any, Dict, List, Optional
+
+from server.auth import UserAccessProvider
+from server.pipelines.pipeline_access import PipelineAccessService
+from server.pipelines.pipeline_snapshot_store import PipelineSnapshotStore
+from server.snapshots.snapshot_registry import SnapshotRegistry
+
+
+@dataclass(frozen=True)
+class AppConfigService:
+    templates_store: Any
+    access_provider: UserAccessProvider
+    branch_resolver: Any
+    pipeline_access: PipelineAccessService
+    snapshot_registry: Optional[SnapshotRegistry]
+    pipeline_snapshot_store: Optional[PipelineSnapshotStore]
+    snapshot_policy: str
+
+    def build_app_config(
+        self,
+        *,
+        runtime_cfg: Dict[str, Any],
+        session_id: str,
+        auth_header: str,
+    ) -> Dict[str, Any]:
+        templates = self.templates_store.load()
+
+        access_ctx = self.access_provider.resolve(
+            user_id=None,
+            token=auth_header,
+            session_id=session_id,
+        )
+
+        repos = self._list_repositories(runtime_cfg)
+        repo_name = str(runtime_cfg.get("repo_name") or "").strip() or (repos[0] if repos else "")
+
+        branches = self.branch_resolver.list_branches(runtime_cfg)
+        default_branch = self.branch_resolver.pick_default(branches)
+
+        consultants, default_consultant_id = self.pipeline_access.filter_consultants(
+            templates,
+            allowed_pipelines=access_ctx.allowed_pipelines,
+        )
+
+        consultants = self._attach_snapshots(consultants, repository=repo_name)
+        branches, default_branch = self._resolve_snapshot_branches(
+            consultants=consultants,
+            default_consultant_id=default_consultant_id,
+            fallback_branches=branches,
+            fallback_default=default_branch,
+        )
+
+        return {
+            "repositories": repos,
+            "defaultRepository": repo_name,
+            "branches": branches,
+            "defaultBranch": default_branch,
+            "consultants": consultants,
+            "defaultConsultantId": default_consultant_id,
+            "templates": templates,
+            "translateChat": True,
+            "snapshotPolicy": self.snapshot_policy,
+        }
+
+    def _list_repositories(self, cfg: Dict[str, Any]) -> List[str]:
+        import os
+        project_root = str(cfg.get("project_root") or "").strip()
+        repos_root = cfg.get("repositories_root")
+
+        if not repos_root:
+            # Legacy: derive from project root.
+            repos_root = os.path.join(project_root, "repositories") if project_root else "repositories"
+
+        try:
+            out: List[str] = []
+            if not os.path.isdir(repos_root):
+                return out
+            for name in sorted(os.listdir(repos_root)):
+                p = os.path.join(repos_root, name)
+                if os.path.isdir(p):
+                    out.append(name)
+            return out
+        except Exception:
+            return []
+
+    def _attach_snapshots(self, consultants: List[Dict[str, Any]], *, repository: str) -> List[Dict[str, Any]]:
+        if not consultants:
+            return consultants
+
+        if not self.snapshot_registry or not self.pipeline_snapshot_store:
+            return [self._with_snapshot_fields(c, snapshot_set_id=None, snapshots=[]) for c in consultants]
+
+        out: List[Dict[str, Any]] = []
+        for c in consultants:
+            pipeline_name = str(c.get("pipelineName") or "").strip()
+            exists, snapshot_set_id = self.pipeline_snapshot_store.get_snapshot_set_id(pipeline_name)
+
+            if not exists:
+                raise ValueError(f"Pipeline '{pipeline_name}' not found in loaded pipeline settings")
+
+            if snapshot_set_id:
+                snapshots = self.snapshot_registry.list_snapshots(
+                    snapshot_set_id=snapshot_set_id,
+                    repository=repository or None,
+                )
+                out.append(self._with_snapshot_fields(c, snapshot_set_id=snapshot_set_id, snapshots=snapshots))
+            else:
+                out.append(self._with_snapshot_fields(c, snapshot_set_id=None, snapshots=[]))
+
+        return out
+
+    def _with_snapshot_fields(
+        self,
+        consultant: Dict[str, Any],
+        *,
+        snapshot_set_id: Optional[str],
+        snapshots: List[Any],
+    ) -> Dict[str, Any]:
+        cloned = dict(consultant or {})
+        cloned["snapshotSetId"] = snapshot_set_id
+        cloned["snapshots"] = [{"id": s.id, "label": s.label} for s in snapshots]
+        return cloned
+
+    def _resolve_snapshot_branches(
+        self,
+        *,
+        consultants: List[Dict[str, Any]],
+        default_consultant_id: str,
+        fallback_branches: List[str],
+        fallback_default: str,
+    ) -> tuple[List[str], str]:
+        """
+        Legacy compatibility: expose snapshot labels via the branches list.
+        New UI should use consultants[].snapshots (label + id).
+        """
+        if not consultants:
+            return list(fallback_branches), fallback_default
+
+        default_id = default_consultant_id or str(consultants[0].get("id") or "")
+        selected = None
+        for c in consultants:
+            if str(c.get("id") or "") == default_id:
+                selected = c
+                break
+        if selected is None:
+            selected = consultants[0]
+
+        snapshots = list(selected.get("snapshots") or [])
+        labels = [str(s.get("label") or "").strip() for s in snapshots if str(s.get("label") or "").strip()]
+        if labels:
+            return labels, labels[0]
+
+        return list(fallback_branches), fallback_default
