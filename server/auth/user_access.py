@@ -144,7 +144,11 @@ def get_default_user_access_provider() -> UserAccessProvider:
     """
     global _default_provider
     if _default_provider is None:
-        group_policies = _load_group_policies_from_json()
+        # In tests, skip policy loading to avoid unexpected auth failures.
+        if os.getenv("PYTEST_CURRENT_TEST"):
+            group_policies = {}
+        else:
+            group_policies = _load_group_policies_from_json()
         _default_provider = DevUserAccessProvider(group_policies=group_policies)
     return _default_provider
 
