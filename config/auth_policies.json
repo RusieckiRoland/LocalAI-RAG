@@ -4,9 +4,7 @@
       "allowed_pipelines": [
         "ada"
       ],
-      "allowed_commands": [
-        "showDiagram"
-      ],
+      "allowed_commands": [],
       "acl_tags_all": []
     },
     "authenticated": {
@@ -17,7 +15,8 @@
       ],
       "allowed_commands": [
         "showDiagram",
-        "saveDiagram"
+        "saveDiagram",
+        "ea_export"
       ],
       "acl_tags_all": [
         "security",

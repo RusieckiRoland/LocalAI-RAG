@@ -347,6 +347,34 @@
     .send-btn:hover { background-color: #1d4ed8; }
     .send-btn:disabled { opacity: 0.6; cursor: not-allowed; }
 
+    .command-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.45rem;
+      padding: 0.45rem 0.85rem;
+      border-radius: 999px;
+      background: #eef2ff;
+      color: #1d4ed8;
+      font-weight: 700;
+      text-decoration: none;
+      border: 1px solid #c7d2fe;
+      box-shadow: 0 4px 12px rgba(37, 99, 235, 0.12);
+    }
+    .command-link::before {
+      content: "↗";
+      font-weight: 800;
+    }
+    .command-link:hover {
+      background: #e0e7ff;
+      border-color: #a5b4fc;
+    }
+    .command-links {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.6rem;
+      flex-wrap: wrap;
+    }
+
     /* Medium: wrap cleanly */
     @media (max-width: 820px) {
       .controls-row { flex-wrap: wrap; }

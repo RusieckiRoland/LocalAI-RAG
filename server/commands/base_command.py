@@ -19,6 +19,7 @@ class BaseCommand:
 
     command_type: str = ""
     required_permission: str = ""
+    requires_sanitized_answer: bool = False
 
     def can_execute(self, state: PipelineState) -> bool:
         allowed = getattr(state, "allowed_commands", None)
@@ -26,11 +27,11 @@ class BaseCommand:
             return False
         return self.required_permission in allowed
 
-    def apply(self, answer_text: str, state: PipelineState) -> CommandResult:
+    def build_link(self, answer_text: str, state: PipelineState) -> Optional[str]:
         """
-        Apply command to answer text. Returns CommandResult.
+        Build a single HTML link snippet. Return None if not applicable.
         """
-        return CommandResult(appended=False, output=answer_text)
+        return None
 
     def _lang(self, state: PipelineState) -> str:
         return "pl" if bool(getattr(state, "translate_chat", False)) else "en"

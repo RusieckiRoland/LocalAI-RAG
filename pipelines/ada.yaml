@@ -10,13 +10,39 @@ YAMLpipeline:
       action: set_variables
       rules:
         - set: last_model_response
-          value: "@startuml skinparam monochrome true skinparam shadowing false left to right direction actor 'Customer' as C actor 'Admin' as A usecase 'Browse products' as UC1 usecase 'Add to cart' as UC2 usecase 'Place order' as UC3 usecase 'Manage products' as UC4 usecase 'View orders' as UC5 C --> UC1 C --> UC2 C --> UC3 A --> UC4 A --> UC5 UC2 .> UC1 : <<extend>> UC3 .> UC2 : <<include>> @enduml"
+          value: |
+            ```plantuml
+            @startuml
+            skinparam monochrome true
+            skinparam shadowing false
+            left to right direction
+
+            actor "Customer" as C
+            actor "Admin" as A
+
+            usecase "Browse products" as UC1
+            usecase "Add to cart" as UC2
+            usecase "Place order" as UC3
+            usecase "Manage products" as UC4
+            usecase "View orders" as UC5
+
+            C --> UC1
+            C --> UC2
+            C --> UC3
+            A --> UC4
+            A --> UC5
+
+            UC2 .> UC1 : <<extend>>
+            UC3 .> UC2 : <<include>>
+            @enduml
+            ```
       next: add_commands
 
     - id: add_commands
       action: add_command_action
       commands:
         - type: "showDiagram"
+        - type: "ea_export"
       next: finalize
 
     - id: finalize

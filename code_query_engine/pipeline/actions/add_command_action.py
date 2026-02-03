@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
 
+from common.utils import sanitize_uml_answer
 from server.commands import build_default_command_registry
 
 from ..definitions import StepDef
@@ -43,7 +44,13 @@ class AddCommandAction(PipelineActionBase):
         if not types:
             return None
 
+        base_text, field = self._select_base_text(state)
+        if not base_text:
+            return None
+
         applied: List[str] = []
+        snippets: List[str] = []
+        requires_sanitized = False
         for t in types:
             try:
                 cmd = _COMMAND_REGISTRY.get(t)
@@ -53,23 +60,43 @@ class AddCommandAction(PipelineActionBase):
             if not cmd.can_execute(state):
                 continue
 
-            state.answer_pl = self._apply_to_text(state.answer_pl, cmd, state, applied)
-            state.answer_en = self._apply_to_text(state.answer_en, cmd, state, applied)
-            if state.final_answer:
-                state.final_answer = self._apply_to_text(state.final_answer, cmd, state, applied)
+            link = cmd.build_link(base_text, state)
+            if not link:
+                continue
+            snippets.append(link)
+            applied.append(cmd.command_type)
+            requires_sanitized = requires_sanitized or bool(getattr(cmd, "requires_sanitized_answer", False))
 
         if applied:
             setattr(state, "_commands_applied", applied)
+        if not snippets:
+            return None
+
+        if requires_sanitized:
+            base_text = sanitize_uml_answer(base_text)
+
+        links_html = " ".join(snippets)
+        appended = f"{base_text}\n\n<div class=\"command-links\">{links_html}</div>"
+
+        self._write_back(state, field, appended)
 
         return None
 
-    def _apply_to_text(self, text: Optional[str], cmd, state: PipelineState, applied: List[str]) -> Optional[str]:
-        if not text:
-            return text
-        result = cmd.apply(text, state)
-        if result.appended and cmd.command_type not in applied:
-            applied.append(cmd.command_type)
-        return result.output
+    def _select_base_text(self, state: PipelineState) -> tuple[Optional[str], str]:
+        if state.final_answer:
+            return state.final_answer, "final_answer"
+        if state.answer_pl:
+            return state.answer_pl, "answer_pl"
+        if state.answer_en:
+            return state.answer_en, "answer_en"
+        if state.last_model_response:
+            return state.last_model_response, "last_model_response"
+        return None, ""
+
+    def _write_back(self, state: PipelineState, field: str, text: str) -> None:
+        if not field:
+            return
+        setattr(state, field, text)
 
     def _extract_command_types(self, step: StepDef) -> List[str]:
         raw = step.raw or {}

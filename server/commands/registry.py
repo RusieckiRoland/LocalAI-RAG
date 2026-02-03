@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Dict
 
 from .base_command import BaseCommand
+from .ea_export_command import EaExportCommand
 from .show_diagram_command import ShowDiagramCommand
 
 
@@ -26,4 +27,5 @@ class CommandRegistry:
 def build_default_command_registry() -> CommandRegistry:
     reg = CommandRegistry()
     reg.register(ShowDiagramCommand())
+    reg.register(EaExportCommand())
     return reg
