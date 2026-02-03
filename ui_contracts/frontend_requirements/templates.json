@@ -4,7 +4,7 @@
     {
       "id": "rejewski",
       "pipelineName": "rejewski",
-      "branchPickerMode": "single",
+      "snapshotPickerMode": "single",
       "icon": "🧠",
       "displayName": "Marian Rejewski",
       "cardDescription": { "pl": "Analiza kodu", "en": "Code analysis" },
@@ -21,7 +21,7 @@
     {
       "id": "ada",
       "pipelineName": "ada",
-      "branchPickerMode": "none",
+      "snapshotPickerMode": "none",
       "icon": "📐",
       "displayName": "Ada Lovelace",
       "cardDescription": { "pl": "Diagramy UML", "en": "UML diagrams" },
@@ -38,7 +38,7 @@
     {
       "id": "shannon",
       "pipelineName": "shannon",
-      "branchPickerMode": "compare",
+      "snapshotPickerMode": "compare",
       "icon": "🔀",
       "displayName": "Claude Shannon",
       "cardDescription": { "pl": "Porównywanie branchy", "en": "Branch comparison" },

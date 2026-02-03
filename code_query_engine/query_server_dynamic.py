@@ -27,7 +27,7 @@ from vector_db.weaviate_client import get_settings as get_weaviate_settings, cre
 from code_query_engine.pipeline.providers.weaviate_retrieval_backend import WeaviateRetrievalBackend
 from code_query_engine.pipeline.providers.weaviate_graph_provider import WeaviateGraphProvider
 from server.auth import get_default_user_access_provider, UserAccessContext
-from server.app_config import AppConfigService, BranchResolver, default_templates_store
+from server.app_config import AppConfigService, default_templates_store
 from server.pipelines import PipelineAccessService, PipelineSnapshotStore
 from server.snapshots import SnapshotRegistry
 
@@ -188,7 +188,6 @@ else:
     _graph_provider = WeaviateGraphProvider(client=_weaviate_client)
 
 _templates_store = default_templates_store(PROJECT_ROOT)
-_branch_resolver = BranchResolver(project_root=PROJECT_ROOT)
 _pipeline_access = PipelineAccessService()
 _snapshot_registry = SnapshotRegistry(_weaviate_client) if _weaviate_client else None
 _pipeline_settings_by_name = {}
@@ -212,7 +211,6 @@ _snapshot_policy = str(_runtime_cfg.get("snapshot_policy") or "single").strip() 
 _app_config_service = AppConfigService(
     templates_store=_templates_store,
     access_provider=_user_access_provider,
-    branch_resolver=_branch_resolver,
     pipeline_access=_pipeline_access,
     snapshot_registry=_snapshot_registry,
     pipeline_snapshot_store=_pipeline_snapshot_store,
@@ -507,6 +505,8 @@ def query():
         overrides["branch_b"] = branch_b
     if access_ctx.acl_tags_all:
         overrides["retrieval_filters"] = {"acl_tags_all": list(access_ctx.acl_tags_all)}
+    if access_ctx.allowed_commands:
+        overrides["allowed_commands"] = list(access_ctx.allowed_commands)
 
     # Enforce pipeline access if the provider returns explicit restrictions.
     if access_ctx.allowed_pipelines:

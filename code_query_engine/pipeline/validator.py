@@ -27,7 +27,8 @@ class PipelineValidator:
         "fetch_node_texts",
         "finalize",      
         "loop_guard",
-        "set_variables"
+        "set_variables",
+        "add_command_action"
     }
 
     def validate(self, pipeline: Any) -> List[str]:

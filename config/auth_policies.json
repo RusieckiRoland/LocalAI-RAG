@@ -2,7 +2,10 @@
   "groups": {
     "anonymous": {
       "allowed_pipelines": [
-        "rejewski"
+        "ada"
+      ],
+      "allowed_commands": [
+        "showDiagram"
       ],
       "acl_tags_all": []
     },
@@ -11,6 +14,10 @@
         "rejewski",
         "ada",
         "shannon"
+      ],
+      "allowed_commands": [
+        "showDiagram",
+        "saveDiagram"
       ],
       "acl_tags_all": [
         "security",

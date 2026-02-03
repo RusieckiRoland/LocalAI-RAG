@@ -31,10 +31,6 @@ Always:
   - `answer_pl` if present,
   - otherwise `answer_en`.
 
-Best-effort:
-
-- `state.final_answer` may be passed through `runtime.add_plant_link(...)` (e.g., to attach a PlantUML rendering link).
-
 The action **does not translate**. If translation is needed, it should be done earlier (e.g., `translate_out_if_needed`) which populates `state.answer_pl`.
 
 ## Persist / logging — optional

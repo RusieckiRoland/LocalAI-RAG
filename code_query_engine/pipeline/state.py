@@ -21,6 +21,7 @@ class PipelineState:
     repository: Optional[str] = None
     snapshot_id: Optional[str] = None
     snapshot_set_id: Optional[str] = None
+    allowed_commands: List[str] = field(default_factory=list)
 
     # Router outputs / parse artifacts
     router_raw: Optional[str] = None

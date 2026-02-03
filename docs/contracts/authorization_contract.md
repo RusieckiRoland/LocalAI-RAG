@@ -40,6 +40,7 @@ The backend is the source of truth. The frontend treats authorization as an inpu
 ### 4.2. Group permissions
 A group determines:
 - `allowed_pipelines` – the list of pipelines available to the user.
+- `allowed_commands` – the list of functional commands available to the user (UI/Backend).
 - `acl_tags_all` – ACL tags that must be satisfied in retrieval/graph.
 
 ### 4.3. Inheritance rule
@@ -54,6 +55,7 @@ A group determines:
 ### 4.5. User in multiple groups
 Permissions are **unioned**:
 - `allowed_pipelines` = union of `allowed_pipelines` across all user groups.
+- `allowed_commands` = union of `allowed_commands` across all user groups.
 - `acl_tags_all` = union of `acl_tags_all` across all user groups.
 
 ### 4.6. `allowed_pipelines` matching
@@ -80,6 +82,7 @@ UserAccessContext(
   is_anonymous: bool,
   group_ids: List[str],
   allowed_pipelines: List[str],
+  allowed_commands: List[str],
   acl_tags_all: List[str]
 )
 ```
@@ -96,6 +99,9 @@ Example (current):
       "allowed_pipelines": [
         "marian_rejewski_code_analysis_base"
       ],
+      "allowed_commands": [
+        "showDiagram"
+      ],
       "acl_tags_all": []
     },
     "authenticated": {
@@ -103,6 +109,10 @@ Example (current):
         "marian_rejewski_code_analysis_base",
         "ada_uml_base",
         "branch_compare_base"
+      ],
+      "allowed_commands": [
+        "showDiagram",
+        "saveDiagram"
       ],
       "acl_tags_all": [
         "security",

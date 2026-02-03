@@ -9,16 +9,13 @@
         "user_id": "string|null",
         "user_kind": "anonymous|user",
         "repository": "string",
-        "branches": ["string"],
-        "defaultBranchA": "string",
-        "defaultBranchB": "string",
         "snapshotPolicy": "single|multi_confirm",
         "defaultConsultantId": "string",
         "consultants": [
           {
             "id": "string",
             "pipelineName": "string",
-            "branchPickerMode": "single|compare",
+            "snapshotPickerMode": "single|compare",
             "snapshotSetId": "string|null",
             "snapshots": [
               {
@@ -43,9 +40,7 @@
         "query": "string",
         "consultant": "string",
         "translateChat": "bool",
-        "branchA": "string",
-        "branchB": "string|null",
-        "snapshot_id": "string|null",
+        "snapshots": ["string"],
         "snapshot_set_id": "string|null"
       },
       "response": {
@@ -57,9 +52,9 @@
     }
   },
   "uiRules": {
-    "branchPickerMode": {
-      "single": "UI shows one branch selector (A). BranchB is hidden and sent as empty/null.",
-      "compare": "UI shows two branch selectors (A and B)."
+    "snapshotPickerMode": {
+      "single": "UI shows one snapshot selector.",
+      "compare": "UI shows two snapshot selectors (left/right)."
     },
     "snapshotPolicy": {
       "single": "Default. A conversation must not span multiple snapshot sets. If the user selects a pipeline with a different snapshotSetId, the UI must ask to start a new conversation. If rejected, keep the previous pipeline and snapshot selection.",

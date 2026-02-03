@@ -1,11 +1,13 @@
-# Frontend contract: consultants, pipelines, `ui_contracts` (EN)
+# Frontend contract: consultants, pipelines, snapshots, `ui_contracts` (EN)
 
 ## Scope
 This document specifies the backend↔frontend contract for:
 - dynamic loading of “consultants” (UI cards),
 - consultant → pipeline mapping,
-- UI visibility control (currently: branch picker mode),
+- UI visibility control for snapshot selection,
 - a shared contract for Python backend and a JS mock server.
+
+It is framework-agnostic so a team can build the UI in Angular (or any other framework) without reading backend code.
 
 ---
 
@@ -31,19 +33,17 @@ Single source of truth for consultant UI templates.
 Each template:
 - defines the consultant card visuals and texts,
 - references `pipelineName`,
-- defines the branch UI mode (`branchPickerMode`).
+- defines the snapshot UI mode (`snapshotPickerMode`).
 
 ---
 
-## Definitions
+## Glossary (UI vs backend naming)
+- **Pipeline**: backend execution unit (YAML). Permissions are assigned to pipelines.
+- **Consultant**: UI presentation of a pipeline (card, texts, icon). Currently 1:1 with a pipeline.
+- **SnapshotSet** (backend) ↔ **Project** (UX label)
+- **Snapshot** (backend) ↔ **Version** (UX label)
 
-### Pipeline
-Backend execution unit (YAML).  
-Permissions are assigned to pipelines (security/functionality), not to templates.
-
-### UI template
-Frontend presentation configuration for a consultant.  
-A template is a “view” on top of a pipeline, not logic.
+UI should show “Project / Version”, but must send `snapshot_set_id` and `snapshot_id` to the backend.
 
 ---
 
@@ -54,71 +54,88 @@ Example:
 ```json
 {
   "id": "shannon",
-  "pipelineName": "branch_compare_base"
+  "pipelineName": "shannon"
 }
 ```
 
 Frontend does not know YAML details; it only sends the pipeline name.
+Current assumption: `consultant.id` equals `pipelineName` (1:1 mapping). If this changes, the backend must expose a distinct `pipelineName` and the frontend must send it explicitly.
 
 ---
 
-## UI control: `branchPickerMode`
-Minimal UI control mechanism for branch selection.
+## UI control: `snapshotPickerMode`
+Minimal UI control mechanism for snapshot selection.
 
 Values:
-- `none` — show no branch selects (assume no retrieval or retrieval not needed)
-- `single` — show 1 branch select
-- `compare` — show 2 branch selects + “vs” separator
+- `none` — show no version selectors (assume no retrieval)
+- `single` — show 1 version selector
+- `compare` — show 2 version selectors + “vs” separator
+If the value is missing/unknown, the frontend should treat it as `single`.
 
-Templates must include `branchPickerMode`.
+Templates must include `snapshotPickerMode`.
 
 Examples:
 ```json
 {
   "id": "rejewski",
-  "pipelineName": "marian_rejewski_code_analysis_base",
-  "branchPickerMode": "single"
+  "pipelineName": "rejewski",
+  "snapshotPickerMode": "single"
 }
 ```
 
 ```json
 {
   "id": "shannon",
-  "pipelineName": "branch_compare_base",
-  "branchPickerMode": "compare"
+  "pipelineName": "shannon",
+  "snapshotPickerMode": "compare"
 }
 ```
 
 ```json
 {
-  "id": "direct",
-  "pipelineName": "direct_answer_base",
-  "branchPickerMode": "none"
+  "id": "ada",
+  "pipelineName": "ada",
+  "snapshotPickerMode": "none"
 }
 ```
 
 ---
 
-## Backend → frontend startup contract: `/app-config`
+## Backend → frontend startup contract: `GET /app-config`
 Frontend bootstraps via `GET /app-config`.
 
 Minimum response fields:
 - `contractVersion`
 - `defaultConsultantId`
-- `branches[]` — list of available branches (currently from indexes)
 - `consultants[]` — consultant templates filtered by permissions
+- `snapshotPolicy` — how to confirm snapshot set changes
+
+Each consultant includes:
+- `pipelineName`
+- `snapshotSetId` (empty if no retrieval)
+- `snapshots[]` (empty if no retrieval)
+  - each snapshot has `id` and `label`
+Additional consultant fields:
+- `cardDescription`, `welcomeTemplate`, `welcomeLinkText`, `wikiUrl` are localized objects: `{ "pl": "...", "en": "..." }`.
+  - If a key is missing for the current UI language, the frontend should fall back to another language (e.g., `en`) or the first available value.
+- `icon` is a plain text string (emoji recommended). The UI treats it as text.
 
 Logical structure:
 ```json
 {
   "contractVersion": "1.0",
   "defaultConsultantId": "rejewski",
-  "branches": ["2025-12-14__develop", "2025-12-14__release_4_60"],
+  "snapshotPolicy": "single",
   "consultants": [
     {
       "id": "rejewski",
-      "pipelineName": "marian_rejewski_code_analysis_base",
-      "branchPickerMode": "single",
+      "pipelineName": "rejewski",
+      "snapshotPickerMode": "single",
+      "snapshotSetId": "nopCommerce_4-60_4-90",
+      "snapshots": [
+        { "id": "48440Ahh", "label": "release-4.60.0" },
+        { "id": "585959595", "label": "release-4.90.0" }
+      ],
       "icon": "🧠",
       "displayName": "Marian Rejewski",
       "cardDescription": { "pl": "Analiza kodu", "en": "Code analysis" },
@@ -130,37 +147,47 @@ Logical structure:
 }
 ```
 
-Note:
-- The legacy `/branch` endpoint is replaced by `branches[]` in `/app-config`.
+Notes:
+- `snapshots[].label` is what UI should display as “Version”.
+- `snapshots[].id` is what UI must send as `snapshot_id`.
+- When `snapshotPickerMode` is `none`, both `snapshotSetId` and `snapshots[]` are empty.
+`snapshotPolicy` values:
+- `single` — if snapshot set changes, require starting a new chat.
+- `multi_confirm` — allow switching with confirmation and log a system message.
+- `multi_silent` — allow switching without confirmation.
 
 ---
 
-## Frontend: request payload
+## Frontend: request payload (`POST /search`)
 Frontend sends:
-- `pipelineName` from the selected consultant,
-- `branches` as a list of 0..2 items,
-- `X-Session-ID` (if present; otherwise backend generates and returns it).
+- `pipelineName` (or `consultant`) from the selected consultant
+- `snapshot_set_id` from consultant (if present)
+- `snapshots[]` as a list of 0..2 snapshot IDs
+- `X-Session-ID` (if present; otherwise backend generates and returns it)
 
-Rules for `branches`:
-- missing or empty list = no branch selected (assume no retrieval)
-- 1 item = single branch
-- 2 items = compare mode; branches must be different
+Rules for `snapshots[]`:
+- missing or empty list = no retrieval
+- 1 item = single version
+- 2 items = compare mode; items must be different
+For compare mode, the frontend must disable “Send” until 2 different snapshot IDs are selected.
 
-Logical payload (no retrieval / `branchPickerMode: none`):
+Logical payload (no retrieval / `snapshotPickerMode: none`):
 ```json
 {
   "query": "...",
-  "pipelineName": "direct_answer_base",
-  "translateChat": true
+  "consultant": "ada",
+  "translateChat": true,
+  "snapshots": []
 }
 ```
 
-Logical payload (single branch):
+Logical payload (single version):
 ```json
 {
   "query": "...",
-  "pipelineName": "marian_rejewski_code_analysis_base",
-  "branches": ["2025-12-14__release_4_90"],
+  "consultant": "rejewski",
+  "snapshot_set_id": "nopCommerce_4-60_4-90",
+  "snapshots": ["48440Ahh"],
   "translateChat": true
 }
 ```
@@ -169,27 +196,47 @@ Logical payload (compare):
 ```json
 {
   "query": "...",
-  "pipelineName": "branch_compare_base",
-  "branches": ["2025-12-14__release_4_90", "2025-12-14__release_4_60"],
+  "consultant": "shannon",
+  "snapshot_set_id": "fakeSnapSet",
+  "snapshots": ["aaa111", "bbb222"],
   "translateChat": true
 }
 ```
+
+Notes:
+- The current UI sends `consultant` (not `pipelineName`) and it is expected to be the consultant `id`.
+- `translateChat: true` means the UI language is Polish; `false` means English. Backend may use it to control prompts or translation behavior.
+
+---
+
+## UX rules (framework-agnostic)
+- Show **Project** and **Version** in the UI, but send `snapshot_set_id` and `snapshot_id`.
+- Hide the version selectors when `snapshotPickerMode` is `none` or `snapshots[]` is empty.
+- In compare mode, require two different versions before enabling “Send”.
+- One chat must not mix different `snapshot_set_id` values.
+  - If the user switches to a consultant with a different `snapshotSetId` and the conversation already used a non-empty set, show a confirmation and start a new chat if accepted.
+
+## Response contract (`POST /search`)
+Minimum response fields:
+- `results` — markdown string; frontend renders it as markdown
+- `session_id` — may be returned on every response or only once; frontend should update session id if present
 
 ---
 
 ## Backend: building `/app-config`
 Minimal flow:
-1. Identify user (currently: `anonymous`)
+1. Identify user
 2. Create session
 3. Resolve allowed pipelines for the user
 4. Select templates (from `templates.json`) only for allowed pipelines
-5. Resolve available branches (currently from indexes)
-6. Return `/app-config`
+5. For each pipeline, resolve `snapshot_set_id` from YAML
+6. Resolve `snapshots[]` from Weaviate (labels + ids)
+7. Return `/app-config`
 
 ---
 
 ## JS mock server
-The mock server must expose `/app-config` compatible with this contract.  
+The mock server must expose `/app-config` compatible with this contract.
 Goal: allow testing UI without Python, then switch to Python backend without UI changes.
 
 ---

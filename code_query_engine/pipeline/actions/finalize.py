@@ -56,13 +56,6 @@ class FinalizeAction(PipelineActionBase):
         else:
             state.final_answer = state.answer_en
 
-        # PlantUML link (best-effort; may be a no-op in tests).
-        try:
-            state.final_answer = runtime.add_plant_link(state.final_answer, state.consultant)
-        except Exception:
-            py_logger.exception("soft-failure: add_plant_link failed; continuing without PlantUML link")
-            pass
-
         if not persist_enabled:
             return None
 

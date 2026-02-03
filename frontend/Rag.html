@@ -319,6 +319,11 @@
       padding-left: 0.25rem;
       white-space: nowrap;
     }
+    .controls-spacer {
+      flex: 1 1 auto;
+      min-width: 0;
+      display: none;
+    }
 
     .lang-select {
       min-width: 240px;
@@ -350,6 +355,7 @@
         border-right: none;
         padding-right: 0;
       }
+      .controls-spacer { display: none !important; }
       .actions-controls {
         flex: 1 1 100%;
         justify-content: flex-end;
@@ -433,6 +439,52 @@
       font-size: 0.875rem;
       display: none;
     }
+
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(15, 23, 42, 0.45);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 50;
+    }
+    .modal {
+      background: white;
+      border-radius: 0.75rem;
+      padding: 1rem 1.25rem;
+      width: min(480px, 92vw);
+      box-shadow: 0 12px 30px rgba(0,0,0,0.18);
+    }
+    .modal-title {
+      font-weight: 700;
+      margin-bottom: 0.5rem;
+      color: #111827;
+    }
+    .modal-body {
+      color: #374151;
+      font-size: 0.95rem;
+      margin-bottom: 1rem;
+      white-space: pre-line;
+    }
+    .modal-actions {
+      display: flex;
+      gap: 0.5rem;
+      justify-content: flex-end;
+    }
+    .modal-btn {
+      border-radius: 0.5rem;
+      padding: 0.45rem 0.9rem;
+      font-weight: 600;
+    }
+    .modal-btn.cancel {
+      background: #e5e7eb;
+      color: #111827;
+    }
+    .modal-btn.confirm {
+      background: #2563eb;
+      color: white;
+    }
   </style>
 </head>
 
@@ -461,6 +513,7 @@
         <div class="branch-controls" id="branchControls">
           <!-- Rendered by JS -->
         </div>
+        <div class="controls-spacer" id="controlsSpacer"></div>
 
         <div class="actions-controls">
           <select id="lang" class="select-field lang-select">
@@ -472,6 +525,17 @@
         </div>
       </div>
     </form>
+  </div>
+
+  <div class="modal-backdrop" id="snapshotModalBackdrop" style="display:none;">
+    <div class="modal">
+      <div class="modal-title" id="snapshotModalTitle">Potwierdzenie</div>
+      <div class="modal-body" id="snapshotModalBody"></div>
+      <div class="modal-actions">
+        <button type="button" class="modal-btn cancel" id="snapshotModalCancel">Anuluj</button>
+        <button type="button" class="modal-btn confirm" id="snapshotModalConfirm">OK</button>
+      </div>
+    </div>
   </div>
 
 <script>
@@ -486,15 +550,14 @@
   let selectedConsultant = null;
   let appConfig = null;
   let consultantsById = {};
-  let branches = [];
   let snapshotPolicy = "single";
   let currentSnapshotSetId = localStorage.getItem("snapshotSetId") || null;
   let currentSnapshotId = localStorage.getItem("snapshotId") || null;
   let currentSnapshotLabel = localStorage.getItem("snapshotLabel") || null;
+  let conversationSnapshotSetId = localStorage.getItem("conversationSnapshotSetId") || null;
 
-  let selectedBranchA = null;
-  let selectedBranchB = null;
-  let selectedSnapshotId = null;
+  let selectedSnapshotA = null;
+  let selectedSnapshotB = null;
 
   let fakeAuthEnabled = false;
   const DEV_AUTH_USER_ID = "dev-user-1";
@@ -509,7 +572,13 @@
   const newChatBtn = document.getElementById("newChatBtn");
   const uiError = document.getElementById("uiError");
   const branchControls = document.getElementById("branchControls");
+  const controlsSpacer = document.getElementById("controlsSpacer");
   const authToggleBtn = document.getElementById("authToggleBtn");
+  const snapshotModalBackdrop = document.getElementById("snapshotModalBackdrop");
+  const snapshotModalTitle = document.getElementById("snapshotModalTitle");
+  const snapshotModalBody = document.getElementById("snapshotModalBody");
+  const snapshotModalCancel = document.getElementById("snapshotModalCancel");
+  const snapshotModalConfirm = document.getElementById("snapshotModalConfirm");
 
   // If name is longer than this, we shorten it in CLOSED state.
   // In compare mode we also shorten even if it's below the threshold (to make differences obvious).
@@ -527,13 +596,19 @@
       locale: "pl-PL",
       copy: "Kopiuj",
       copied: "Skopiowano!",
-      branchLabel: "Branch",
-      snapshotLabel: "Snapshot",
-      branchDisabled: "no retrieval",
+      snapshotLabel: "Wersja",
+      snapshotDisabled: "no retrieval",
       vs: "vs",
-      compareChooseTwo: "Wybierz dwa branche do porównania.",
-      compareChooseDifferent: "W trybie porównania wybierz dwa różne branche.",
-      queryTooLong: "Za długie zapytanie"
+      compareChooseTwo: "Wybierz dwa snapshoty do porównania.",
+      compareChooseDifferent: "W trybie porównania wybierz dwa różne snapshoty.",
+      queryTooLong: "Za długie zapytanie",
+      snapshotChangeSingleTitle: "Rozpocząć nową rozmowę?",
+      snapshotChangeSingleBody: "Wskazany konsultant korzysta z innego zakresu wersji. Żeby się przełączyć rozpocznij nową rozmowę.",
+      snapshotChangeMultiTitle: "Zmienić zakres wersji?",
+      snapshotChangeMultiBody: "Zmiana zakresu wersji w trakcie tej samej rozmowy może pomieszać kontekst. Kontynuować?",
+      modalConfirm: "Nowa rozmowa",
+      modalCancel: "Anuluj",
+      modalContinue: "Kontynuuj"
     },
     en: {
       send: "Send",
@@ -546,13 +621,19 @@
       locale: "en-GB",
       copy: "Copy",
       copied: "Copied!",
-      branchLabel: "Branch",
-      snapshotLabel: "Snapshot",
-      branchDisabled: "no retrieval",
+      snapshotLabel: "Version",
+      snapshotDisabled: "no retrieval",
       vs: "vs",
-      compareChooseTwo: "Choose two branches to compare.",
-      compareChooseDifferent: "In compare mode, choose two different branches.",
-      queryTooLong: "Query is too long"
+      compareChooseTwo: "Choose two snapshots to compare.",
+      compareChooseDifferent: "In compare mode, choose two different snapshots.",
+      queryTooLong: "Query is too long",
+      snapshotChangeSingleTitle: "Start a new chat?",
+      snapshotChangeSingleBody: "The selected consultant uses a different version scope. To switch, start a new chat.",
+      snapshotChangeMultiTitle: "Change version scope?",
+      snapshotChangeMultiBody: "Changing the version scope within the same chat may mix context. Continue?",
+      modalConfirm: "Start new chat",
+      modalCancel: "Cancel",
+      modalContinue: "Continue"
     }
   };
 
@@ -590,7 +671,6 @@
     for (const c of (appConfig?.consultants || [])) {
       consultantsById[c.id] = c;
     }
-    branches = Array.isArray(appConfig?.branches) ? appConfig.branches : [];
     snapshotPolicy = String(appConfig?.snapshotPolicy || "single").trim() || "single";
   }
 
@@ -678,13 +758,8 @@
     welcomeMessage.appendChild(document.createTextNode(after));
   }
 
-  function firstBranchOrNull() {
-    return branches.length ? branches[0] : null;
-  }
-
-  function secondBranchOrFirst() {
-    if (branches.length >= 2) return branches[1];
-    return branches.length ? branches[0] : null;
+  function firstSnapshotOrNull(list) {
+    return list && list.length ? list[0] : null;
   }
 
   function getConsultantSnapshots(c) {
@@ -713,6 +788,40 @@
       currentSnapshotSetId = snapshotSetId;
       localStorage.setItem("snapshotSetId", snapshotSetId);
     }
+  }
+
+  function hasActiveConversation() {
+    return responseDiv && responseDiv.children && responseDiv.children.length > 0;
+  }
+
+  function showSnapshotModal(title, message, onConfirm, onCancel, confirmLabel) {
+    if (!snapshotModalBackdrop) {
+      const ok = confirm(`${title}\n\n${message}`);
+      if (ok) onConfirm();
+      else if (onCancel) onCancel();
+      return;
+    }
+    const t = getTexts(getCurrentLang());
+    snapshotModalTitle.textContent = title;
+    snapshotModalBody.textContent = message;
+    snapshotModalConfirm.textContent = confirmLabel || t.modalConfirm || "OK";
+    snapshotModalCancel.textContent = t.modalCancel || "Anuluj";
+    snapshotModalBackdrop.style.display = "flex";
+
+    const cleanup = () => {
+      snapshotModalBackdrop.style.display = "none";
+      snapshotModalConfirm.onclick = null;
+      snapshotModalCancel.onclick = null;
+    };
+
+    snapshotModalConfirm.onclick = () => {
+      cleanup();
+      onConfirm();
+    };
+    snapshotModalCancel.onclick = () => {
+      cleanup();
+      if (onCancel) onCancel();
+    };
   }
 
   function addSystemMessage(text) {
@@ -891,8 +1000,7 @@
     const t = getTexts(lang);
 
     const c = consultantsById[selectedConsultant];
-    let mode = (c && c.branchPickerMode) ? c.branchPickerMode : "single";
-    if (hasSnapshots(c)) mode = "single";
+    const mode = (c && (c.snapshotPickerMode || c.branchPickerMode)) ? (c.snapshotPickerMode || c.branchPickerMode) : "single";
 
     if (!submitButton) return;
 
@@ -902,14 +1010,22 @@
 
     if (mode !== "compare") return;
 
-    // Compare mode: must have 2 different branches.
-    if (!selectedBranchA || !selectedBranchB) {
+    // Compare mode: must have 2 different snapshots.
+    let effectiveA = selectedSnapshotA;
+    let effectiveB = selectedSnapshotB;
+    const selects = branchControls ? branchControls.querySelectorAll(".branch-select") : [];
+    if (selects && selects.length >= 2) {
+      effectiveA = selects[0].value || effectiveA;
+      effectiveB = selects[1].value || effectiveB;
+    }
+
+    if (!effectiveA || !effectiveB) {
       submitButton.disabled = true;
       submitButton.title = t.compareChooseTwo;
       return;
     }
 
-    if (selectedBranchA === selectedBranchB) {
+    if (effectiveA === effectiveB) {
       submitButton.disabled = true;
       submitButton.title = t.compareChooseDifferent;
       return;
@@ -922,44 +1038,37 @@
     const c = consultantsById[selectedConsultant];
 
     branchControls.innerHTML = "";
+    branchControls.style.display = "";
+    if (controlsSpacer) controlsSpacer.style.display = "none";
 
-    const label = document.createElement("div");
-    label.className = "branch-label";
-    const labelText = hasSnapshots(c) ? t.snapshotLabel : t.branchLabel;
-    label.innerHTML = `🔀 <span>${labelText}</span>`;
-    branchControls.appendChild(label);
-
-    let mode = (c && c.branchPickerMode) ? c.branchPickerMode : "single";
-    if (hasSnapshots(c)) mode = "single";
-    branchControls.classList.toggle("compare", mode === "compare");
-
-    if (mode === "none") {
-      selectedBranchA = null;
-      selectedBranchB = null;
-
-      const hint = document.createElement("div");
-      hint.className = "branch-none-hint";
-      hint.textContent = t.branchDisabled;
-      branchControls.appendChild(hint);
-
+    const mode = (c && (c.snapshotPickerMode || c.branchPickerMode)) ? (c.snapshotPickerMode || c.branchPickerMode) : "single";
+    if (!hasSnapshots(c) || mode === "none") {
+      selectedSnapshotA = null;
+      selectedSnapshotB = null;
+      branchControls.style.display = "none";
+      if (controlsSpacer) controlsSpacer.style.display = "block";
       updateSendButtonState();
       return;
     }
 
-    const snapshots = getConsultantSnapshots(c);
-    const usingSnapshots = snapshots.length > 0;
+    const label = document.createElement("div");
+    label.className = "branch-label";
+    label.innerHTML = `🔀 <span>${t.snapshotLabel}</span>`;
+    branchControls.appendChild(label);
 
-    if (usingSnapshots) {
-      if (!selectedSnapshotId) {
-        selectedSnapshotId = snapshots[0]?.id || null;
+    branchControls.classList.toggle("compare", mode === "compare");
+
+    const snapshots = getConsultantSnapshots(c);
+    if (!selectedSnapshotA) {
+      selectedSnapshotA = firstSnapshotOrNull(snapshots)?.id || null;
+    }
+    if (mode === "compare") {
+      if (!selectedSnapshotB) {
+        const second = snapshots.length > 1 ? snapshots[1] : snapshots[0];
+        selectedSnapshotB = (second && second.id) ? second.id : null;
       }
     } else {
-      if (!selectedBranchA) selectedBranchA = firstBranchOrNull();
-      if (mode === "compare") {
-        if (!selectedBranchB) selectedBranchB = secondBranchOrFirst();
-      } else {
-        selectedBranchB = null;
-      }
+      selectedSnapshotB = null;
     }
 
     updateSendButtonState();
@@ -1004,19 +1113,19 @@
       return sel;
     };
 
-    if (usingSnapshots) {
+    {
       const snapSet = getSnapshotSetId(c);
-      if (snapSet && currentSnapshotSetId && snapSet === currentSnapshotSetId && !selectedSnapshotId) {
-        selectedSnapshotId = currentSnapshotId;
+      if (snapSet && currentSnapshotSetId && snapSet === currentSnapshotSetId && !selectedSnapshotA) {
+        selectedSnapshotA = currentSnapshotId;
       }
       const snapshotOptions = snapshots.map(s => ({
         value: s.id,
         label: s.label || s.id,
       }));
-      const sel = makeSelect(snapshotOptions, selectedSnapshotId, v => {
-        const prevId = selectedSnapshotId;
+      const selA = makeSelect(snapshotOptions, selectedSnapshotA, v => {
+        const prevId = selectedSnapshotA;
         const prevLabel = currentSnapshotLabel || prevId;
-        selectedSnapshotId = v;
+        selectedSnapshotA = v;
         const chosen = snapshots.find(s => s.id === v);
         const nextLabel = chosen?.label || v;
         updateSnapshotState(v, nextLabel, getSnapshotSetId(c));
@@ -1024,23 +1133,22 @@
           addSystemMessage(`Snapshot changed: ${prevLabel || prevId} → ${nextLabel}`);
         }
       });
-      branchControls.appendChild(sel);
+      branchControls.appendChild(selA);
+
+      if (mode === "compare") {
+        const vs = document.createElement("div");
+        vs.className = "vs-badge";
+        vs.textContent = t.vs;
+        branchControls.appendChild(vs);
+
+        const selB = makeSelect(snapshotOptions, selectedSnapshotB, v => {
+          selectedSnapshotB = v;
+        });
+        branchControls.appendChild(selB);
+      }
+
       requestAnimationFrame(autoSizeAllBranchSelects);
       return;
-    }
-
-    const branchOptions = branches.map(b => ({ value: b, label: b }));
-    const selA = makeSelect(branchOptions, selectedBranchA, v => selectedBranchA = v);
-    branchControls.appendChild(selA);
-
-    if (mode === "compare") {
-      const vs = document.createElement("div");
-      vs.className = "vs-badge";
-      vs.textContent = t.vs;
-      branchControls.appendChild(vs);
-
-      const selB = makeSelect(branchOptions, selectedBranchB, v => selectedBranchB = v);
-      branchControls.appendChild(selB);
     }
 
     requestAnimationFrame(autoSizeAllBranchSelects);
@@ -1081,25 +1189,53 @@
     const next = consultantsById[id];
     const prevSet = getSnapshotSetId(prev);
     const nextSet = getSnapshotSetId(next);
-    const effectivePrevSet = prevSet || currentSnapshotSetId;
+    const effectivePrevSet = conversationSnapshotSetId;
 
-    if (nextSet && effectivePrevSet && nextSet !== effectivePrevSet) {
+    // Only enforce when the conversation already used a non-empty snapshot set.
+    if (nextSet && effectivePrevSet && nextSet !== effectivePrevSet && hasActiveConversation()) {
       if (snapshotPolicy === "single") {
-        const ok = confirm("Zmiana snapshot setu wymaga rozpoczęcia nowej rozmowy. Rozpocząć nową rozmowę?");
-        if (!ok) return;
-        newChat();
+        const t = getTexts(getCurrentLang());
+        showSnapshotModal(
+          t.snapshotChangeSingleTitle,
+          t.snapshotChangeSingleBody,
+          () => {
+            newChat();
+            currentSnapshotSetId = nextSet;
+            localStorage.setItem("snapshotSetId", nextSet);
+            selectedSnapshotA = null;
+            selectedSnapshotB = null;
+            proceedSelectConsultant(id);
+          },
+          null,
+          t.modalConfirm
+        );
+        return;
       } else if (snapshotPolicy === "multi_confirm") {
-        const ok = confirm("Zmiana snapshot setu w trakcie rozmowy. Kontynuować?");
-        if (!ok) return;
-        if (responseDiv.children.length > 0) {
-          addSystemMessage(`SnapshotSet changed: ${prevSet} → ${nextSet}`);
-        }
+        const t = getTexts(getCurrentLang());
+        showSnapshotModal(
+          t.snapshotChangeMultiTitle,
+          t.snapshotChangeMultiBody,
+          () => {
+            if (hasActiveConversation()) {
+              addSystemMessage(`SnapshotSet changed: ${prevSet} → ${nextSet}`);
+            }
+            currentSnapshotSetId = nextSet;
+            localStorage.setItem("snapshotSetId", nextSet);
+            selectedSnapshotA = null;
+            selectedSnapshotB = null;
+            proceedSelectConsultant(id);
+          },
+          null,
+          t.modalContinue
+        );
+        return;
       }
-      currentSnapshotSetId = nextSet;
-      localStorage.setItem("snapshotSetId", nextSet);
-      selectedSnapshotId = null;
     }
 
+    proceedSelectConsultant(id);
+  }
+
+  function proceedSelectConsultant(id) {
     selectedConsultant = id;
 
     document.querySelectorAll(".consultant-card").forEach(el => {
@@ -1115,6 +1251,8 @@
   function newChat() {
     sessionId = null;
     localStorage.removeItem("sessionId");
+    conversationSnapshotSetId = null;
+    localStorage.removeItem("conversationSnapshotSetId");
     responseDiv.innerHTML = "";
     updateFormPosition();
     updateSendButtonState();
@@ -1185,19 +1323,13 @@
     submitButton.innerText = t.wait;
 
     const c = consultantsById[selectedConsultant];
-    let mode = (c && c.branchPickerMode) ? c.branchPickerMode : "single";
-    if (hasSnapshots(c)) mode = "single";
+    const mode = (c && (c.snapshotPickerMode || c.branchPickerMode)) ? (c.snapshotPickerMode || c.branchPickerMode) : "single";
+    const snapshotsPayload = [];
+    if (hasSnapshots(c)) {
+      if (selectedSnapshotA) snapshotsPayload.push(selectedSnapshotA);
+      if (mode === "compare" && selectedSnapshotB) snapshotsPayload.push(selectedSnapshotB);
 
-    // Build branches payload (0/1/2). In "none" mode we omit branches completely.
-    const branchesPayload = [];
-    if (mode === "single") {
-      if (selectedBranchA) branchesPayload.push(selectedBranchA);
-    } else if (mode === "compare") {
-      if (selectedBranchA) branchesPayload.push(selectedBranchA);
-      if (selectedBranchB) branchesPayload.push(selectedBranchB);
-
-      // Guard: prevent compare with the same branch on both sides.
-      if (branchesPayload.length === 2 && branchesPayload[0] === branchesPayload[1]) {
+      if (snapshotsPayload.length === 2 && snapshotsPayload[0] === snapshotsPayload[1]) {
         alert(t.compareChooseDifferent);
         submitButton.disabled = false;
         submitButton.innerText = t.send;
@@ -1211,15 +1343,12 @@
       translateChat: (lang === "pl"),
     };
 
-    if (!hasSnapshots(c)) {
-      if (branchesPayload.length > 0) {
-        body.branches = branchesPayload;
-      }
-    } else {
+    if (hasSnapshots(c)) {
       const snapSet = getSnapshotSetId(c);
-      const snapId = selectedSnapshotId || currentSnapshotId;
       if (snapSet) body.snapshot_set_id = snapSet;
-      if (snapId) body.snapshot_id = snapId;
+      body.snapshots = snapshotsPayload;
+    } else {
+      body.snapshots = [];
     }
 
     try {
@@ -1260,6 +1389,10 @@
       `;
 
       responseDiv.innerHTML = questionHTML + responseDiv.innerHTML;
+      if (body.snapshots && body.snapshots.length > 0 && body.snapshot_set_id) {
+        conversationSnapshotSetId = body.snapshot_set_id;
+        localStorage.setItem("conversationSnapshotSetId", conversationSnapshotSetId);
+      }
       queryInput.value = "";
       addCopyButtons();
       scrollToLatestResponse();
@@ -1287,6 +1420,14 @@
   async function bootstrapUi() {
     try {
       showUiError("");
+
+      // Auth state must be set before fetching /app-config.
+      fakeAuthEnabled = localStorage.getItem("fakeAuthEnabled") === "1";
+      if (authToggleBtn) {
+        authToggleBtn.classList.toggle("active", fakeAuthEnabled);
+        authToggleBtn.textContent = fakeAuthEnabled ? "Fake Logout" : "Fake Login";
+      }
+
       appConfig = await fetchAppConfig();
       rebuildConsultantsIndex();
 
@@ -1294,18 +1435,11 @@
         appConfig.defaultConsultantId ||
         (appConfig.consultants?.[0]?.id ?? null);
 
-      selectedBranchA = firstBranchOrNull();
-      selectedBranchB = secondBranchOrFirst();
-      selectedSnapshotId = currentSnapshotId;
+      selectedSnapshotA = currentSnapshotId;
+      selectedSnapshotB = null;
 
       const savedLang = getCurrentLang();
       applyLang(savedLang);
-
-      fakeAuthEnabled = localStorage.getItem("fakeAuthEnabled") === "1";
-      if (authToggleBtn) {
-        authToggleBtn.classList.toggle("active", fakeAuthEnabled);
-        authToggleBtn.textContent = fakeAuthEnabled ? "Fake Logout" : "Fake Login";
-      }
 
       updateFormPosition();
       queryInput.focus();

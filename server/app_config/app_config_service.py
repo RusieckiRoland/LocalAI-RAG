@@ -13,7 +13,6 @@ from server.snapshots.snapshot_registry import SnapshotRegistry
 class AppConfigService:
     templates_store: Any
     access_provider: UserAccessProvider
-    branch_resolver: Any
     pipeline_access: PipelineAccessService
     snapshot_registry: Optional[SnapshotRegistry]
     pipeline_snapshot_store: Optional[PipelineSnapshotStore]
@@ -37,27 +36,16 @@ class AppConfigService:
         repos = self._list_repositories(runtime_cfg)
         repo_name = str(runtime_cfg.get("repo_name") or "").strip() or (repos[0] if repos else "")
 
-        branches = self.branch_resolver.list_branches(runtime_cfg)
-        default_branch = self.branch_resolver.pick_default(branches)
-
         consultants, default_consultant_id = self.pipeline_access.filter_consultants(
             templates,
             allowed_pipelines=access_ctx.allowed_pipelines,
         )
 
         consultants = self._attach_snapshots(consultants, repository=repo_name)
-        branches, default_branch = self._resolve_snapshot_branches(
-            consultants=consultants,
-            default_consultant_id=default_consultant_id,
-            fallback_branches=branches,
-            fallback_default=default_branch,
-        )
 
         return {
             "repositories": repos,
             "defaultRepository": repo_name,
-            "branches": branches,
-            "defaultBranch": default_branch,
             "consultants": consultants,
             "defaultConsultantId": default_consultant_id,
             "templates": templates,
@@ -123,34 +111,3 @@ class AppConfigService:
         cloned["snapshotSetId"] = snapshot_set_id
         cloned["snapshots"] = [{"id": s.id, "label": s.label} for s in snapshots]
         return cloned
-
-    def _resolve_snapshot_branches(
-        self,
-        *,
-        consultants: List[Dict[str, Any]],
-        default_consultant_id: str,
-        fallback_branches: List[str],
-        fallback_default: str,
-    ) -> tuple[List[str], str]:
-        """
-        Legacy compatibility: expose snapshot labels via the branches list.
-        New UI should use consultants[].snapshots (label + id).
-        """
-        if not consultants:
-            return list(fallback_branches), fallback_default
-
-        default_id = default_consultant_id or str(consultants[0].get("id") or "")
-        selected = None
-        for c in consultants:
-            if str(c.get("id") or "") == default_id:
-                selected = c
-                break
-        if selected is None:
-            selected = consultants[0]
-
-        snapshots = list(selected.get("snapshots") or [])
-        labels = [str(s.get("label") or "").strip() for s in snapshots if str(s.get("label") or "").strip()]
-        if labels:
-            return labels, labels[0]
-
-        return list(fallback_branches), fallback_default

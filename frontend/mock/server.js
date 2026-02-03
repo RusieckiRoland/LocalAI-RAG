@@ -74,17 +74,19 @@ function pickRandom(arr) {
 
 function buildAppConfig() {
   return {
+    contractVersion: "1.0",
     defaultConsultantId: "rejewski",
-    branches: [
-      "2025-12-14__develop",
-      "2025-12-14__release_4_60",
-      "2025-12-14__release_4_90"
-    ],
+    snapshotPolicy: "single",
     consultants: [
       {
         id: "rejewski",
-        pipelineName: "marian_rejewski_code_analysis_base",
-        branchPickerMode: "single",
+        pipelineName: "rejewski",
+        snapshotPickerMode: "single",
+        snapshotSetId: "nopCommerce_4-60_4-90",
+        snapshots: [
+          { id: "48440Ahh", label: "release-4.60.0" },
+          { id: "585959595", label: "release-4.90.0" }
+        ],
         icon: "🧠",
         displayName: "Marian Rejewski",
         cardDescription: { pl: "Analiza kodu", en: "Code analysis" },
@@ -100,8 +102,10 @@ function buildAppConfig() {
       },
       {
         id: "ada",
-        pipelineName: "ada_uml_diagrams_base",
-        branchPickerMode: "single",
+        pipelineName: "ada",
+        snapshotPickerMode: "none",
+        snapshotSetId: "",
+        snapshots: [],
         icon: "📐",
         displayName: "Ada Lovelace",
         cardDescription: { pl: "Diagramy UML", en: "UML diagrams" },
@@ -117,14 +121,19 @@ function buildAppConfig() {
       },
       {
         id: "shannon",
-        pipelineName: "branch_compare_base",
-        branchPickerMode: "compare",
+        pipelineName: "shannon",
+        snapshotPickerMode: "compare",
+        snapshotSetId: "fakeSnapSet",
+        snapshots: [
+          { id: "aaa111", label: "fake-4.60.0" },
+          { id: "bbb222", label: "fake-4.90.0" }
+        ],
         icon: "🔀",
         displayName: "Claude Shannon",
-        cardDescription: { pl: "Porównywanie branchy", en: "Branch comparison" },
+        cardDescription: { pl: "Porównywanie wersji", en: "Version comparison" },
         welcomeTemplate: {
-          pl: "Zapytaj {link} o porównanie branchy i różnice.",
-          en: "Ask {link} to compare branches and differences."
+          pl: "Zapytaj {link} o porównanie wersji i różnice.",
+          en: "Ask {link} to compare versions and differences."
         },
         welcomeLinkText: { pl: "Claude’a Shannona", en: "Claude Shannon" },
         wikiUrl: {
@@ -201,8 +210,8 @@ function buildMockMarkdownResponse(ctx) {
         "# Mock analiza (Node)",
         "",
         "**Konsultant:** `" + safeStr(ctx.consultant) + "`  ",
-        "**Branch A:** `" + safeStr(ctx.branchA) + "`  ",
-        "**Branch B:** `" + safeStr(ctx.branchB) + "`",
+        "**Version A:** `" + safeStr(ctx.snapshotA) + "`  ",
+        "**Version B:** `" + safeStr(ctx.snapshotB) + "`",
         "",
         "**Pytanie użytkownika (wejście):**",
         "```",
@@ -215,8 +224,8 @@ function buildMockMarkdownResponse(ctx) {
         "# Mock analysis (Node)",
         "",
         "**Consultant:** `" + safeStr(ctx.consultant) + "`  ",
-        "**Branch A:** `" + safeStr(ctx.branchA) + "`  ",
-        "**Branch B:** `" + safeStr(ctx.branchB) + "`",
+        "**Version A:** `" + safeStr(ctx.snapshotA) + "`  ",
+        "**Version B:** `" + safeStr(ctx.snapshotB) + "`",
         "",
         "**User question (input):**",
         "```",
@@ -537,15 +546,15 @@ function buildMockMarkdownResponse(ctx) {
       return [
         baseHeader,
         "",
-        "## Porównanie branchy: potencjalny *breaking change* w kontrakcie API",
+        "## Porównanie wersji: potencjalny *breaking change* w kontrakcie API",
         "",
-        "**Wniosek:** błąd na `" + safeStr(ctx.branchA) + "` może wynikać z tego, że zniknęło pole **`IsActive`** w DTO, a UI nadal go oczekuje.",
+        "**Wniosek:** błąd na `" + safeStr(ctx.snapshotA) + "` może wynikać z tego, że zniknęło pole **`IsActive`** w DTO, a UI nadal go oczekuje.",
         "",
         "**Symptom (typowy):**",
         "- błąd deserializacji / brak pola w JSON",
         "- NullReference przy mapowaniu/wyświetlaniu",
         "",
-        "Starszy branch (`" + safeStr(ctx.branchB) + "`):",
+        "Starsza wersja (`" + safeStr(ctx.snapshotB) + "`):",
         "```csharp",
         "public sealed class CustomerContract",
         "{",
@@ -555,7 +564,7 @@ function buildMockMarkdownResponse(ctx) {
         "}",
         "```",
         "",
-        "Nowszy branch (`" + safeStr(ctx.branchA) + "`):",
+        "Nowsza wersja (`" + safeStr(ctx.snapshotA) + "`):",
         "```csharp",
         "public sealed class CustomerContract",
         "{",
@@ -575,17 +584,17 @@ function buildMockMarkdownResponse(ctx) {
       return [
         baseHeader,
         "",
-        "## Porównanie branchy: różnica w walidacji → inne zachowanie",
+        "## Porównanie wersji: różnica w walidacji → inne zachowanie",
         "",
-        "**Wniosek:** na `" + safeStr(ctx.branchA) + "` mogła dojść ostrzejsza walidacja, przez co scenariusz działający na `" + safeStr(ctx.branchB) + "` zaczyna failować.",
+        "**Wniosek:** na `" + safeStr(ctx.snapshotA) + "` mogła dojść ostrzejsza walidacja, przez co scenariusz działający na `" + safeStr(ctx.snapshotB) + "` zaczyna failować.",
         "",
-        "Branch B:",
+        "Wersja B:",
         "```csharp",
         "if (string.IsNullOrWhiteSpace(contract.DisplayName))",
         "    contract.DisplayName = \"Unknown\";",
         "```",
         "",
-        "Branch A:",
+        "Wersja A:",
         "```csharp",
         "if (string.IsNullOrWhiteSpace(contract.DisplayName))",
         "    throw new ValidationException(\"DisplayName is required\");",
@@ -601,13 +610,13 @@ function buildMockMarkdownResponse(ctx) {
       return [
         baseHeader,
         "",
-        "## Porównanie branchy: migracja bazy / brak kolumny",
+        "## Porównanie wersji: migracja bazy / brak kolumny",
         "",
-        "**Wniosek:** na `" + safeStr(ctx.branchA) + "` kod może oczekiwać nowej kolumny, ale schema DB jest jak na `" + safeStr(ctx.branchB) + "`.",
+        "**Wniosek:** na `" + safeStr(ctx.snapshotA) + "` kod może oczekiwać nowej kolumny, ale schema DB jest jak na `" + safeStr(ctx.snapshotB) + "`.",
         "",
         "**Typowy symptom:** `SqlException: Invalid column name 'ExternalId'`",
         "",
-        "Przykład migracji (powinna istnieć na branchu, który jej wymaga):",
+        "Przykład migracji (powinna istnieć na wersji, która jej wymaga):",
         "```sql",
         "ALTER TABLE dbo.Customers ADD ExternalId nvarchar(64) NULL;",
         "```",
@@ -622,11 +631,11 @@ function buildMockMarkdownResponse(ctx) {
       return [
         baseHeader,
         "",
-        "## Porównanie branchy: zmiana sortowania/paginacji → UI widzi inne wyniki",
+        "## Porównanie wersji: zmiana sortowania/paginacji → UI widzi inne wyniki",
         "",
-        "**Wniosek:** na `" + safeStr(ctx.branchA) + "` mogła wejść paginacja `OFFSET/FETCH` albo inne `ORDER BY`, co zmienia deterministykę wyników.",
+        "**Wniosek:** na `" + safeStr(ctx.snapshotA) + "` mogła wejść paginacja `OFFSET/FETCH` albo inne `ORDER BY`, co zmienia deterministykę wyników.",
         "",
-        "Branch B:",
+        "Wersja B:",
         "```sql",
         "SELECT TOP (@take) *",
         "FROM dbo.Customers",
@@ -634,7 +643,7 @@ function buildMockMarkdownResponse(ctx) {
         "ORDER BY Name ASC;",
         "```",
         "",
-        "Branch A:",
+        "Wersja A:",
         "```sql",
         "SELECT *",
         "FROM dbo.Customers",
@@ -656,11 +665,11 @@ function buildMockMarkdownResponse(ctx) {
       return [
         baseHeader,
         "",
-        "## Branch comparison: likely *breaking change* in API contract",
+        "## Version comparison: likely *breaking change* in API contract",
         "",
-        "**Finding:** the bug on `" + safeStr(ctx.branchA) + "` may come from removing **`IsActive`** from the DTO while UI still expects it.",
+        "**Finding:** the bug on `" + safeStr(ctx.snapshotA) + "` may come from removing **`IsActive`** from the DTO while UI still expects it.",
         "",
-        "Old branch (`" + safeStr(ctx.branchB) + "`):",
+        "Older version (`" + safeStr(ctx.snapshotB) + "`):",
         "```csharp",
         "public sealed class CustomerContract",
         "{",
@@ -670,7 +679,7 @@ function buildMockMarkdownResponse(ctx) {
         "}",
         "```",
         "",
-        "New branch (`" + safeStr(ctx.branchA) + "`):",
+        "Newer version (`" + safeStr(ctx.snapshotA) + "`):",
         "```csharp",
         "public sealed class CustomerContract",
         "{",
@@ -690,9 +699,9 @@ function buildMockMarkdownResponse(ctx) {
       return [
         baseHeader,
         "",
-        "## Branch comparison: validation change → different runtime behavior",
+        "## Version comparison: validation change → different runtime behavior",
         "",
-        "**Finding:** `" + safeStr(ctx.branchA) + "` may have stricter validation, so a scenario working on `" + safeStr(ctx.branchB) + "` fails on A.",
+        "**Finding:** `" + safeStr(ctx.snapshotA) + "` may have stricter validation, so a scenario working on `" + safeStr(ctx.snapshotB) + "` fails on A.",
         "",
         "Old:",
         "```csharp",
@@ -711,9 +720,9 @@ function buildMockMarkdownResponse(ctx) {
       return [
         baseHeader,
         "",
-        "## Branch comparison: DB migration / missing column",
+        "## Version comparison: DB migration / missing column",
         "",
-        "**Finding:** code on `" + safeStr(ctx.branchA) + "` may expect a new column while DB schema is still at `" + safeStr(ctx.branchB) + "` level.",
+        "**Finding:** code on `" + safeStr(ctx.snapshotA) + "` may expect a new column while DB schema is still at `" + safeStr(ctx.snapshotB) + "` level.",
         "",
         "Typical symptom: `Invalid column name 'ExternalId'`",
         "",
@@ -732,9 +741,9 @@ function buildMockMarkdownResponse(ctx) {
       return [
         baseHeader,
         "",
-        "## Branch comparison: changed ordering/pagination semantics",
+        "## Version comparison: changed ordering/pagination semantics",
         "",
-        "**Finding:** `" + safeStr(ctx.branchA) + "` may return data in different order (or with OFFSET/FETCH), making UI show unexpected results.",
+        "**Finding:** `" + safeStr(ctx.snapshotA) + "` may return data in different order (or with OFFSET/FETCH), making UI show unexpected results.",
         "",
         "Old:",
         "```sql",
@@ -883,11 +892,19 @@ const server = http.createServer(async (req, res) => {
     }
 
     const sessionId = getSessionId(req);
-    const consultant = (payload.consultant || "unknown").toString();
+    const consultant = (payload.pipelineName || payload.consultant || "unknown").toString();
     const query = (payload.query || "").toString();
 
-    const branchA = payload.branchA ?? null;
-    const branchB = payload.branchB ?? null;
+    let snapshotA = null;
+    let snapshotB = null;
+    if (Array.isArray(payload.snapshots)) {
+      snapshotA = payload.snapshots[0] ?? null;
+      snapshotB = payload.snapshots[1] ?? null;
+    } else {
+      // Legacy fallback
+      snapshotA = payload.branchA ?? null;
+      snapshotB = payload.branchB ?? null;
+    }
 
     // UI sends translateChat: true for PL, false for EN.
     const translateChat = !!payload.translateChat;
@@ -895,8 +912,8 @@ const server = http.createServer(async (req, res) => {
     const md = buildMockMarkdownResponse({
       consultant,
       query,
-      branchA,
-      branchB,
+      snapshotA,
+      snapshotB,
       translateChat
     });
 

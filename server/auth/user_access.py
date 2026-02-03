@@ -15,6 +15,7 @@ class UserAccessContext:
     is_anonymous: bool
     group_ids: List[str]
     allowed_pipelines: List[str]
+    allowed_commands: List[str]
     acl_tags_all: List[str]
 
 
@@ -41,6 +42,7 @@ class GroupPolicy:
     """
     acl_tags_all: List[str]
     allowed_pipelines: List[str]
+    allowed_commands: List[str]
 
 
 class DevUserAccessProvider(UserAccessProvider):
@@ -84,12 +86,14 @@ class DevUserAccessProvider(UserAccessProvider):
 
         acl_tags_all = self._merge_acl_tags(group_ids)
         allowed_pipelines = self._merge_allowed_pipelines(group_ids)
+        allowed_commands = self._merge_allowed_commands(group_ids)
 
         return UserAccessContext(
             user_id=resolved_user_id,
             is_anonymous=is_anonymous,
             group_ids=group_ids,
             allowed_pipelines=allowed_pipelines,
+            allowed_commands=allowed_commands,
             acl_tags_all=acl_tags_all,
         )
 
@@ -119,6 +123,14 @@ class DevUserAccessProvider(UserAccessProvider):
             policy = self._group_policies.get(gid)
             if policy:
                 allowed.extend(policy.allowed_pipelines or [])
+        return _unique_preserve_order(allowed)
+
+    def _merge_allowed_commands(self, group_ids: Iterable[str]) -> List[str]:
+        allowed: List[str] = []
+        for gid in group_ids:
+            policy = self._group_policies.get(gid)
+            if policy:
+                allowed.extend(policy.allowed_commands or [])
         return _unique_preserve_order(allowed)
 
 
@@ -180,11 +192,13 @@ def _load_group_policies_from_json() -> Dict[str, GroupPolicy]:
             continue
         acl = payload.get("acl_tags_all") or []
         allowed = payload.get("allowed_pipelines") or []
-        if not isinstance(acl, list) or not isinstance(allowed, list):
+        allowed_commands = payload.get("allowed_commands") or []
+        if not isinstance(acl, list) or not isinstance(allowed, list) or not isinstance(allowed_commands, list):
             continue
         policies[str(group_id)] = GroupPolicy(
             acl_tags_all=[str(x) for x in acl if str(x).strip()],
             allowed_pipelines=[str(x) for x in allowed if str(x).strip()],
+            allowed_commands=[str(x) for x in allowed_commands if str(x).strip()],
         )
 
     return policies

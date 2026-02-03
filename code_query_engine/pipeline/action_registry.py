@@ -42,6 +42,7 @@ def build_default_action_registry() -> ActionRegistry:
     from .actions.loop_guard import LoopGuardAction    
     from .actions.finalize import FinalizeAction
     from .actions.set_variables import SetVariablesAction
+    from .actions.add_command_action import AddCommandAction
 
     r = ActionRegistry()
 
@@ -55,6 +56,7 @@ def build_default_action_registry() -> ActionRegistry:
     r.register("expand_dependency_tree", ExpandDependencyTreeAction())
     r.register("fetch_node_texts", FetchNodeTextsAction())
     r.register("loop_guard", LoopGuardAction())   
+    r.register("add_command_action", AddCommandAction())
     r.register("finalize", FinalizeAction())
     r.register("set_variables", SetVariablesAction())
 

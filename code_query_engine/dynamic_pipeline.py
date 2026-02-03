@@ -142,6 +142,10 @@ class DynamicPipelineRunner:
                 setattr(state, "snapshot_id", overrides.get("snapshot_id"))
             if "snapshot_set_id" in overrides and not snapshot_set_id:
                 setattr(state, "snapshot_set_id", overrides.get("snapshot_set_id"))
+            if "allowed_commands" in overrides:
+                raw_allowed = overrides.get("allowed_commands")
+                if isinstance(raw_allowed, list):
+                    state.allowed_commands = [str(x) for x in raw_allowed if str(x).strip()]
             # Optional retrieval filters (e.g., ACL tags) resolved by the server.
             retrieval_filters = overrides.get("retrieval_filters")
             if isinstance(retrieval_filters, dict):
