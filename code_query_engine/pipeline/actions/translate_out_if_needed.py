@@ -2,16 +2,42 @@
 
 from __future__ import annotations
 
-from typing import Optional
+from typing import Any, Dict, Optional
 
 from ..definitions import StepDef
 from ..engine import PipelineRuntime
 from ..state import PipelineState
-from typing import Any, Dict
-from .base_action import PipelineActionBase 
+from .base_action import PipelineActionBase
 
-class TranslateOutIfNeededAction:
-    def execute(self, step: StepDef, state: PipelineState, runtime: PipelineRuntime) -> Optional[str]:
+
+class TranslateOutIfNeededAction(PipelineActionBase):
+    @property
+    def action_id(self) -> str:
+        return "translate_out_if_needed"
+
+    def log_in(self, step: StepDef, state: PipelineState, runtime: PipelineRuntime) -> Dict[str, Any]:
+        tr = getattr(runtime, "markdown_translator", None)
+        return {
+            "translate_chat": bool(getattr(state, "translate_chat", False)),
+            "translator_present": bool(tr is not None and hasattr(tr, "translate")),
+            "answer_en_present": bool((getattr(state, "answer_en", None) or "").strip()),
+        }
+
+    def log_out(
+        self,
+        step: StepDef,
+        state: PipelineState,
+        runtime: PipelineRuntime,
+        *,
+        next_step_id: Optional[str],
+        error: Optional[Dict[str, Any]],
+    ) -> Dict[str, Any]:
+        return {
+            "next_step_id": next_step_id,
+            "answer_pl_present": bool((getattr(state, "answer_pl", None) or "").strip()),
+        }
+
+    def do_execute(self, step: StepDef, state: PipelineState, runtime: PipelineRuntime) -> Optional[str]:
         if not getattr(state, "translate_chat", False):
             return None
 

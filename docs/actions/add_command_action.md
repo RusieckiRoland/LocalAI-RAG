@@ -73,6 +73,10 @@ Validation rules:
 
 If no links are generated, the action is a no-op.
 
+**Important:** this action modifies the answer text *before* `finalize`.
+Pipelines should keep the `add_command_action` step immediately before
+`finalize` to avoid losing appended links.
+
 ## Permission model
 
 Commands are gated by `PipelineState.allowed_commands`.
