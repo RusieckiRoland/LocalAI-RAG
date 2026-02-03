@@ -1,0 +1,21 @@
+{
+  "groups": {
+    "anonymous": {
+      "allowed_pipelines": [
+        "marian_rejewski_code_analysis_base"
+      ],
+      "acl_tags_all": []
+    },
+    "authenticated": {
+      "allowed_pipelines": [
+        "marian_rejewski_code_analysis_base",
+        "ada_uml_base",
+        "branch_compare_base"
+      ],
+      "acl_tags_all": [
+        "security",
+        "finance"
+      ]
+    }
+  }
+}

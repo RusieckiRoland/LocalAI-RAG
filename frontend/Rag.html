@@ -112,6 +112,34 @@
 
     .topbar-spacer { width: 1px; height: 1px; }
 
+    /* Auth controls (dev only) */
+    .auth-controls {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      justify-content: flex-end;
+      flex-wrap: wrap;
+    }
+
+    .auth-btn {
+      border: 1px solid #e5e7eb;
+      border-radius: 0.75rem;
+      padding: 0 0.85rem;
+      height: 36px;
+      font-weight: 700;
+      background: #ffffff;
+      color: #111827;
+      transition: background-color 0.15s, border-color 0.15s, color 0.15s;
+      white-space: nowrap;
+    }
+    .auth-btn:hover { background: #f3f4f6; }
+    .auth-btn.active {
+      background: #16a34a;
+      border-color: #16a34a;
+      color: #ffffff;
+      box-shadow: 0 0 0 3px rgba(22, 163, 74, 0.12);
+    }
+
     /* Form */
     #queryForm {
       background-color: white;
@@ -336,6 +364,8 @@
       #consultants { justify-content: center; }
       .topbar-spacer { display:none; }
       .topbar-newchat { width: 100%; }
+      .auth-controls { width: 100%; justify-content: center; }
+      .auth-btn { width: 100%; }
 
       .branch-controls {
         flex-wrap: wrap;
@@ -413,7 +443,9 @@
     <div class="topbar">
       <button onclick="newChat()" class="topbar-newchat" id="newChatBtn">♻️ Nowy Chat</button>
       <div class="flex gap-2" id="consultants"></div>
-      <div class="topbar-spacer" aria-hidden="true"></div>
+      <div class="auth-controls" id="authControls">
+        <button id="authToggleBtn" class="auth-btn" type="button">Fake Login</button>
+      </div>
     </div>
 
     <div class="ui-error" id="uiError"></div>
@@ -459,6 +491,9 @@
   let selectedBranchA = null;
   let selectedBranchB = null;
 
+  let fakeAuthEnabled = false;
+  const DEV_AUTH_USER_ID = "dev-user-1";
+
   const form = document.getElementById("queryForm");
   const queryInput = document.getElementById("query");
   const responseDiv = document.getElementById("response");
@@ -469,6 +504,7 @@
   const newChatBtn = document.getElementById("newChatBtn");
   const uiError = document.getElementById("uiError");
   const branchControls = document.getElementById("branchControls");
+  const authToggleBtn = document.getElementById("authToggleBtn");
 
   // If name is longer than this, we shorten it in CLOSED state.
   // In compare mode we also shorten even if it's below the threshold (to make differences obvious).
@@ -528,7 +564,16 @@
   }
 
   async function fetchAppConfig() {
-    const res = await fetch(`${API_BASE}/app-config`);
+    const authHeaders = {};
+    if (fakeAuthEnabled) {
+      authHeaders["Authorization"] = `Bearer dev-user:${DEV_AUTH_USER_ID}`;
+    }
+
+    const res = await fetch(`${API_BASE}/app-config`, {
+      headers: {
+        ...authHeaders,
+      }
+    });
     if (!res.ok) throw new Error(`GET /app-config failed: ${res.status}`);
     return await res.json();
   }
@@ -927,6 +972,9 @@
     if (submitButton) submitButton.innerText = t.send;
     if (queryInput) queryInput.placeholder = t.placeholder;
     if (newChatBtn) newChatBtn.textContent = t.newChat;
+    if (authToggleBtn) {
+      authToggleBtn.textContent = fakeAuthEnabled ? "Fake Logout" : "Fake Login";
+    }
 
     localStorage.setItem("lang", lang);
     if (langSelect && langSelect.value !== lang) langSelect.value = lang;
@@ -1055,10 +1103,16 @@
     }
 
     try {
+      const authHeaders = {};
+      if (fakeAuthEnabled) {
+        authHeaders["Authorization"] = `Bearer dev-user:${DEV_AUTH_USER_ID}`;
+      }
+
       const res = await fetch(`${API_BASE}/search`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          ...authHeaders,
           ...(sessionId ? { "X-Session-ID": sessionId } : {})
         },
         body: JSON.stringify(body)
@@ -1126,6 +1180,12 @@
       const savedLang = getCurrentLang();
       applyLang(savedLang);
 
+      fakeAuthEnabled = localStorage.getItem("fakeAuthEnabled") === "1";
+      if (authToggleBtn) {
+        authToggleBtn.classList.toggle("active", fakeAuthEnabled);
+        authToggleBtn.textContent = fakeAuthEnabled ? "Fake Logout" : "Fake Login";
+      }
+
       updateFormPosition();
       queryInput.focus();
       updateSendButtonState();
@@ -1150,6 +1210,16 @@
     });
 
     form.addEventListener("submit", handleSubmit);
+
+    if (authToggleBtn) {
+      authToggleBtn.addEventListener("click", () => {
+        fakeAuthEnabled = !fakeAuthEnabled;
+        localStorage.setItem("fakeAuthEnabled", fakeAuthEnabled ? "1" : "0");
+        authToggleBtn.classList.toggle("active", fakeAuthEnabled);
+        authToggleBtn.textContent = fakeAuthEnabled ? "Fake Logout" : "Fake Login";
+        bootstrapUi();
+      });
+    }
 
     queryInput.addEventListener("keydown", (e) => {
       if (e.key === "Enter" && !e.shiftKey) {

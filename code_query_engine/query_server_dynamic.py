@@ -28,6 +28,7 @@ from vector_db.weaviate_client import get_settings as get_weaviate_settings, cre
 from code_query_engine.pipeline.providers.weaviate_retrieval_backend import WeaviateRetrievalBackend
 from code_query_engine.pipeline.providers.weaviate_graph_provider import WeaviateGraphProvider
 from weaviate.classes.query import Filter
+from server.auth import get_default_user_access_provider, UserAccessContext
 
 
 py_logger = logging.getLogger(__name__)
@@ -63,6 +64,8 @@ ALLOWED_ORIGINS = [
 
 _json_cache_lock = Lock()
 _json_cache: dict[str, tuple[float, dict]] = {}
+
+_user_access_provider = get_default_user_access_provider()
 
 
 # ------------------------------------------------------------
@@ -482,6 +485,14 @@ def app_config():
     cfg = _runtime_cfg
     templates = _load_ui_templates()
 
+    session_id = _valid_session_id(request.headers.get("X-Session-ID") or "app-config")
+    auth_header = (request.headers.get("Authorization") or "").strip()
+    access_ctx: UserAccessContext = _user_access_provider.resolve(
+        user_id=None,
+        token=auth_header,
+        session_id=session_id,
+    )
+
     repos = _list_repositories()
     repo_name = str(cfg.get("repo_name") or "").strip() or (repos[0] if repos else "")
 
@@ -492,7 +503,18 @@ def app_config():
     default_consultant_id = ""
     if isinstance(templates, dict):
         consultants = templates.get("consultants") or []
+        if access_ctx.allowed_pipelines:
+            allowed = set(access_ctx.allowed_pipelines)
+            consultants = [
+                c for c in consultants
+                if isinstance(c, dict) and str(c.get("pipelineName") or "").strip() in allowed
+            ]
         default_consultant_id = str(templates.get("defaultConsultantId") or "")
+        if default_consultant_id:
+            if not any(str(c.get("id") or "") == default_consultant_id for c in consultants if isinstance(c, dict)):
+                default_consultant_id = ""
+        if not default_consultant_id and consultants:
+            default_consultant_id = str(consultants[0].get("id") or "")
 
     return jsonify(
         {
@@ -584,11 +606,28 @@ def query():
         snapshot_id = _resolve_snapshot_id_from_set(snapshot_set_id=snapshot_set_id, repository=repository or None)
 
     session_id = _valid_session_id(request.headers.get("X-Session-ID") or _get_str_field(payload, "session_id", ""))
-    user_id = _valid_user_id(_get_str_field(payload, "user_id", ""))
+
+    # Resolve access context (dev-only auth for now).
+    raw_user_id = _valid_user_id(_get_str_field(payload, "user_id", ""))
+    auth_header = (request.headers.get("Authorization") or "").strip()
+    access_ctx: UserAccessContext = _user_access_provider.resolve(
+        user_id=raw_user_id,
+        token=auth_header,
+        session_id=session_id,
+    )
+    user_id = _valid_user_id(access_ctx.user_id)
 
     overrides: Dict[str, Any] = {}
     if branch_b:
         overrides["branch_b"] = branch_b
+    if access_ctx.acl_tags_all:
+        overrides["retrieval_filters"] = {"acl_tags_all": list(access_ctx.acl_tags_all)}
+
+    # Enforce pipeline access if the provider returns explicit restrictions.
+    if access_ctx.allowed_pipelines:
+        effective_pipeline = pipeline_name or consultant_id
+        if effective_pipeline not in access_ctx.allowed_pipelines:
+            return jsonify({"ok": False, "error": "pipeline not allowed for this user"}), 403
 
     try:
         mm = _runner.model if hasattr(_runner, "model") else None
