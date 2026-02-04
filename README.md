@@ -248,6 +248,8 @@ Git tracks **only** the `DOWNLOAD_MODEL.md` placeholders; all downloaded weights
 ```bash
 APP_SECRET_KEY=change-me-to-a-long-random-string
 API_TOKEN=your-internal-token-here
+APP_DEVELOPMENT=1
+IDP_AUTH_ENABLED=1
 
 # === Server settings ===
 APP_HOST=0.0.0.0
@@ -265,9 +267,32 @@ APP_MAX_FIELD_LEN=128
 
 * `APP_SECRET_KEY` — Flask session secret; use a long random string in production.
 * `API_TOKEN` — internal API token for service-to-service calls.
+* `APP_DEVELOPMENT` — overrides development endpoint exposure (`1` enables `/dev` endpoints, `0` hides them).
+* `IDP_AUTH_ENABLED` — forces IDP JWT validation on `prod` endpoints (`1`) or disables it (`0`).
 * `APP_HOST` / `APP_PORT` — bind address and port of the Flask app.
 * `ALLOWED_ORIGINS` — comma-separated list of allowed CORS origins.
 * `APP_MAX_QUERY_LEN` / `APP_MAX_FIELD_LEN` — optional server-side limits for incoming requests.
+
+### IDP settings in `config.json`
+
+`prod` auth can validate JWT tokens against your identity provider:
+
+```json
+"identity_provider": {
+  "enabled": true,
+  "issuer": "https://idp.example.com/realms/localai-rag",
+  "jwks_url": "https://idp.example.com/realms/localai-rag/protocol/openid-connect/certs",
+  "audience": "localai-rag-api",
+  "algorithms": ["RS256"],
+  "required_claims": ["sub", "exp", "iss", "aud"]
+}
+```
+
+Install JWT verification dependency in your active environment:
+
+```bash
+python -m pip install "pyjwt[crypto]"
+```
 
 **Setup:** copy the example file before running the app and adjust values:
 
@@ -397,6 +422,36 @@ After configuring your `.env`, start the backend server with:
 ```bash
 python start_AI_server.py --env
 ```
+
+### Endpoint modes (`developement` / `APP_DEVELOPMENT`)
+
+`config.json`:
+- set `"developement": true` to expose development endpoints
+- set `"developement": false` to hide development endpoints
+
+Override via env:
+- `APP_DEVELOPMENT=1` enables dev endpoints
+- `APP_DEVELOPMENT=0` hides dev endpoints (`404`)
+
+Development endpoints:
+- `GET /app-config/dev`
+- `POST /search/dev`, `POST /query/dev`
+
+Production endpoints (always bearer-protected):
+- `GET /app-config/prod`
+- `POST /search/prod`, `POST /query/prod`
+
+Auth behavior for `prod` endpoints:
+- if IDP config is active, bearer is validated as JWT (issuer/audience/JWKS)
+- otherwise fallback is exact match `Authorization: Bearer <API_TOKEN>`
+- after bearer validation, server enforces custom access checks:
+  - user must be allowed to run the selected pipeline
+  - when `snapshot_set_id` + snapshot ids are provided, each snapshot must belong to that set
+    - primary: `snapshot_id`
+    - secondary (compare): `snapshot_id_b`
+
+Security incident logging:
+- rejected auth/authorization attempts are logged with tag `[security_abuse]`
 ---
 
 ## 11) Notes for production

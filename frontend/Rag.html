@@ -572,6 +572,11 @@
   const API_BASE = (window.location.protocol === "file:")
     ? "http://localhost:8081"
     : window.location.origin;
+  const URL_MODE = (new URLSearchParams(window.location.search).get("mode") || "dev").toLowerCase();
+  const IS_FILE_MODE = window.location.protocol === "file:";
+  const APP_MODE = (URL_MODE === "prod") ? "prod" : "dev";
+  const APP_CONFIG_PATH = IS_FILE_MODE ? "/app-config" : `/app-config/${APP_MODE}`;
+  const SEARCH_PATH = IS_FILE_MODE ? "/search" : `/search/${APP_MODE}`;
 
   let sessionId = localStorage.getItem("sessionId") || null;
 
@@ -685,12 +690,12 @@
       authHeaders["Authorization"] = `Bearer dev-user:${DEV_AUTH_USER_ID}`;
     }
 
-    const res = await fetch(`${API_BASE}/app-config`, {
+    const res = await fetch(`${API_BASE}${APP_CONFIG_PATH}`, {
       headers: {
         ...authHeaders,
       }
     });
-    if (!res.ok) throw new Error(`GET /app-config failed: ${res.status}`);
+    if (!res.ok) throw new Error(`GET ${APP_CONFIG_PATH} failed: ${res.status}`);
     return await res.json();
   }
 
@@ -1385,7 +1390,7 @@
         authHeaders["Authorization"] = `Bearer dev-user:${DEV_AUTH_USER_ID}`;
       }
 
-      const res = await fetch(`${API_BASE}/search`, {
+      const res = await fetch(`${API_BASE}${SEARCH_PATH}`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -1395,7 +1400,7 @@
         body: JSON.stringify(body)
       });
 
-      if (!res.ok) throw new Error(`POST /search failed: ${res.status}`);
+      if (!res.ok) throw new Error(`POST ${SEARCH_PATH} failed: ${res.status}`);
 
       const json = await res.json();
       if (json.session_id) {
@@ -1475,7 +1480,7 @@
     } catch (e) {
       console.error("bootstrapUi:", e);
       showUiError(
-        `Failed to load configuration from z ${API_BASE}/app-config. ` +
+        `Failed to load configuration from ${API_BASE}${APP_CONFIG_PATH}. ` +
         `If you opened this page as a local file (file://), start the mock server (server.js) on http://localhost:8081 and refresh the page.`
       );
     }

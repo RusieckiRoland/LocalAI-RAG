@@ -346,11 +346,15 @@ class FetchNodeTextsAction(PipelineActionBase):
                 "fetch_node_texts: Missing required 'repository' (state.repository or pipeline settings['repository'])."
             )
 
-        snapshot_id = (getattr(state, "snapshot_id", None) or settings.get("snapshot_id") or "").strip()
+        retrieval_filters = dict(getattr(state, "retrieval_filters", None) or {})
+        snapshot_id = str(
+            retrieval_filters.get("snapshot_id")
+            or getattr(state, "snapshot_id", None)
+            or settings.get("snapshot_id")
+            or ""
+        ).strip()
         if not snapshot_id:
             raise ValueError("fetch_node_texts: Missing required 'snapshot_id' (state.snapshot_id or pipeline settings['snapshot_id']).")
-
-        retrieval_filters = dict(getattr(state, "retrieval_filters", None) or {})
 
         # ---- Inputs: seeds + optional graph expanded nodes ----
         retrieval_seed_nodes = _dedupe_preserve_order(list(getattr(state, "retrieval_seed_nodes", None) or []))

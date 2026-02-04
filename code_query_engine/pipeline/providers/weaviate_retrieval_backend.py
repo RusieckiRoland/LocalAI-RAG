@@ -22,6 +22,7 @@ class WeaviateRetrievalBackend(IRetrievalBackend):
         self,
         *,
         client: Any,
+        query_embed_model: Optional[str] = None,
         node_collection: str = "RagNode",
         id_property: str = "canonical_id",
         text_property: str = "text",
@@ -29,6 +30,9 @@ class WeaviateRetrievalBackend(IRetrievalBackend):
         branch_property: str = "branch",
         snapshot_id_property: str = "snapshot_id",
         permission_tags_property: str = "acl_allow",
+        classification_labels_property: str = "classification_labels",
+        owner_id_property: str = "owner_id",
+        source_system_id_property: str = "source_system_id",
     ) -> None:
         if client is None:
             raise ValueError("WeaviateRetrievalBackend: client is required")
@@ -41,6 +45,11 @@ class WeaviateRetrievalBackend(IRetrievalBackend):
         self._branch_prop = branch_property
         self._snapshot_id_prop = snapshot_id_property
         self._perm_prop = permission_tags_property
+        self._classification_prop = classification_labels_property
+        self._owner_prop = owner_id_property
+        self._source_system_prop = source_system_id_property
+        self._query_embed_model = str(query_embed_model or "").strip()
+        self._query_embedder: Any = None
 
     # ---------------------------------------------------------------------
     # IRetrievalBackend
@@ -78,23 +87,22 @@ class WeaviateRetrievalBackend(IRetrievalBackend):
         # We deliberately keep this "fail-fast" if client API differs.
         # If your weaviate-client differs, we adjust against your installed version.
         if search_type in ("bm25", "keyword"):
-            res = collection.query.bm25(
-                query=q,
-                limit=top_k,
-                filters=where_filter,
-                return_properties=[self._id_prop],
-            )
+            res = self._query_bm25(collection=collection, query=q, top_k=top_k, where_filter=where_filter)
         elif search_type in ("semantic", "near_text"):
-            res = collection.query.near_text(
-                query=q,
+            qvec = self._encode_query(q)
+            res = collection.query.near_vector(
+                near_vector=qvec,
                 limit=top_k,
                 filters=where_filter,
                 return_properties=[self._id_prop],
             )
         elif search_type in ("hybrid",):
-            # If you want alpha configured, pass it via request.retrieval_filters or pipeline settings later.
+            qvec = self._encode_query(q)
+            alpha = float((request.retrieval_filters or {}).get("hybrid_alpha") or 0.7)
             res = collection.query.hybrid(
                 query=q,
+                vector=qvec,
+                alpha=alpha,
                 limit=top_k,
                 filters=where_filter,
                 return_properties=[self._id_prop],
@@ -105,12 +113,50 @@ class WeaviateRetrievalBackend(IRetrievalBackend):
         hits = []
         for obj in getattr(res, "objects", []) or []:
             props = getattr(obj, "properties", {}) or {}
-            node_id = (props.get(self._id_prop) or "").strip()
+            node_id = str(
+                props.get(self._id_prop)
+                or props.get("canonical_id")
+                or props.get("CanonicalId")
+                or ""
+            ).strip()
             if not node_id:
                 continue
             hits.append({"Id": node_id})
 
         return SearchResponse(hits=hits)
+
+    def _query_bm25(self, *, collection: Any, query: str, top_k: int, where_filter: Any) -> Any:
+        return collection.query.bm25(
+            query=query,
+            limit=top_k,
+            filters=where_filter,
+            return_properties=[self._id_prop],
+        )
+
+    def _get_query_embedder(self) -> Any:
+        if self._query_embedder is not None:
+            return self._query_embedder
+        if not self._query_embed_model:
+            raise RuntimeError(
+                "WeaviateRetrievalBackend: semantic/hybrid search requires query_embed_model "
+                "(e.g. models/embedding/e5-base-v2)."
+            )
+        try:
+            from sentence_transformers import SentenceTransformer
+        except Exception as ex:
+            raise RuntimeError("WeaviateRetrievalBackend: sentence-transformers is required for query vectorization.") from ex
+        py_logger.info("Loading query embedding model for retrieval: %s", self._query_embed_model)
+        self._query_embedder = SentenceTransformer(self._query_embed_model)
+        return self._query_embedder
+
+    def _encode_query(self, query: str) -> List[float]:
+        model = self._get_query_embedder()
+        vec = model.encode([query], normalize_embeddings=True)
+        try:
+            arr = vec[0].astype("float32").tolist()
+        except Exception:
+            arr = list(vec[0])
+        return [float(x) for x in arr]
 
     def fetch_texts(
         self,
@@ -186,19 +232,49 @@ class WeaviateRetrievalBackend(IRetrievalBackend):
             f = Filter.by_property(self._repo_prop).equal(repo) if f is None else f & Filter.by_property(self._repo_prop).equal(repo)
 
         snap = (snapshot_id or "").strip()
-        if snap:
+        rf = retrieval_filters or {}
+        snapshot_ids_any = rf.get("snapshot_ids_any")
+        if isinstance(snapshot_ids_any, list):
+            clean = [str(x).strip() for x in snapshot_ids_any if str(x).strip()]
+            if clean:
+                any_filter = Filter.any_of([Filter.by_property(self._snapshot_id_prop).equal(s) for s in clean])
+                f = any_filter if f is None else f & any_filter
+            elif snap:
+                f = Filter.by_property(self._snapshot_id_prop).equal(snap) if f is None else f & Filter.by_property(self._snapshot_id_prop).equal(snap)
+        elif snap:
             f = Filter.by_property(self._snapshot_id_prop).equal(snap) if f is None else f & Filter.by_property(self._snapshot_id_prop).equal(snap)
 
         # Branch is legacy and not used for scoping (snapshot_id is the only scope).
         _ = branch
 
-        # ACL hook (optional): expect list under retrieval_filters["permission_tags_all"] etc.
-        rf = retrieval_filters or {}
-        tags = rf.get("permission_tags_all") or rf.get("acl_tags_all")
+        # ACL tags with OR semantics.
+        tags = (
+            rf.get("acl_tags_any")
+            or rf.get("permission_tags_any")
+            or rf.get("permission_tags_all")
+            or rf.get("acl_tags_all")
+        )
         if isinstance(tags, list) and tags:
-            # This requires the property to be a string[] field in Weaviate schema.
-            f_tags = Filter.by_property(self._perm_prop).contains_all([str(t) for t in tags if str(t).strip()])
+            f_tags = Filter.by_property(self._perm_prop).contains_any([str(t) for t in tags if str(t).strip()])
             f = f_tags if f is None else f & f_tags
+
+        # Classification labels with ALL/subset semantics.
+        labels = rf.get("classification_labels_all")
+        if isinstance(labels, list) and labels:
+            f_cls = Filter.by_property(self._classification_prop).contains_all(
+                [str(t) for t in labels if str(t).strip()]
+            )
+            f = f_cls if f is None else f & f_cls
+
+        owner_id = str(rf.get("owner_id") or "").strip()
+        if owner_id:
+            f_owner = Filter.by_property(self._owner_prop).equal(owner_id)
+            f = f_owner if f is None else f & f_owner
+
+        source_system_id = str(rf.get("source_system_id") or "").strip()
+        if source_system_id:
+            f_source = Filter.by_property(self._source_system_prop).equal(source_system_id)
+            f = f_source if f is None else f & f_source
 
         return f
 

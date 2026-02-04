@@ -101,8 +101,14 @@ Examples:
 
 ---
 
-## Backend → frontend startup contract: `GET /app-config`
-Frontend bootstraps via `GET /app-config`.
+## Backend → frontend startup contract: `GET /app-config*`
+Frontend bootstraps via:
+- `GET /app-config/dev` in development mode
+- `GET /app-config/prod` in production mode
+
+Compatibility:
+- There is no legacy `/app-config` alias in strict mode.
+- Use explicit mode endpoints only: `/app-config/dev` or `/app-config/prod`.
 
 Minimum response fields:
 - `contractVersion`
@@ -149,7 +155,10 @@ Logical structure:
 
 Notes:
 - `snapshots[].label` is what UI should display as “Version”.
-- `snapshots[].id` is what UI must send as `snapshot_id`.
+- `snapshots[].id` is what UI sends in `snapshots[]`.
+  Backend mapping:
+  - first item → `snapshot_id` (primary)
+  - second item (if present) → `snapshot_id_b` (secondary)
 - When `snapshotPickerMode` is `none`, both `snapshotSetId` and `snapshots[]` are empty.
 `snapshotPolicy` values:
 - `single` — if snapshot set changes, require starting a new chat.
@@ -158,7 +167,7 @@ Notes:
 
 ---
 
-## Frontend: request payload (`POST /search`)
+## Frontend: request payload (`POST /search*`)
 Frontend sends:
 - `pipelineName` (or `consultant`) from the selected consultant
 - `snapshot_set_id` from consultant (if present)
@@ -170,6 +179,9 @@ Rules for `snapshots[]`:
 - 1 item = single version
 - 2 items = compare mode; items must be different
 For compare mode, the frontend must disable “Send” until 2 different snapshot IDs are selected.
+
+Backend validation rule:
+- when `snapshot_set_id` is present, both selected snapshots (primary + optional secondary) must belong to that set.
 
 Logical payload (no retrieval / `snapshotPickerMode: none`):
 ```json
@@ -216,14 +228,20 @@ Notes:
 - One chat must not mix different `snapshot_set_id` values.
   - If the user switches to a consultant with a different `snapshotSetId` and the conversation already used a non-empty set, show a confirmation and start a new chat if accepted.
 
-## Response contract (`POST /search`)
+Endpoint selection:
+- development: `POST /search/dev`
+- production: `POST /search/prod`
+
+When development endpoints are disabled (`developement=false` or `APP_DEVELOPMENT=0`), `/dev` endpoints return `404`.
+
+## Response contract (`POST /search*`)
 Minimum response fields:
 - `results` — markdown string; frontend renders it as markdown
 - `session_id` — may be returned on every response or only once; frontend should update session id if present
 
 ---
 
-## Backend: building `/app-config`
+## Backend: building `/app-config*`
 Minimal flow:
 1. Identify user
 2. Create session
@@ -231,12 +249,12 @@ Minimal flow:
 4. Select templates (from `templates.json`) only for allowed pipelines
 5. For each pipeline, resolve `snapshot_set_id` from YAML
 6. Resolve `snapshots[]` from Weaviate (labels + ids)
-7. Return `/app-config`
+7. Return `/app-config/dev` or `/app-config/prod` depending on mode
 
 ---
 
 ## JS mock server
-The mock server must expose `/app-config` compatible with this contract.
+The mock server should expose `/app-config/dev` and `/search/dev` as canonical development endpoints.
 Goal: allow testing UI without Python, then switch to Python backend without UI changes.
 
 ---

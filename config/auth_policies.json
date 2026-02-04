@@ -5,7 +5,8 @@
         "ada"
       ],
       "allowed_commands": [],
-      "acl_tags_all": []
+      "acl_tags_any": [],
+      "classification_labels_all": []
     },
     "authenticated": {
       "allowed_pipelines": [
@@ -18,10 +19,17 @@
         "saveDiagram",
         "ea_export"
       ],
-      "acl_tags_all": [
+      "acl_tags_any": [
         "security",
         "finance"
-      ]
+      ],
+      "classification_labels_all": [
+        "public",
+        "wewnetrzne",
+        "tajne"
+      ],
+      "owner_id": "",
+      "source_system_id": ""
     }
   }
 }

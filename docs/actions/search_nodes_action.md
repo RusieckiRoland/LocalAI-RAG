@@ -88,10 +88,10 @@ This is useful when a router/model emits a “JSON-ish” payload.
    - `query`
    - `filters_parsed`
    - `warnings`
-3) the action builds `filters_base` (repo/branch + ACL)
+3) the action builds `filters_base` (repo/snapshot + ACL)
 4) filters are merged contract-style:
 
-**ACL filters are sacred and must not be overridden by payload.**  
+**Security filters are sacred and must not be overridden by payload.**  
 Therefore:
 
 ```
@@ -99,7 +99,26 @@ filters_effective = parsed_filters + base_filters
 (base_filters override parsed_filters)
 ```
 
-So even if the payload tries to spoof `repo/branch/tenant`, `base_filters` wins.
+So even if the payload tries to spoof `repo/snapshot/tenant`, `base_filters` wins.
+
+---
+
+## Snapshot selector (`snapshot_source`)
+
+`search_nodes` can choose which snapshot scope to use:
+
+```yaml
+snapshot_source: primary | secondary
+```
+
+- `primary` *(default)* → use `state.snapshot_id`
+- `secondary` → use `state.snapshot_id_b`
+
+Notes:
+- `secondary` requires `snapshot_id_b` to be present.
+- In API requests, frontend `snapshots[]` is mapped as:
+  - first element -> `snapshot_id` (primary)
+  - second element -> `snapshot_id_b` (secondary)
 
 ---
 
@@ -108,10 +127,11 @@ So even if the payload tries to spoof `repo/branch/tenant`, `base_filters` wins.
 Required:
 - `state.last_model_response` *(required; becomes the query)*  
 - `state.repository` *(required, non-empty)*  
-- `state.branch` *(required, non-empty)*  
-- `state.retrieval_filters` *(optional but “sacred” ACL)*
+- `state.retrieval_filters` *(optional but “sacred” security filters: `acl_tags_any`, `classification_labels_all`, etc.)*
 
 Optional:
+- `state.snapshot_id` *(required for default/primary mode)*
+- `state.snapshot_id_b` *(required only for `snapshot_source: secondary`)*
 
 ---
 
@@ -136,6 +156,7 @@ Optional:
   top_k: <int>                             # optional, default: 5
   query_parser: <string>                   # optional (e.g. jsonish_v1)
   rerank: none | keyword_rerank | codebert_rerank   # optional; semantic-only
+  snapshot_source: primary | secondary               # optional; default: primary
 
   # optional (backend-dependent):
   rrf_k: <int>                             # typically hybrid-only (e.g. default 60)
@@ -148,7 +169,9 @@ Optional:
 ## Fail-fast validations
 
 Runtime error if:
-- `repository` or `branch` is missing/empty
+- `repository` is missing/empty
+- `snapshot_source` is invalid
+- `snapshot_source=secondary` and `snapshot_id_b` is missing
 - `search_type` is not one of `semantic | bm25 | hybrid`
 - `top_k < 1`
 - query becomes empty after parsing/normalization

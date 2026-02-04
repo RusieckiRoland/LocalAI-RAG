@@ -14,6 +14,7 @@ py_logger = logging.getLogger(__name__)
 
 _ALLOWED_SEARCH_TYPES = {"semantic", "bm25", "hybrid"}
 _ALLOWED_DATA_TYPES = {"regular_code", "db_code"}
+_ALLOWED_SNAPSHOT_SOURCES = {"primary", "secondary"}
 
 # "codebert_rerank" is for future use (contract allows it, execution can be backend-side later)
 _ALLOWED_RERANK_MODES = {"none", "keyword_rerank", "codebert_rerank"}
@@ -52,20 +53,58 @@ def _cleanup_retrieval_artifacts(state: PipelineState) -> None:
         setattr(state, "node_texts", [])
 
 
-def _merge_filters(settings: Dict[str, Any], state: PipelineState, step_raw: Dict[str, Any]) -> Dict[str, Any]:
+def _resolve_snapshot_scope(
+    settings: Dict[str, Any],
+    state: PipelineState,
+    step_raw: Dict[str, Any],
+) -> Tuple[str, Optional[str], Optional[List[str]]]:
+    source = str(step_raw.get("snapshot_source") or "primary").strip().lower()
+    if not source:
+        source = "primary"
+    if source not in _ALLOWED_SNAPSHOT_SOURCES:
+        raise ValueError(
+            f"search_nodes: invalid snapshot_source='{source}'. "
+            f"Allowed: {sorted(_ALLOWED_SNAPSHOT_SOURCES)}"
+        )
+
+    primary_id = (getattr(state, "snapshot_id", None) or settings.get("snapshot_id") or "").strip()
+    secondary_id = (getattr(state, "snapshot_id_b", None) or settings.get("snapshot_id_b") or "").strip()
+
+    if source == "primary":
+        if not primary_id:
+            raise ValueError("search_nodes: Missing required 'snapshot_id' for snapshot_source='primary'.")
+        return primary_id, secondary_id or None, None
+
+    if source == "secondary":
+        if not secondary_id:
+            raise ValueError("search_nodes: Missing required 'snapshot_id_b' for snapshot_source='secondary'.")
+        return secondary_id, secondary_id, None
+
+    return primary_id, secondary_id or None, None
+
+
+def _merge_filters(
+    *,
+    settings: Dict[str, Any],
+    state: PipelineState,
+    step_raw: Dict[str, Any],
+    repository: str,
+    snapshot_id: str,
+    snapshot_ids_any: Optional[List[str]] = None,
+) -> Dict[str, Any]:
     """
     Build the filter dict that MUST be applied at SEARCH TIME.
 
     IMPORTANT (retrieval_contract):
     - repository + branch are required (scope)
-    - ACL filters from state.retrieval_filters are sacred
+    - security filters from state.retrieval_filters are sacred
     - parsed/model payload must never override base filters
     """
     filters: Dict[str, Any] = {}
     filters.update(getattr(state, "retrieval_filters", None) or {})
 
-    repo = (state.repository or settings.get("repository") or "").strip()
-    snapshot_id = (getattr(state, "snapshot_id", None) or settings.get("snapshot_id") or "").strip()
+    repo = (repository or "").strip()
+    snapshot_id = (snapshot_id or "").strip()
 
     if not repo:
         raise ValueError("search_nodes: Missing required 'repository' (state.repository or pipeline settings['repository']).")
@@ -74,7 +113,10 @@ def _merge_filters(settings: Dict[str, Any], state: PipelineState, step_raw: Dic
 
     # Keep metadata keys compatible with existing unified-index layout
     filters["repo"] = repo
-    filters["snapshot_id"] = snapshot_id
+    if snapshot_ids_any:
+        filters["snapshot_ids_any"] = [str(x).strip() for x in snapshot_ids_any if str(x).strip()]
+    else:
+        filters["snapshot_id"] = snapshot_id
 
     # Optional multi-tenant / auth-ish filters from pipeline settings
     tenant_id = (settings.get("tenant_id") or "").strip()
@@ -88,10 +130,25 @@ def _merge_filters(settings: Dict[str, Any], state: PipelineState, step_raw: Dic
     if isinstance(allowed_group_ids, list) and allowed_group_ids:
         filters["allowed_group_ids"] = [s for s in _normalize_str_list(allowed_group_ids)]
 
-    # Step-level permission tags: require ALL tags
-    perm_tags = step_raw.get("permission_tags_all")
-    if isinstance(perm_tags, list) and perm_tags:
-        filters["permission_tags_all"] = [s for s in _normalize_str_list(perm_tags)]
+    # Optional step-level narrowing filters.
+    # ACL tags are OR semantics.
+    acl_tags_any = step_raw.get("acl_tags_any")
+    if isinstance(acl_tags_any, list) and acl_tags_any:
+        clean_any = [s for s in _normalize_str_list(acl_tags_any)]
+        existing_any = _normalize_str_list(filters.get("acl_tags_any") or filters.get("acl_tags_all"))
+        filters["acl_tags_any"] = _normalize_str_list(existing_any + clean_any)
+        filters["acl_tags_all"] = list(filters["acl_tags_any"])  # backward-compatible alias
+
+    # Classification labels are ALL/subset semantics.
+    classification_labels_all = step_raw.get("classification_labels_all")
+    if isinstance(classification_labels_all, list) and classification_labels_all:
+        clean_labels = [s for s in _normalize_str_list(classification_labels_all)]
+        existing_labels = _normalize_str_list(filters.get("classification_labels_all"))
+        filters["classification_labels_all"] = _normalize_str_list(existing_labels + clean_labels)
+
+    source_system_id = (step_raw.get("source_system_id") or "").strip()
+    if source_system_id:
+        filters["source_system_id"] = source_system_id
 
     return filters
 
@@ -149,22 +206,52 @@ def _normalize_and_validate_filters(filters: Dict[str, Any]) -> Dict[str, Any]:
                 raise ValueError(f"search_nodes: invalid data_type='{dt_s}'. Allowed: regular_code, db_code.")
             out["data_type"] = dt_s
 
-    if "permission_tags_all" in out:
-        tags = out.get("permission_tags_all")
+    # Normalize ACL filter aliases to acl_tags_any.
+    if "permission_tags_all" in out and "acl_tags_any" not in out:
+        out["acl_tags_any"] = out.get("permission_tags_all")
+    if "permission_tags_any" in out and "acl_tags_any" not in out:
+        out["acl_tags_any"] = out.get("permission_tags_any")
+    if "acl_tags_all" in out and "acl_tags_any" not in out:
+        out["acl_tags_any"] = out.get("acl_tags_all")
+
+    if "acl_tags_any" in out:
+        tags = out.get("acl_tags_any")
         if isinstance(tags, list):
             clean = _normalize_str_list(tags)
             if clean:
-                out["permission_tags_all"] = clean
+                out["acl_tags_any"] = clean
+                out["acl_tags_all"] = list(clean)  # compatibility alias
             else:
-                out.pop("permission_tags_all", None)
+                out.pop("acl_tags_any", None)
+                out.pop("acl_tags_all", None)
         elif tags is None:
-            out.pop("permission_tags_all", None)
+            out.pop("acl_tags_any", None)
+            out.pop("acl_tags_all", None)
         else:
             s = str(tags or "").strip()
             if s:
-                out["permission_tags_all"] = [s]
+                out["acl_tags_any"] = [s]
+                out["acl_tags_all"] = [s]
             else:
-                out.pop("permission_tags_all", None)
+                out.pop("acl_tags_any", None)
+                out.pop("acl_tags_all", None)
+
+    if "classification_labels_all" in out:
+        labels = out.get("classification_labels_all")
+        if isinstance(labels, list):
+            clean = _normalize_str_list(labels)
+            if clean:
+                out["classification_labels_all"] = clean
+            else:
+                out.pop("classification_labels_all", None)
+        elif labels is None:
+            out.pop("classification_labels_all", None)
+        else:
+            s = str(labels or "").strip()
+            if s:
+                out["classification_labels_all"] = [s]
+            else:
+                out.pop("classification_labels_all", None)
 
     return out
 
@@ -180,6 +267,37 @@ def _opt_int(v: Any) -> Optional[int]:
     if not s:
         return None
     return int(s)
+
+
+def _hit_id(hit: Any) -> str:
+    """
+    Support both hit objects (contract style) and dict hits (adapter style).
+    """
+    if isinstance(hit, dict):
+        return str(hit.get("id") or hit.get("Id") or "").strip()
+    return str(getattr(hit, "id", "") or "").strip()
+
+
+def _hit_score(hit: Any) -> float:
+    if isinstance(hit, dict):
+        v = hit.get("score", 0.0)
+    else:
+        v = getattr(hit, "score", 0.0)
+    try:
+        return float(v)
+    except Exception:
+        return 0.0
+
+
+def _hit_rank(hit: Any) -> int:
+    if isinstance(hit, dict):
+        v = hit.get("rank", 0)
+    else:
+        v = getattr(hit, "rank", 0)
+    try:
+        return int(v)
+    except Exception:
+        return 0
 
 
 def _resolve_top_k(step_raw: Dict[str, Any], settings: Dict[str, Any]) -> int:
@@ -246,7 +364,16 @@ class SearchNodesAction(PipelineActionBase):
         if payload:
             parsed_query, parsed_filters, warnings = _parse_payload_if_configured(raw, payload)
 
-        base_filters = _merge_filters(settings, state, raw)
+        repo = (state.repository or settings.get("repository") or "").strip()
+        snapshot_id_effective, _snapshot_id_b_effective, snapshot_ids_any = _resolve_snapshot_scope(settings, state, raw)
+        base_filters = _merge_filters(
+            settings=settings,
+            state=state,
+            step_raw=raw,
+            repository=repo,
+            snapshot_id=snapshot_id_effective,
+            snapshot_ids_any=snapshot_ids_any,
+        )
         effective_filters = dict(parsed_filters or {})
         effective_filters.update(base_filters)
         effective_filters = _normalize_and_validate_filters(effective_filters)
@@ -268,6 +395,9 @@ class SearchNodesAction(PipelineActionBase):
             "filters_effective": effective_filters,
             "parser": raw.get("query_parser"),
             "parser_warnings": warnings,
+            "snapshot_source": str(raw.get("snapshot_source") or "primary").strip().lower() or "primary",
+            "snapshot_id_effective": snapshot_id_effective,
+            "snapshot_ids_any": snapshot_ids_any or [],
         }
 
     def log_out(
@@ -312,20 +442,27 @@ class SearchNodesAction(PipelineActionBase):
             raise ValueError("search_nodes: Empty query after parsing/normalization is not allowed by retrieval_contract.")
 
         repo = (state.repository or settings.get("repository") or "").strip()
-        snapshot_id = (getattr(state, "snapshot_id", None) or settings.get("snapshot_id") or "").strip()
+        snapshot_id, snapshot_id_b_effective, snapshot_ids_any = _resolve_snapshot_scope(settings, state, raw)
         snapshot_set_id = (getattr(state, "snapshot_set_id", None) or settings.get("snapshot_set_id") or "").strip()
 
         if not repo:
             raise ValueError("search_nodes: Missing required 'repository' (state.repository or pipeline settings['repository']).")
-        if not snapshot_id:
-            raise ValueError("search_nodes: Missing required 'snapshot_id' (state.snapshot_id or pipeline settings['snapshot_id']).")
 
         top_k = _resolve_top_k(raw, settings)
 
-        base_filters = _merge_filters(settings, state, raw)
+        base_filters = _merge_filters(
+            settings=settings,
+            state=state,
+            step_raw=raw,
+            repository=repo,
+            snapshot_id=snapshot_id,
+            snapshot_ids_any=snapshot_ids_any,
+        )
         filters = dict(parsed_filters or {})
         filters.update(base_filters)
         filters = _normalize_and_validate_filters(filters)
+        # Keep effective retrieval scope for downstream actions (e.g. fetch_node_texts).
+        state.retrieval_filters = dict(filters)
 
         backend = runtime.get_retrieval_backend()
 
@@ -343,23 +480,26 @@ class SearchNodesAction(PipelineActionBase):
 
         # Contract outputs
         hits = list(resp.hits or [])
-        state.retrieval_seed_nodes = [h.id for h in hits if getattr(h, "id", None)]
+        state.retrieval_seed_nodes = [hid for h in hits if (hid := _hit_id(h))]
 
         # A simple, stable debug form of hits (contract-friendly)
         state.retrieval_hits = [
             {
-                "id": h.id,
-                "score": getattr(h, "score", 0.0),
-                "rank": getattr(h, "rank", 0),
+                "id": _hit_id(h),
+                "score": _hit_score(h),
+                "rank": _hit_rank(h),
             }
             for h in hits
-            if getattr(h, "id", None)
+            if _hit_id(h)
         ]
 
         try:
             results_for_history: List[Dict[str, Any]] = []
             for h in hits:
-                results_for_history.append({"Id": h.id, "score": getattr(h, "score", 0.0), "rank": getattr(h, "rank", 0)})
+                hid = _hit_id(h)
+                if not hid:
+                    continue
+                results_for_history.append({"Id": hid, "score": _hit_score(h), "rank": _hit_rank(h)})
             runtime.history_manager.add_iteration(query, results_for_history)
         except Exception:
             py_logger.exception("soft-failure: history_manager.add_iteration failed; continuing")

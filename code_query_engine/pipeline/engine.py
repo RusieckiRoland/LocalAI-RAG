@@ -209,7 +209,12 @@ class PipelineEngine:
         finally:
             if trace_file_enabled:
                 # Write one JSON file per interaction (per PipelineEngine.run()).
-                trace_dir = (os.getenv("RAG_PIPELINE_TRACE_DIR") or "logs/pipeline_traces").strip()
+                trace_dir = (os.getenv("RAG_PIPELINE_TRACE_DIR") or "").strip()
+                if not trace_dir:
+                    if (os.getenv("RUN_INTEGRATION_TESTS") or "").strip() == "1":
+                        trace_dir = "log/integration/retrival/pipeline_traces"
+                    else:
+                        trace_dir = "log/pipeline_traces"
                 Path(trace_dir).mkdir(parents=True, exist_ok=True)
 
                 ts_ms = int(time.time() * 1000)

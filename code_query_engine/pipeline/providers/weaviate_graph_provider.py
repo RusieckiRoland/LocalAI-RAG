@@ -57,7 +57,7 @@ class WeaviateGraphProvider(IGraphProvider):
     Responsibilities:
     - Load and cache a unified graph per (repo, snapshot_id).
     - Expand dependency tree using BFS.
-    - Filter nodes by ACL tags (permission_tags_all / acl_tags_all).
+    - Filter nodes by ACL tags and classification labels.
     """
 
     def __init__(
@@ -75,6 +75,7 @@ class WeaviateGraphProvider(IGraphProvider):
         branch_property: str = "branch",
         snapshot_id_property: str = "snapshot_id",
         acl_property: str = "acl_allow",
+        classification_property: str = "classification_labels",
         page_size: int = 2000,
     ) -> None:
         if client is None:
@@ -92,6 +93,7 @@ class WeaviateGraphProvider(IGraphProvider):
         self._branch_prop = branch_property
         self._snapshot_id_prop = snapshot_id_property
         self._acl_prop = acl_property
+        self._classification_prop = classification_property
         self._page_size = int(page_size) if page_size else 2000
 
         self._adj_cache: Dict[Tuple[str, str], Dict[str, List[Tuple[str, str]]]] = {}
@@ -163,8 +165,12 @@ class WeaviateGraphProvider(IGraphProvider):
 
             for rel, to in adj.get(node, []):
                 rel_l = (rel or "").strip().lower()
-                if not allow_all and rel_l not in allow:
-                    continue
+                if not allow_all:
+                    rel_key = rel_l
+                    if rel_key.startswith("sql_") or rel_key.startswith("cs_"):
+                        rel_key = rel_key.split("_", 1)[1]
+                    if rel_l not in allow and rel_key not in allow:
+                        continue
 
                 edges_out.append({"from": node, "to": to, "type": rel})
 
@@ -194,14 +200,21 @@ class WeaviateGraphProvider(IGraphProvider):
         _ = branch
         _ = snapshot_id
 
-        tags = []
+        tags: List[str] = []
+        labels: List[str] = []
         rf = retrieval_filters or {}
-        if "permission_tags_all" in rf:
+        if "acl_tags_any" in rf:
+            tags = _normalize_acl_tags(rf.get("acl_tags_any"))
+        elif "permission_tags_any" in rf:
+            tags = _normalize_acl_tags(rf.get("permission_tags_any"))
+        elif "permission_tags_all" in rf:
             tags = _normalize_acl_tags(rf.get("permission_tags_all"))
         elif "acl_tags_all" in rf:
             tags = _normalize_acl_tags(rf.get("acl_tags_all"))
+        if "classification_labels_all" in rf:
+            labels = _normalize_acl_tags(rf.get("classification_labels_all"))
 
-        if not tags:
+        if not tags and not labels:
             return list(node_ids or [])
 
         ids = _dedupe_preserve_order(node_ids or [])
@@ -210,8 +223,11 @@ class WeaviateGraphProvider(IGraphProvider):
 
         filters = self._build_id_filter(ids)
         acl_filter = self._build_acl_filter(tags)
+        classification_filter = self._build_classification_filter(labels)
         if acl_filter is not None:
             filters = filters & acl_filter
+        if classification_filter is not None:
+            filters = filters & classification_filter
 
         coll = self._client.collections.get(self._node_collection)
         res = coll.query.fetch_objects(
@@ -385,4 +401,15 @@ class WeaviateGraphProvider(IGraphProvider):
         cleaned = [str(t).strip() for t in tags if str(t).strip()]
         if not cleaned:
             return None
-        return Filter.by_property(self._acl_prop).contains_all(cleaned)
+        return Filter.by_property(self._acl_prop).contains_any(cleaned)
+
+    def _build_classification_filter(self, labels: List[str]) -> Any:
+        try:
+            from weaviate.classes.query import Filter  # type: ignore
+        except Exception as e:
+            raise RuntimeError("WeaviateGraphProvider: cannot import weaviate.classes.query.Filter") from e
+
+        cleaned = [str(t).strip() for t in labels if str(t).strip()]
+        if not cleaned:
+            return None
+        return Filter.by_property(self._classification_prop).contains_all(cleaned)

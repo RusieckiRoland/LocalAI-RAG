@@ -88,6 +88,6 @@ vector_indexes/**
 rag_dump_*.txt
 clip_dump_*.txt
 
-log/
+/log/
 
 docs_pl/

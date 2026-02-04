@@ -33,6 +33,7 @@ dependencies:
       - typing-extensions # ✅ Safe for PyTorch and llama-cpp-python
       - python-dotenv
       - weaviate-client
+      - pyjwt[crypto]
 
 # === Notes ===
 # 1) After creating the environment, install llama-cpp-python manually:

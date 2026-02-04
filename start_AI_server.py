@@ -7,6 +7,7 @@ Use:
 """
 
 import argparse
+import json
 import os
 from dotenv import load_dotenv
 
@@ -42,16 +43,44 @@ def _get_primary_ipv4() -> str:
 def _print_start_banner(host: str, port: int) -> None:
     # English comments only.
     ip = _get_primary_ipv4()
+    development = _is_development_enabled()
+    mode_label = "dev" if development else "prod"
 
     print("")
     print("🚀 LocalAI-RAG UI")
+    print(f"🧭 Mode: {mode_label}")
     print(f"➜  Local:   http://127.0.0.1:{port}/")
     print(f"➜  Network: http://{ip}:{port}/")
     print("")
     print("🔎 Health / config")
     print(f"➜  /health:     http://127.0.0.1:{port}/health")
-    print(f"➜  /app-config: http://127.0.0.1:{port}/app-config")
+    if development:
+        print(f"➜  /app-config/dev:  http://127.0.0.1:{port}/app-config/dev")
+    print(f"➜  /app-config/prod: http://127.0.0.1:{port}/app-config/prod")
     print("")
+    print("🔐 Prod auth check")
+    print(f"➜  /auth-check/prod: http://127.0.0.1:{port}/auth-check/prod")
+    if development:
+        print(f"➜  /search/dev (POST):  http://127.0.0.1:{port}/search/dev")
+    print(f"➜  /search/prod (POST): http://127.0.0.1:{port}/search/prod")
+    print("")
+
+
+def _is_development_enabled() -> bool:
+    env = (os.getenv("APP_DEVELOPMENT") or "").strip().lower()
+    if env in ("1", "true", "yes", "on"):
+        return True
+    if env in ("0", "false", "no", "off"):
+        return False
+
+    cfg_path = os.path.join(os.path.dirname(__file__), "config.json")
+    try:
+        with open(cfg_path, "r", encoding="utf-8") as f:
+            cfg = json.load(f) or {}
+    except Exception:
+        return True
+
+    return bool(cfg.get("developement", cfg.get("development", True)))
 
 
 if __name__ == "__main__":

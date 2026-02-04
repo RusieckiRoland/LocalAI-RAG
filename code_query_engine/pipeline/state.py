@@ -20,6 +20,7 @@ class PipelineState:
     user_id: Optional[str] = None
     repository: Optional[str] = None
     snapshot_id: Optional[str] = None
+    snapshot_id_b: Optional[str] = None
     snapshot_set_id: Optional[str] = None
     allowed_commands: List[str] = field(default_factory=list)
 

@@ -11,7 +11,7 @@ from pathlib import Path
 from threading import Lock
 from typing import Any, Dict, List, Optional, Tuple
 
-from flask import Flask, jsonify, request, send_file
+from flask import Flask, abort, jsonify, request, send_file
 from flask_cors import CORS
 
 from common.logging_setup import LoggingConfig, configure_logging, logging_config_from_runtime_config
@@ -33,6 +33,19 @@ from server.snapshots import SnapshotRegistry
 
 
 py_logger = logging.getLogger(__name__)
+
+try:
+    import jwt as _pyjwt  # type: ignore
+    from jwt import PyJWKClient as _PyJWKClient  # type: ignore
+    from jwt.exceptions import ExpiredSignatureError as _JwtExpiredSignatureError  # type: ignore
+    from jwt.exceptions import InvalidTokenError as _JwtInvalidTokenError  # type: ignore
+    from jwt.exceptions import PyJWKClientError as _JwtPyJwkClientError  # type: ignore
+except Exception:
+    _pyjwt = None
+    _PyJWKClient = None
+    _JwtExpiredSignatureError = Exception
+    _JwtInvalidTokenError = Exception
+    _JwtPyJwkClientError = Exception
 
 
 
@@ -98,6 +111,13 @@ def _load_runtime_cfg() -> dict:
 
 
 _runtime_cfg = _load_runtime_cfg()
+_development_raw = _runtime_cfg.get("developement", _runtime_cfg.get("development", True))
+_development_enabled = bool(_development_raw)
+_development_env = (os.getenv("APP_DEVELOPMENT") or "").strip().lower()
+if _development_env in ("1", "true", "yes", "on"):
+    _development_enabled = True
+elif _development_env in ("0", "false", "no", "off"):
+    _development_enabled = False
 
 
 # ------------------------------------------------------------
@@ -106,6 +126,55 @@ _runtime_cfg = _load_runtime_cfg()
 
 _logging_cfg = logging_config_from_runtime_config(_runtime_cfg)
 configure_logging(_logging_cfg)
+
+
+@dataclass(frozen=True)
+class IdpAuthSettings:
+    enabled: bool
+    issuer: str
+    jwks_url: str
+    audience: str
+    algorithms: tuple[str, ...]
+    required_claims: tuple[str, ...]
+
+
+def _load_idp_auth_settings(runtime_cfg: Dict[str, Any]) -> IdpAuthSettings:
+    raw = runtime_cfg.get("identity_provider") or {}
+    if not isinstance(raw, dict):
+        raw = {}
+
+    env_enabled = (os.getenv("IDP_AUTH_ENABLED") or "").strip().lower()
+    if env_enabled in ("1", "true", "yes", "on"):
+        enabled = True
+    elif env_enabled in ("0", "false", "no", "off"):
+        enabled = False
+    else:
+        enabled = bool(raw.get("enabled", True))
+
+    issuer = str(raw.get("issuer") or "").strip()
+    jwks_url = str(raw.get("jwks_url") or "").strip()
+    audience = str(raw.get("audience") or "").strip()
+
+    algorithms_raw = raw.get("algorithms") or ["RS256"]
+    algorithms = tuple(str(x).strip() for x in algorithms_raw if str(x).strip())
+    if not algorithms:
+        algorithms = ("RS256",)
+
+    required_raw = raw.get("required_claims") or ["sub", "exp", "iss", "aud"]
+    required_claims = tuple(str(x).strip() for x in required_raw if str(x).strip())
+
+    return IdpAuthSettings(
+        enabled=enabled,
+        issuer=issuer,
+        jwks_url=jwks_url,
+        audience=audience,
+        algorithms=algorithms,
+        required_claims=required_claims,
+    )
+
+
+_idp_auth_settings = _load_idp_auth_settings(_runtime_cfg)
+_idp_jwk_client = None
 
 
 # ------------------------------------------------------------
@@ -184,7 +253,11 @@ else:
         py_logger.exception("fatal: cannot initialize Weaviate client (vector_db/weaviate_client.py)")
         raise
 
-    _retrieval_backend = WeaviateRetrievalBackend(client=_weaviate_client)
+    _embed_model_path = _resolve_cfg_path(str(_runtime_cfg.get("model_path_embd") or ""))
+    _retrieval_backend = WeaviateRetrievalBackend(
+        client=_weaviate_client,
+        query_embed_model=_embed_model_path,
+    )
     _graph_provider = WeaviateGraphProvider(client=_weaviate_client)
 
 _templates_store = default_templates_store(PROJECT_ROOT)
@@ -242,11 +315,111 @@ def _resolve_snapshot_id_from_set(*, snapshot_set_id: str, repository: str | Non
         return ""
     return _snapshot_registry.resolve_snapshot_id(snapshot_set_id=snapshot_set_id, repository=repository)
 
-def _auth_ok() -> bool:
+
+def _dev_endpoints_enabled() -> bool:
+    return _development_enabled
+
+
+def _log_security_abuse(
+    *,
+    reason: str,
+    status_code: int,
+    user_id: Optional[str] = None,
+    pipeline: str = "",
+    snapshot_set_id: str = "",
+    snapshot_id: str = "",
+) -> None:
+    py_logger.warning(
+        "[security_abuse] reason=%s status=%s path=%s remote=%s session_id=%s user_id=%s pipeline=%s snapshot_set_id=%s snapshot_id=%s",
+        reason,
+        status_code,
+        request.path,
+        request.remote_addr,
+        request.headers.get("X-Session-ID") or "",
+        user_id or "",
+        pipeline,
+        snapshot_set_id,
+        snapshot_id,
+    )
+
+
+def _is_valid_api_bearer(auth_header: str) -> bool:
     if not API_TOKEN:
-        return True
-    hdr = (request.headers.get("Authorization") or "").strip()
-    return hdr == f"Bearer {API_TOKEN}"
+        return False
+    return auth_header == f"Bearer {API_TOKEN}"
+
+
+def _extract_bearer_token(auth_header: str) -> str:
+    if not auth_header:
+        return ""
+    prefix = "Bearer "
+    if not auth_header.startswith(prefix):
+        return ""
+    return auth_header[len(prefix):].strip()
+
+
+def _idp_auth_is_active() -> bool:
+    s = _idp_auth_settings
+    return bool(s.enabled and s.issuer and s.jwks_url and s.audience)
+
+
+def _get_idp_jwk_client():
+    global _idp_jwk_client
+    if _idp_jwk_client is None:
+        if _PyJWKClient is None:
+            raise RuntimeError("PyJWT with JWK support is not installed.")
+        _idp_jwk_client = _PyJWKClient(_idp_auth_settings.jwks_url)
+    return _idp_jwk_client
+
+
+def _validate_idp_bearer(auth_header: str):
+    token = _extract_bearer_token(auth_header)
+    if not token:
+        _log_security_abuse(reason="missing_or_invalid_bearer", status_code=401)
+        return jsonify({"ok": False, "error": "unauthorized"}), 401
+
+    if _pyjwt is None:
+        return jsonify({"ok": False, "error": "idp auth dependency missing (install pyjwt[crypto])"}), 503
+
+    try:
+        jwk_client = _get_idp_jwk_client()
+        signing_key = jwk_client.get_signing_key_from_jwt(token)
+        _pyjwt.decode(
+            token,
+            signing_key.key,
+            algorithms=list(_idp_auth_settings.algorithms),
+            audience=_idp_auth_settings.audience,
+            issuer=_idp_auth_settings.issuer,
+            options={"require": list(_idp_auth_settings.required_claims)},
+        )
+        return None
+    except _JwtExpiredSignatureError:
+        _log_security_abuse(reason="expired_token", status_code=401)
+        return jsonify({"ok": False, "error": "token expired"}), 401
+    except _JwtInvalidTokenError:
+        _log_security_abuse(reason="invalid_token", status_code=401)
+        return jsonify({"ok": False, "error": "unauthorized"}), 401
+    except _JwtPyJwkClientError as ex:
+        _log_security_abuse(reason="jwks_unavailable", status_code=503)
+        py_logger.warning("idp jwks error: %s", ex)
+        return jsonify({"ok": False, "error": "identity provider unavailable"}), 503
+    except Exception:
+        _log_security_abuse(reason="idp_validation_error", status_code=503)
+        py_logger.exception("idp token validation failed unexpectedly")
+        return jsonify({"ok": False, "error": "identity provider unavailable"}), 503
+
+
+def _require_prod_bearer(auth_header: str):
+    if _idp_auth_is_active():
+        return _validate_idp_bearer(auth_header)
+
+    if not API_TOKEN:
+        _log_security_abuse(reason="prod_auth_not_configured", status_code=503)
+        return jsonify({"ok": False, "error": "server auth is not configured"}), 503
+    if not _is_valid_api_bearer(auth_header):
+        _log_security_abuse(reason="invalid_api_token", status_code=401)
+        return jsonify({"ok": False, "error": "unauthorized"}), 401
+    return None
 
 
 @app.route("/health", methods=["GET"])
@@ -282,8 +455,11 @@ def _ensure_limits(payload: dict) -> tuple[bool, str]:
         "branchA",
         "branchB",
         "branches",  # NEW contract: list[0..2]
+        "snapshots",  # NEW contract: list[0..2]
         "snapshot_id",
+        "snapshot_id_b",
         "snapshot_set_id",
+        "source_system_id",
         "pipelineName",
         "templateId",
         "language",
@@ -291,17 +467,19 @@ def _ensure_limits(payload: dict) -> tuple[bool, str]:
         "session_id",
         "user_id",
     ):
-        if k == "branches":
+        if k in ("branches", "snapshots"):
             raw = payload.get("branches")
+            if k == "snapshots":
+                raw = payload.get("snapshots")
             if isinstance(raw, list):
                 for i, item in enumerate(raw):
                     v = str(item or "")
                     if len(v) > MAX_FIELD_LEN:
-                        return False, f"field 'branches[{i}]' too long (>{MAX_FIELD_LEN})"
+                        return False, f"field '{k}[{i}]' too long (>{MAX_FIELD_LEN})"
             else:
                 v = str(raw or "")
                 if len(v) > MAX_FIELD_LEN:
-                    return False, f"field 'branches' too long (>{MAX_FIELD_LEN})"
+                    return False, f"field '{k}' too long (>{MAX_FIELD_LEN})"
             continue
 
         v = str(payload.get(k) or "")
@@ -372,14 +550,91 @@ def _normalize_runner_result(result: Any) -> Dict[str, Any]:
     return {"results": "", "translated": ""}
 
 
+def _enforce_custom_access_policies(
+    *,
+    access_ctx: UserAccessContext,
+    pipeline_name: str,
+    consultant_id: str,
+    snapshot_set_id: str,
+    snapshot_id: str,
+    snapshot_id_b: str,
+    repository: str,
+):
+    # 1) Pipeline authorization
+    if access_ctx.allowed_pipelines:
+        effective_pipeline = pipeline_name or consultant_id
+        if effective_pipeline not in access_ctx.allowed_pipelines:
+            _log_security_abuse(
+                reason="pipeline_not_allowed",
+                status_code=403,
+                user_id=access_ctx.user_id,
+                pipeline=effective_pipeline,
+                snapshot_set_id=snapshot_set_id,
+                snapshot_id=snapshot_id,
+            )
+            return jsonify({"ok": False, "error": "pipeline not allowed for this user"}), 403
+
+    # 2) Snapshot membership in snapshot set
+    if snapshot_set_id and (snapshot_id or snapshot_id_b):
+        if not _snapshot_registry:
+            return jsonify({"ok": False, "error": "snapshot validation unavailable"}), 503
+        try:
+            allowed = _snapshot_registry.list_snapshots(
+                snapshot_set_id=snapshot_set_id,
+                repository=repository or None,
+            )
+        except Exception as ex:
+            return jsonify({"ok": False, "error": str(ex)}), 400
+
+        allowed_ids = {s.id for s in allowed}
+        if snapshot_id and snapshot_id not in allowed_ids:
+            _log_security_abuse(
+                reason="snapshot_not_in_snapshot_set",
+                status_code=400,
+                user_id=access_ctx.user_id,
+                pipeline=(pipeline_name or consultant_id),
+                snapshot_set_id=snapshot_set_id,
+                snapshot_id=snapshot_id,
+            )
+            return jsonify({"ok": False, "error": "snapshot_id is not allowed in snapshot_set_id"}), 400
+        if snapshot_id_b and snapshot_id_b not in allowed_ids:
+            _log_security_abuse(
+                reason="snapshot_b_not_in_snapshot_set",
+                status_code=400,
+                user_id=access_ctx.user_id,
+                pipeline=(pipeline_name or consultant_id),
+                snapshot_set_id=snapshot_set_id,
+                snapshot_id=snapshot_id_b,
+            )
+            return jsonify({"ok": False, "error": "snapshot_id_b is not allowed in snapshot_set_id"}), 400
+
+    return None
+
+
 # ------------------------------------------------------------
 # UI templates + branches (Option A)
 # ------------------------------------------------------------
 
-@app.route("/app-config", methods=["GET"])
-def app_config():
-    session_id = _valid_session_id(request.headers.get("X-Session-ID") or "app-config")
+@app.route("/app-config/dev", methods=["GET"])
+def app_config_dev():
+    if not _dev_endpoints_enabled():
+        abort(404)
+    return _handle_app_config_request(require_bearer_auth=False)
+
+
+@app.route("/app-config/prod", methods=["GET"])
+def app_config_prod():
+    return _handle_app_config_request(require_bearer_auth=True)
+
+
+def _handle_app_config_request(*, require_bearer_auth: bool):
     auth_header = (request.headers.get("Authorization") or "").strip()
+    if require_bearer_auth:
+        auth_error = _require_prod_bearer(auth_header)
+        if auth_error is not None:
+            return auth_error
+
+    session_id = _valid_session_id(request.headers.get("X-Session-ID") or "app-config")
     cfg = dict(_runtime_cfg)
     cfg["project_root"] = PROJECT_ROOT
     cfg["repositories_root"] = REPOSITORIES_ROOT
@@ -397,11 +652,12 @@ def app_config():
 # Backward-compat: still accept legacy branchA/branchB.
 # ------------------------------------------------------------
 
-@app.route("/query", methods=["POST"])
-@app.route("/search", methods=["POST"])
-def query():
-    if not _auth_ok():
-        return jsonify({"ok": False, "error": "unauthorized"}), 401
+def _handle_query_request(*, require_bearer_auth: bool):
+    auth_header = (request.headers.get("Authorization") or "").strip()
+    if require_bearer_auth:
+        auth_error = _require_prod_bearer(auth_header)
+        if auth_error is not None:
+            return auth_error
 
     payload = request.get_json(silent=True) or {}
     ok, err = _ensure_limits(payload)
@@ -463,7 +719,23 @@ def query():
 
     repository = _get_str_field(payload, "repository", str(_runtime_cfg.get("repo_name") or ""))
     snapshot_id = _get_str_field(payload, "snapshot_id", _get_str_field(payload, "snapshotId", ""))
+    snapshot_id_b = _get_str_field(payload, "snapshot_id_b", _get_str_field(payload, "snapshotIdB", ""))
+    snapshots_raw = payload.get("snapshots")
+    if isinstance(snapshots_raw, list):
+        snapshots_clean = [str(x or "").strip() for x in snapshots_raw if str(x or "").strip()]
+        if len(snapshots_clean) > 2:
+            return jsonify({"ok": False, "error": "too many snapshots (max 2)"}), 400
+        if len(snapshots_clean) == 2 and snapshots_clean[0] == snapshots_clean[1]:
+            return jsonify({"ok": False, "error": "compare requires two different snapshots"}), 400
+        # Contract-friendly: if frontend sends snapshots[], first item is the active snapshot_id.
+        if not snapshot_id and snapshots_clean:
+            snapshot_id = snapshots_clean[0]
+        # Compare-friendly: optional second snapshot id is stored explicitly.
+        if not snapshot_id_b and len(snapshots_clean) > 1:
+            snapshot_id_b = snapshots_clean[1]
+
     snapshot_set_id = _get_str_field(payload, "snapshot_set_id", _get_str_field(payload, "snapshotSetId", ""))
+    source_system_id = _get_str_field(payload, "source_system_id", _get_str_field(payload, "sourceSystemId", ""))
     if _pipeline_snapshot_store and _snapshot_registry:
         exists, pipeline_snapshot_set_id = _pipeline_snapshot_store.get_snapshot_set_id(pipeline_name)
         if not exists:
@@ -492,7 +764,6 @@ def query():
 
     # Resolve access context (dev-only auth for now).
     raw_user_id = _valid_user_id(_get_str_field(payload, "user_id", ""))
-    auth_header = (request.headers.get("Authorization") or "").strip()
     access_ctx: UserAccessContext = _user_access_provider.resolve(
         user_id=raw_user_id,
         token=auth_header,
@@ -503,24 +774,38 @@ def query():
     overrides: Dict[str, Any] = {}
     if branch_b:
         overrides["branch_b"] = branch_b
-    if access_ctx.acl_tags_all:
-        overrides["retrieval_filters"] = {"acl_tags_all": list(access_ctx.acl_tags_all)}
+    retrieval_filters_override: Dict[str, Any] = {}
+    acl_tags_any = list(getattr(access_ctx, "acl_tags_any", None) or getattr(access_ctx, "acl_tags_all", None) or [])
+    if acl_tags_any:
+        retrieval_filters_override["acl_tags_any"] = acl_tags_any
+        # Backward-compatible alias for older providers/helpers.
+        retrieval_filters_override["acl_tags_all"] = list(acl_tags_any)
+    classification_labels_all = list(getattr(access_ctx, "classification_labels_all", None) or [])
+    if classification_labels_all:
+        retrieval_filters_override["classification_labels_all"] = classification_labels_all
+    owner_id = str(getattr(access_ctx, "owner_id", "") or "").strip()
+    if owner_id:
+        retrieval_filters_override["owner_id"] = owner_id
+    if source_system_id:
+        retrieval_filters_override["source_system_id"] = source_system_id
+    if retrieval_filters_override:
+        overrides["retrieval_filters"] = retrieval_filters_override
     if access_ctx.allowed_commands:
         overrides["allowed_commands"] = list(access_ctx.allowed_commands)
 
-    # Enforce pipeline access if the provider returns explicit restrictions.
-    if access_ctx.allowed_pipelines:
-        effective_pipeline = pipeline_name or consultant_id
-        if effective_pipeline not in access_ctx.allowed_pipelines:
-            return jsonify({"ok": False, "error": "pipeline not allowed for this user"}), 403
+    custom_auth_error = _enforce_custom_access_policies(
+        access_ctx=access_ctx,
+        pipeline_name=pipeline_name,
+        consultant_id=consultant_id,
+        snapshot_set_id=snapshot_set_id,
+        snapshot_id=snapshot_id,
+        snapshot_id_b=snapshot_id_b,
+        repository=repository,
+    )
+    if custom_auth_error is not None:
+        return custom_auth_error
 
     try:
-        mm = _runner.model if hasattr(_runner, "model") else None
-        print("model type:", type(mm))
-        print("callable:", callable(mm))
-        print("has generate:", hasattr(mm, "generate"))
-        print("has ask:", hasattr(mm, "ask"))
-        
         runner_result = _runner.run(
             user_query=original_query,
             session_id=session_id,
@@ -531,6 +816,7 @@ def query():
             pipeline_name=pipeline_name or None,
             repository=repository or None,
             snapshot_id=snapshot_id or None,
+            snapshot_id_b=snapshot_id_b or None,
             snapshot_set_id=snapshot_set_id or None,
             overrides=overrides or None,
             mock_redis=_history_backend,
@@ -562,3 +848,26 @@ def query():
         out["branches"] = [branch_a]
 
     return jsonify(out)
+
+
+@app.route("/query/dev", methods=["POST"])
+@app.route("/search/dev", methods=["POST"])
+def query_dev_explicit():
+    if not _dev_endpoints_enabled():
+        abort(404)
+    return _handle_query_request(require_bearer_auth=False)
+
+
+@app.route("/query/prod", methods=["POST"])
+@app.route("/search/prod", methods=["POST"])
+def query_prod():
+    return _handle_query_request(require_bearer_auth=True)
+
+
+@app.route("/auth-check/prod", methods=["GET"])
+def auth_check_prod():
+    auth_header = (request.headers.get("Authorization") or "").strip()
+    auth_error = _require_prod_bearer(auth_header)
+    if auth_error is not None:
+        return auth_error
+    return jsonify({"ok": True, "mode": "prod", "auth": "bearer"})

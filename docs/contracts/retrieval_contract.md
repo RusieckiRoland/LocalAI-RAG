@@ -6,7 +6,7 @@ This document defines the **data contract** between three retrieval-pipeline act
 - `expand_dependency_tree`
 - `fetch_node_texts`
 
-It also defines **security rules (ACL)** and the **reranking feature contract** (keyword today, CodeBERT-ready later).
+It also defines **security rules (ACL + classification)** and the **reranking feature contract** (keyword today, CodeBERT-ready later).
 
 > **Contract goal:** enable implementation **without fallbacks and without guesswork**.
 > Every input/output field and every behavior must be deterministic and fail-fast where specified.
@@ -18,8 +18,10 @@ It also defines **security rules (ACL)** and the **reranking feature contract** 
 - **Seed nodes** — canonical node IDs (chunk/node IDs) returned by retrieval (`search_nodes`).  
   Canonical IDs are snapshot-scoped (they include `snapshot_id`).
 - **Expanded nodes** — seed nodes plus graph dependencies after expansion (`expand_dependency_tree`).
-- **ACL / security filters** — tenant/permissions/group allowlist/tags, etc.
+- **ACL / security filters** — tenant/permissions/group allowlist/tags/classification, etc.
   Source is **`state.retrieval_filters`** and these filters are **"sacred"**.
+  - `acl_tags_any` uses OR semantics.
+  - `classification_labels_all` uses ALL/subset semantics.
 - **Scope** — minimal context where `ID → text` is unique.
   Minimum is **`repository + snapshot_id`** (plus ACL components if they separate data).
   Therefore **`state.repository` and a concrete snapshot (`snapshot_id`) are required** for all three steps.
@@ -97,7 +99,7 @@ class IRetrievalBackend:
     def search(self, req: SearchRequest) -> SearchResponse:
         """Returns ranked canonical IDs for the given search type.
 
-        MUST enforce retrieval_filters (ACL) before returning hits.
+        MUST enforce retrieval_filters (ACL + classification) before returning hits.
         MUST be deterministic for the same inputs.
         """
 
@@ -112,7 +114,7 @@ class IRetrievalBackend:
     ) -> Dict[str, str]:
         """Returns a mapping {id -> text}.
 
-        MUST enforce retrieval_filters (ACL).
+        MUST enforce retrieval_filters (ACL + classification).
         MUST return only texts for IDs visible under the given scope (repository + snapshot_id + ACL).
         """
 ```
@@ -172,7 +174,7 @@ The action MUST reset these fields (set to empty values):
   - Resolution rules are implementation-specific but must be deterministic.
 
 - `state.retrieval_filters` **(optional but pipeline-enforced and "sacred")**
-  - ACL/tenant/permissions filters.
+  - ACL/tenant/permissions/classification filters.
   - Must not be removed or overridden by parsing.
 
 - `step.raw.query_parser` **(optional)**
@@ -399,7 +401,7 @@ Fail-fast:
 
 ### Security
 
-`expand_dependency_tree` MUST apply the same ACL filters as `search_nodes`.
+`expand_dependency_tree` MUST apply the same ACL/classification filters as `search_nodes`.
 This may be done by the graph provider (preferred) or an explicit graph-permission filter.
 
 ---
@@ -499,7 +501,7 @@ Token estimator:
 
 ### Invariants
 
-- `fetch_node_texts` must enforce Scope (`repository + snapshot_id + ACL` where applicable).
+- `fetch_node_texts` must enforce Scope (`repository + snapshot_id + ACL/classification` where applicable).
 - It must not materialize unbounded text and rely on a later trimming step.
 - It must not modify the ID lists (seed/expanded). It only materializes text for selected IDs.
 

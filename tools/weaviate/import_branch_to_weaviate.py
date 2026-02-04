@@ -167,6 +167,9 @@ def ensure_schema(client: "weaviate.WeaviateClient") -> None:
 
                 # Variant A: ACL on nodes
                 wvc.config.Property(name="acl_allow", data_type=wvc.config.DataType.TEXT_ARRAY),
+                wvc.config.Property(name="classification_labels", data_type=wvc.config.DataType.TEXT_ARRAY),
+                wvc.config.Property(name="owner_id", data_type=wvc.config.DataType.TEXT),
+                wvc.config.Property(name="source_system_id", data_type=wvc.config.DataType.TEXT),
 
                 # Content
                 wvc.config.Property(name="text", data_type=wvc.config.DataType.TEXT),
@@ -366,6 +369,8 @@ def iter_cs_nodes(bundle: BundleReader, meta: RepoMeta) -> Iterator[Dict[str, An
         if not local_id:
             continue
         cid = canonical_id(meta.repo, meta.snapshot_id, "cs", local_id)
+        acl_allow = d.get("acl_allow") or d.get("acl_tags_any") or []
+        classification_labels = d.get("classification_labels") or d.get("classification_labels_all") or []
         yield {
             "canonical_id": cid,
             "data_type": "regular_code",
@@ -383,7 +388,10 @@ def iter_cs_nodes(bundle: BundleReader, meta: RepoMeta) -> Iterator[Dict[str, An
             "sql_kind": "",
             "sql_schema": "",
             "sql_name": "",
-            "acl_allow": [],
+            "acl_allow": [str(x).strip() for x in acl_allow if str(x).strip()] if isinstance(acl_allow, list) else [],
+            "classification_labels": [str(x).strip() for x in classification_labels if str(x).strip()] if isinstance(classification_labels, list) else [],
+            "owner_id": str(d.get("owner_id") or "").strip(),
+            "source_system_id": str(d.get("source_system_id") or "code").strip() or "code",
             "text": str(d.get("Text") or d.get("text") or ""),
         }
 
@@ -399,6 +407,8 @@ def _iter_sql_nodes_from_jsonl(bundle: BundleReader, meta: RepoMeta, jsonl_rel: 
             if not key:
                 continue
             cid = canonical_id(meta.repo, meta.snapshot_id, "sql", key)
+            acl_allow = d.get("acl_allow") or d.get("acl_tags_any") or []
+            classification_labels = d.get("classification_labels") or d.get("classification_labels_all") or []
             yield {
                 "canonical_id": cid,
                 "data_type": str(d.get("data_type") or "sql_code"),
@@ -416,7 +426,10 @@ def _iter_sql_nodes_from_jsonl(bundle: BundleReader, meta: RepoMeta, jsonl_rel: 
                 "sql_kind": str(d.get("kind") or ""),
                 "sql_schema": str(d.get("schema") or ""),
                 "sql_name": str(d.get("name") or ""),
-                "acl_allow": [],
+                "acl_allow": [str(x).strip() for x in acl_allow if str(x).strip()] if isinstance(acl_allow, list) else [],
+                "classification_labels": [str(x).strip() for x in classification_labels if str(x).strip()] if isinstance(classification_labels, list) else [],
+                "owner_id": str(d.get("owner_id") or "").strip(),
+                "source_system_id": str(d.get("source_system_id") or "code").strip() or "code",
                 "text": str(d.get("body") or d.get("text") or ""),
             }
 
@@ -458,6 +471,9 @@ def _iter_sql_nodes_from_nodes_csv(bundle: BundleReader, meta: RepoMeta, nodes_c
             "sql_schema": (row.get("schema") or "").strip().strip('"'),
             "sql_name": (row.get("name") or "").strip().strip('"'),
             "acl_allow": [],
+            "classification_labels": [],
+            "owner_id": "",
+            "source_system_id": "code",
             "text": body.strip(),
         }
 

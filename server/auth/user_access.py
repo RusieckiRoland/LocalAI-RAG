@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Dict, Iterable, List, Optional
 
 
@@ -16,7 +16,12 @@ class UserAccessContext:
     group_ids: List[str]
     allowed_pipelines: List[str]
     allowed_commands: List[str]
-    acl_tags_all: List[str]
+    acl_tags_any: List[str] = field(default_factory=list)
+    classification_labels_all: List[str] = field(default_factory=list)
+    owner_id: Optional[str] = None
+    source_system_id: Optional[str] = None
+    # Backward-compatible alias retained during migration.
+    acl_tags_all: List[str] = field(default_factory=list)
 
 
 class UserAccessProvider:
@@ -38,11 +43,16 @@ class UserAccessProvider:
 @dataclass(frozen=True)
 class GroupPolicy:
     """
-    Group-level policy: ACL tags and allowed pipelines.
+    Group-level policy: ACL tags, classification labels and allowed pipelines.
     """
-    acl_tags_all: List[str]
-    allowed_pipelines: List[str]
-    allowed_commands: List[str]
+    allowed_pipelines: List[str] = field(default_factory=list)
+    allowed_commands: List[str] = field(default_factory=list)
+    acl_tags_any: List[str] = field(default_factory=list)
+    classification_labels_all: List[str] = field(default_factory=list)
+    owner_id: Optional[str] = None
+    source_system_id: Optional[str] = None
+    # Backward-compatible alias retained during migration.
+    acl_tags_all: List[str] = field(default_factory=list)
 
 
 class DevUserAccessProvider(UserAccessProvider):
@@ -76,17 +86,25 @@ class DevUserAccessProvider(UserAccessProvider):
         session_id: str,
     ) -> UserAccessContext:
         resolved_user_id = self._parse_dev_token(token) or user_id
+        has_bearer = self._has_any_bearer_token(token)
 
         if resolved_user_id:
             group_ids = [self._authenticated_group_id, f"{self._user_group_prefix}{resolved_user_id}"]
+            is_anonymous = False
+        elif has_bearer:
+            # Generic bearer still means "authenticated" in DEV transition mode.
+            group_ids = [self._authenticated_group_id]
             is_anonymous = False
         else:
             group_ids = [self._anonymous_group_id]
             is_anonymous = True
 
-        acl_tags_all = self._merge_acl_tags(group_ids)
+        acl_tags_any = self._merge_acl_tags_any(group_ids)
+        classification_labels_all = self._merge_classification_labels(group_ids)
         allowed_pipelines = self._merge_allowed_pipelines(group_ids)
         allowed_commands = self._merge_allowed_commands(group_ids)
+        owner_id = self._resolve_owner_id(group_ids)
+        source_system_id = self._resolve_source_system_id(group_ids)
 
         return UserAccessContext(
             user_id=resolved_user_id,
@@ -94,7 +112,11 @@ class DevUserAccessProvider(UserAccessProvider):
             group_ids=group_ids,
             allowed_pipelines=allowed_pipelines,
             allowed_commands=allowed_commands,
-            acl_tags_all=acl_tags_all,
+            acl_tags_any=acl_tags_any,
+            classification_labels_all=classification_labels_all,
+            owner_id=owner_id,
+            source_system_id=source_system_id,
+            acl_tags_all=list(acl_tags_any),
         )
 
     def _parse_dev_token(self, token: Optional[str]) -> Optional[str]:
@@ -109,13 +131,30 @@ class DevUserAccessProvider(UserAccessProvider):
         candidate = raw[len("dev-user:") :].strip()
         return candidate or None
 
-    def _merge_acl_tags(self, group_ids: Iterable[str]) -> List[str]:
+    def _has_any_bearer_token(self, token: Optional[str]) -> bool:
+        if not token:
+            return False
+        t = token.strip()
+        if not t.lower().startswith("bearer "):
+            return False
+        return bool(t[7:].strip())
+
+    def _merge_acl_tags_any(self, group_ids: Iterable[str]) -> List[str]:
         tags: List[str] = []
         for gid in group_ids:
             policy = self._group_policies.get(gid)
             if policy:
+                tags.extend(policy.acl_tags_any or [])
                 tags.extend(policy.acl_tags_all or [])
         return _unique_preserve_order(tags)
+
+    def _merge_classification_labels(self, group_ids: Iterable[str]) -> List[str]:
+        labels: List[str] = []
+        for gid in group_ids:
+            policy = self._group_policies.get(gid)
+            if policy:
+                labels.extend(policy.classification_labels_all or [])
+        return _unique_preserve_order(labels)
 
     def _merge_allowed_pipelines(self, group_ids: Iterable[str]) -> List[str]:
         allowed: List[str] = []
@@ -132,6 +171,26 @@ class DevUserAccessProvider(UserAccessProvider):
             if policy:
                 allowed.extend(policy.allowed_commands or [])
         return _unique_preserve_order(allowed)
+
+    def _resolve_owner_id(self, group_ids: Iterable[str]) -> Optional[str]:
+        for gid in group_ids:
+            policy = self._group_policies.get(gid)
+            if not policy:
+                continue
+            owner_id = str(policy.owner_id or "").strip()
+            if owner_id:
+                return owner_id
+        return None
+
+    def _resolve_source_system_id(self, group_ids: Iterable[str]) -> Optional[str]:
+        for gid in group_ids:
+            policy = self._group_policies.get(gid)
+            if not policy:
+                continue
+            source_system_id = str(policy.source_system_id or "").strip()
+            if source_system_id:
+                return source_system_id
+        return None
 
 
 def _unique_preserve_order(items: Iterable[str]) -> List[str]:
@@ -190,13 +249,22 @@ def _load_group_policies_from_json() -> Dict[str, GroupPolicy]:
     for group_id, payload in groups.items():
         if not isinstance(payload, dict):
             continue
-        acl = payload.get("acl_tags_all") or []
+        acl_any = payload.get("acl_tags_any")
+        if acl_any is None:
+            acl_any = payload.get("acl_tags_all")
+        labels_all = payload.get("classification_labels_all") or []
         allowed = payload.get("allowed_pipelines") or []
         allowed_commands = payload.get("allowed_commands") or []
-        if not isinstance(acl, list) or not isinstance(allowed, list) or not isinstance(allowed_commands, list):
+        owner_id = str(payload.get("owner_id") or "").strip() or None
+        source_system_id = str(payload.get("source_system_id") or "").strip() or None
+        if not isinstance(acl_any, list) or not isinstance(labels_all, list) or not isinstance(allowed, list) or not isinstance(allowed_commands, list):
             continue
         policies[str(group_id)] = GroupPolicy(
-            acl_tags_all=[str(x) for x in acl if str(x).strip()],
+            acl_tags_any=[str(x) for x in acl_any if str(x).strip()],
+            classification_labels_all=[str(x) for x in labels_all if str(x).strip()],
+            owner_id=owner_id,
+            source_system_id=source_system_id,
+            acl_tags_all=[str(x) for x in acl_any if str(x).strip()],
             allowed_pipelines=[str(x) for x in allowed if str(x).strip()],
             allowed_commands=[str(x) for x in allowed_commands if str(x).strip()],
         )

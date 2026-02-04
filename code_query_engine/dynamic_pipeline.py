@@ -101,6 +101,7 @@ class DynamicPipelineRunner:
         pipeline_name: Optional[str] = None,
         repository: Optional[str] = None,
         snapshot_id: Optional[str] = None,
+        snapshot_id_b: Optional[str] = None,
         snapshot_set_id: Optional[str] = None,
         overrides: Optional[dict[str, Any]] = None,
         mock_redis: Any = None,
@@ -128,6 +129,7 @@ class DynamicPipelineRunner:
             user_id=user_id,
             repository=repository,
             snapshot_id=snapshot_id,
+            snapshot_id_b=snapshot_id_b,
             snapshot_set_id=snapshot_set_id,
         )
 
@@ -140,6 +142,8 @@ class DynamicPipelineRunner:
                 setattr(state, "branch_b", overrides.get("branch_b"))
             if "snapshot_id" in overrides and not snapshot_id:
                 setattr(state, "snapshot_id", overrides.get("snapshot_id"))
+            if "snapshot_id_b" in overrides and not snapshot_id_b:
+                setattr(state, "snapshot_id_b", overrides.get("snapshot_id_b"))
             if "snapshot_set_id" in overrides and not snapshot_set_id:
                 setattr(state, "snapshot_set_id", overrides.get("snapshot_set_id"))
             if "allowed_commands" in overrides:
