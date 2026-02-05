@@ -28,8 +28,6 @@ def test_dev_user_access_merges_groups_and_commands():
     assert ctx.allowed_commands == ["showDiagram", "ea_export"]
     assert ctx.acl_tags_any == ["security", "finance"]
     assert ctx.classification_labels_all == ["public", "tajne", "wewnetrzne"]
-    # compatibility alias
-    assert ctx.acl_tags_all == ["security", "finance"]
 
 
 def test_dev_user_access_anonymous_uses_anonymous_group_only():

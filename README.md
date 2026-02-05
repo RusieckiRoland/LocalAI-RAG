@@ -7,6 +7,63 @@
 
 **Purpose.** Build a **local, GPU‑accelerated knowledge base for your source code**: index it, analyze it, and **search/query it with AI**. The system runs **fully on‑premises** — no source code leaves your network; models execute on your GPU.
 
+---
+
+## Architekturally Core Principle: Flexibility
+
+The system is built around **dynamic pipelines defined in YAML files**.  
+You can treat pipelines like building blocks (actions) and assemble them as needed:
+
+- easily change the order of processing steps
+- add / disable actions (translation, routing, search, answer generation…)
+- define your own prompts, filters, context limits, and policies
+- create different work modes (code analysis, UML diagrams, branch comparison)
+
+Think of it as **pipeline composition by configuration**, not by code — just like configuring a workflow in a YAML file.
+
+**At a glance**
+
+```
+┌─────────────┐   ┌──────────────┐   ┌──────────────┐   ┌──────────────┐   ┌──────────────┐
+│  Input      │→→ │  Parse/Route │→→ │  Retrieve    │→→ │  Expand      │→→ │  Generate     │
+│  (Query)    │   │  (YAML step) │   │  (YAML step) │   │  (YAML step) │   │  (YAML step)  │
+└─────────────┘   └──────────────┘   └──────────────┘   └──────────────┘   └──────────────┘
+     ↑                          Each block is a configurable action in the YAML pipeline
+```
+
+More details, diagrams, and examples are available here:
+
+→ **`docs/`** – full documentation of pipelines, actions, and configuration
+
+### Minimalny przykład pipeline (YAML)
+
+```yaml
+pipeline:
+  id: "rejewski"
+  steps:
+    - id: "route"
+      action: "query_router"
+
+    - id: "search"
+      action: "search_nodes"
+      search_type: "hybrid"
+      top_k: 8
+
+    - id: "fetch"
+      action: "fetch_node_texts"
+      prioritization_mode: "seed_first"
+      budget_tokens: 1200
+
+    - id: "expand"
+      action: "expand_dependency_tree"
+      graph_max_depth: 1
+      graph_edge_allowlist: ["Calls", "ReadsFrom", "WritesTo"]
+
+    - id: "answer"
+      action: "generate_answer"
+      prompt: "Odpowiedz krótko na podstawie kontekstu."
+```
+
 **Hardware target.** Optimized for a **single NVIDIA RTX 4090** (CUDA 12.x). Defaults (e.g., full llama.cpp CUDA offload) are tuned to comfortably fit 24–32 GB VRAM.
 
 **Stack focus.**

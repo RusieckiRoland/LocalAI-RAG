@@ -24,6 +24,7 @@ class GraphCase:
     seed_file: str
     expected_sql_names: tuple[str, ...]
     expected_edge_types: tuple[str, ...]
+    graph_max_depth: int = 2
 
 
 _GRAPH_CASES: list[GraphCase] = [
@@ -45,10 +46,9 @@ _GRAPH_CASES: list[GraphCase] = [
             "table_Payments",
             "proc_ValidateToken",
             "proc_ComputeFraudRisk",
-            "table_Tokens",
-            "table_AclRecords",
         ),
         expected_edge_types=("WritesTo", "Executes", "ReadsFrom"),
+        graph_max_depth=1,
     ),
     GraphCase(
         case_id="allowlist:reads_writes_calls",
@@ -56,6 +56,7 @@ _GRAPH_CASES: list[GraphCase] = [
         seed_file="db/procs/proc_ProcessPayment.sql",
         expected_sql_names=("proc_ProcessPayment", "table_Payments"),
         expected_edge_types=("WritesTo",),
+        graph_max_depth=1,
     ),
     GraphCase(
         case_id="allowlist:writes_only",
@@ -63,6 +64,7 @@ _GRAPH_CASES: list[GraphCase] = [
         seed_file="db/procs/proc_ProcessPayment.sql",
         expected_sql_names=("proc_ProcessPayment", "table_Payments"),
         expected_edge_types=("WritesTo",),
+        graph_max_depth=1,
     ),
 ]
 
@@ -255,6 +257,7 @@ def _write_graph_report() -> None:
 
     latest_path = out_dir / "graph_results_latest.log"
     archived_path = out_dir / f"graph_results_{ts}.log"
+    merged_path = out_dir / "test_results_latest.log"
 
     lines: list[str] = [f"Generated UTC: {datetime.now(timezone.utc).isoformat(timespec='seconds')}", ""]
     for i, row in enumerate(_GRAPH_REPORT_ROWS, start=1):
@@ -268,12 +271,24 @@ def _write_graph_report() -> None:
                 f"Expected node IDs : {', '.join(row.get('expected_node_ids') or [])}",
                 f"Observed node IDs : {', '.join(row.get('observed_node_ids') or [])}",
                 f"Edge type counts : {json.dumps(row.get('edge_type_counts') or {}, sort_keys=True)}",
+                f"Edges preview : {json.dumps(row.get('observed_edges_preview') or [], ensure_ascii=False)}",
                 "",
             ]
         )
     text = "\n".join(lines)
     latest_path.write_text(text, encoding="utf-8")
     archived_path.write_text(text, encoding="utf-8")
+
+    # Append dependency-tree section to main integration log (if present).
+    if merged_path.exists():
+        merged_text = merged_path.read_text(encoding="utf-8")
+        merged_text = (
+            merged_text.rstrip()
+            + "\n\n=== Dependency Tree Expansion Results ===\n\n"
+            + text
+            + "\n"
+        )
+        merged_path.write_text(merged_text, encoding="utf-8")
 
 
 @pytest.mark.parametrize("case", _GRAPH_CASES, ids=[c.case_id for c in _GRAPH_CASES])
@@ -300,6 +315,7 @@ def test_dependency_tree_allowlist_expected_outputs(retrieval_integration_env, c
         env=retrieval_integration_env,
         seed_nodes=[seed_id],
         edge_allowlist=list(case.allowlist),
+        graph_max_depth=case.graph_max_depth,
     )
     _append_graph_report_row(case=case, state=state, expected_ids=expected_ids)
 

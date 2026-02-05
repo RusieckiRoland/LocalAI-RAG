@@ -209,8 +209,6 @@ class WeaviateGraphProvider(IGraphProvider):
             tags = _normalize_acl_tags(rf.get("permission_tags_any"))
         elif "permission_tags_all" in rf:
             tags = _normalize_acl_tags(rf.get("permission_tags_all"))
-        elif "acl_tags_all" in rf:
-            tags = _normalize_acl_tags(rf.get("acl_tags_all"))
         if "classification_labels_all" in rf:
             labels = _normalize_acl_tags(rf.get("classification_labels_all"))
 
@@ -369,8 +367,6 @@ class WeaviateGraphProvider(IGraphProvider):
                 if not frm or not to:
                     continue
                 adj[frm].append((rel, to))
-                # Undirected expansion (mirrors FileSystemGraphProvider behavior).
-                adj[to].append((rel, frm))
 
             after = getattr(res.objects[-1], "uuid", None)
             if len(res.objects) < self._page_size:

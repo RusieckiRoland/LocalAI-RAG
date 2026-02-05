@@ -247,16 +247,14 @@ class WeaviateRetrievalBackend(IRetrievalBackend):
         # Branch is legacy and not used for scoping (snapshot_id is the only scope).
         _ = branch
 
-        # ACL tags with OR semantics.
-        tags = (
-            rf.get("acl_tags_any")
-            or rf.get("permission_tags_any")
-            or rf.get("permission_tags_all")
-            or rf.get("acl_tags_all")
-        )
-        if isinstance(tags, list) and tags:
-            f_tags = Filter.by_property(self._perm_prop).contains_any([str(t) for t in tags if str(t).strip()])
-            f = f_tags if f is None else f & f_tags
+        # ACL tags with OR (any) semantics.
+        acl_any = rf.get("acl_tags_any") or rf.get("permission_tags_any") or rf.get("permission_tags_all")
+
+        if isinstance(acl_any, list) and acl_any:
+            clean_any = [str(t) for t in acl_any if str(t).strip()]
+            if clean_any:
+                f_any = Filter.by_property(self._perm_prop).contains_any(clean_any)
+                f = f_any if f is None else f & f_any
 
         # Classification labels with ALL/subset semantics.
         labels = rf.get("classification_labels_all")

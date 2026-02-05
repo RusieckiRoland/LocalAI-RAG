@@ -778,8 +778,6 @@ def _handle_query_request(*, require_bearer_auth: bool):
     acl_tags_any = list(getattr(access_ctx, "acl_tags_any", None) or getattr(access_ctx, "acl_tags_all", None) or [])
     if acl_tags_any:
         retrieval_filters_override["acl_tags_any"] = acl_tags_any
-        # Backward-compatible alias for older providers/helpers.
-        retrieval_filters_override["acl_tags_all"] = list(acl_tags_any)
     classification_labels_all = list(getattr(access_ctx, "classification_labels_all", None) or [])
     if classification_labels_all:
         retrieval_filters_override["classification_labels_all"] = classification_labels_all

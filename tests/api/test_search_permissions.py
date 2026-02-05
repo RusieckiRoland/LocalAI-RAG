@@ -54,7 +54,7 @@ def test_search_denies_pipeline_not_allowed(monkeypatch):
                 group_ids=["anonymous"],
                 allowed_pipelines=["ada"],
                 allowed_commands=[],
-                acl_tags_all=[],
+                acl_tags_any=[],
             )
 
     qsd._user_access_provider = _Provider()
@@ -78,7 +78,7 @@ def test_search_returns_400_for_unknown_snapshot_set(monkeypatch):
                 group_ids=["authenticated"],
                 allowed_pipelines=["rejewski"],
                 allowed_commands=[],
-                acl_tags_all=[],
+                acl_tags_any=[],
             )
 
     class _PipelineStore:
@@ -111,7 +111,7 @@ def test_search_denies_snapshot_not_in_snapshot_set(monkeypatch):
                 group_ids=["authenticated"],
                 allowed_pipelines=["rejewski"],
                 allowed_commands=[],
-                acl_tags_all=[],
+                acl_tags_any=[],
             )
 
     class _Registry:
@@ -152,7 +152,7 @@ def test_search_denies_snapshot_b_not_in_snapshot_set(monkeypatch):
                 group_ids=["authenticated"],
                 allowed_pipelines=["rejewski"],
                 allowed_commands=[],
-                acl_tags_all=[],
+                acl_tags_any=[],
             )
 
     class _Registry:

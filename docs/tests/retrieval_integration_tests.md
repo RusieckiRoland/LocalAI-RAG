@@ -284,7 +284,7 @@ This section defines expected behavior when security filters are present in `ret
 When security scenarios are executed, `state_after.retrieval_filters` should include:
 1. `repo`
 2. `snapshot_id` (or `snapshot_ids_any`)
-3. `acl_tags_any` (if ACL scenario is active)
+3. `acl_tags_any` (always present in security scenarios)
 4. `classification_labels_all` (if classification scenario is active)
 
 Example:
@@ -307,7 +307,8 @@ Expected:
 2. Documents tagged with `security` are visible.
 3. Documents tagged with `hr` only are not visible.
 
-#### Classification-only scenario
+#### Classification scenario
+User groups: `["finance", "security"]`
 User classification set: `["public", "internal", "secret"]`
 Expected:
 1. Document labels `[]` -> visible.
@@ -416,29 +417,37 @@ Note:
 Seed ID:
 - `SQL:dbo.proc_ProcessPayment`
 
+Two variants are expected and must be checked:
+1. Depth-limited expansion (`graph_max_depth=1`) with standard BFS behavior.
+2. Seed-only expansion (emit only edges originating from the seed node, no secondary fan-out).
+
+The expected node/edge sets below are the same for both variants, but **seed-only** adds an extra constraint:
+- No edge in the final output may have `from_id` different from the seed node.
+
 #### A) Full allowlist (default)
 Allowed relations:
 - `ReadsFrom`, `WritesTo`, `Calls`, `Executes`, `FK`, `On`, `SynonymFor`, `ReferencedBy(C#)`
+Graph limit:
+- `graph_max_depth: 1` (limit expansion to seed + direct neighbors)
 
 Expected nodes:
 1. `SQL:dbo.proc_ProcessPayment` (seed)
 2. `SQL:dbo.table_Payments`
 3. `SQL:dbo.proc_ValidateToken`
 4. `SQL:dbo.proc_ComputeFraudRisk`
-5. `SQL:dbo.table_Tokens`
-6. `SQL:dbo.table_AclRecords`
 
 Expected edges:
 1. `SQL:dbo.proc_ProcessPayment` --`WritesTo`--> `SQL:dbo.table_Payments`
 2. `SQL:dbo.proc_ProcessPayment` --`Executes`--> `SQL:dbo.proc_ValidateToken`
 3. `SQL:dbo.proc_ProcessPayment` --`Executes`--> `SQL:dbo.proc_ComputeFraudRisk`
-4. `SQL:dbo.proc_ValidateToken` --`ReadsFrom`--> `SQL:dbo.table_Tokens`
-5. `SQL:dbo.proc_ComputeFraudRisk` --`ReadsFrom`--> `SQL:dbo.table_Payments`
-6. `SQL:dbo.proc_ComputeFraudRisk` --`ReadsFrom`--> `SQL:dbo.table_AclRecords`
+Seed-only constraint:
+- All edges must have `from_id = SQL:dbo.proc_ProcessPayment` (no edges originating from `table_Payments` or any other node).
 
 #### B) Limited allowlist (ReadsFrom / WritesTo / Calls)
 Allowed relations:
 - `ReadsFrom`, `WritesTo`, `Calls`
+Graph limit:
+- `graph_max_depth: 1`
 
 Expected nodes:
 1. `SQL:dbo.proc_ProcessPayment` (seed)
@@ -446,10 +455,14 @@ Expected nodes:
 
 Expected edges:
 1. `SQL:dbo.proc_ProcessPayment` --`WritesTo`--> `SQL:dbo.table_Payments`
+Seed-only constraint:
+- All edges must have `from_id = SQL:dbo.proc_ProcessPayment`.
 
 #### C) Write-only allowlist (WritesTo)
 Allowed relations:
 - `WritesTo`
+Graph limit:
+- `graph_max_depth: 1`
 
 Expected nodes:
 1. `SQL:dbo.proc_ProcessPayment` (seed)
@@ -457,6 +470,8 @@ Expected nodes:
 
 Expected edges:
 1. `SQL:dbo.proc_ProcessPayment` --`WritesTo`--> `SQL:dbo.table_Payments`
+Seed-only constraint:
+- All edges must have `from_id = SQL:dbo.proc_ProcessPayment`.
 
 #### D1. Full C# tree from retrieval core (`SearchFacade.cs`)
 Seed node IDs:
@@ -533,3 +548,113 @@ Dependency-tree integration tests pass when:
 3. Only allowlisted edge relations are present.
 4. Security-restricted nodes are excluded from final tree.
 5. Final tree remains connected/usable for downstream context fetch.
+
+---
+
+## 7) Fetch Node Texts Scenarios
+
+This section defines expected outcomes for `fetch_node_texts` behavior:
+1. Correct text retrieval.
+2. Correct prioritization (`seed_first` | `graph_first` | `balanced`).
+3. Correct enforcement of limits (`max_chars`, `budget_tokens`, `budget_tokens_from_settings`).
+4. Correct handling of **atomic skip** (a node is either fully included or fully skipped).
+
+### Common Seed/Graph Dataset (stable IDs)
+Use seed/graph IDs from the integration suite (IDs are canonical node IDs):
+- Seeds: `C0005`, `C0006`, `C0011`, `C0016`
+- Graph nodes: `C0007`, `C0008`, `C0009`, `C0010`, `C0012`, `C0013`
+
+Expected text existence:
+- Each listed ID above has non-empty `text` in Weaviate.
+
+### F1. Text Retrieval Integrity (baseline)
+Inputs:
+1. `retrieval_seed_nodes`: `["C0005", "C0006"]`
+2. `graph_expanded_nodes`: `[]`
+3. `budget_tokens`: `300`
+4. `prioritization_mode`: `seed_first`
+
+Expected:
+1. Returned texts correspond to seed IDs only.
+2. `node_texts` contains non-empty `text` values.
+3. No graph nodes included.
+
+### F2. Prioritization: `seed_first`
+Inputs:
+1. `retrieval_seed_nodes`: `["C0005", "C0006", "C0011"]`
+2. `graph_expanded_nodes`: `["C0007", "C0008", "C0009"]`
+3. `budget_tokens`: small (low enough to include 2–3 nodes)
+4. `prioritization_mode`: `seed_first`
+
+Expected order:
+1. Seed nodes appear first in `node_texts`.
+2. Graph nodes only appear if token budget remains.
+
+### F3. Prioritization: `graph_first`
+Inputs:
+1. `retrieval_seed_nodes`: `["C0005", "C0006"]`
+2. `graph_expanded_nodes`: `["C0007", "C0008", "C0009"]`
+3. `budget_tokens`: small (low enough to include 2–3 nodes)
+4. `prioritization_mode`: `graph_first`
+
+Expected order:
+1. Graph nodes appear before seed nodes in `node_texts`.
+2. Seed nodes only appear if token budget remains.
+
+### F4. Prioritization: `balanced`
+Inputs:
+1. `retrieval_seed_nodes`: `["C0005", "C0006", "C0011"]`
+2. `graph_expanded_nodes`: `["C0007", "C0008", "C0009"]`
+3. `budget_tokens`: small (low enough to include 3–4 nodes)
+4. `prioritization_mode`: `balanced`
+
+Expected order:
+1. Interleaving pattern: seed → graph → seed → graph (deterministic).
+2. Both groups represented if budget allows.
+
+### F5. Budget Tokens Limit
+Inputs:
+1. `retrieval_seed_nodes`: `["C0005", "C0006", "C0011"]`
+2. `graph_expanded_nodes`: `["C0007", "C0008"]`
+3. `budget_tokens`: very low (e.g., ~20–40 tokens)
+4. `prioritization_mode`: `seed_first`
+
+Expected:
+1. Only the smallest set of nodes that fit in budget are returned.
+2. Total token count of returned texts <= `budget_tokens`.
+
+### F6. budget_tokens_from_settings
+Inputs:
+1. `budget_tokens_from_settings`: `node_text_fetch_top_n` or equivalent config mapping
+2. `budget_tokens`: unset
+3. `retrieval_seed_nodes` + `graph_expanded_nodes` same as F2/F3
+
+Expected:
+1. Budget is taken from settings.
+2. Same ordering rules apply based on `prioritization_mode`.
+
+### F7. max_chars Limit
+Inputs:
+1. `max_chars`: strict (low enough to include partial set only)
+2. `retrieval_seed_nodes`: `["C0005", "C0006", "C0011"]`
+3. `graph_expanded_nodes`: `["C0007", "C0008"]`
+4. `prioritization_mode`: `seed_first`
+
+Expected:
+1. Total output characters <= `max_chars`.
+2. Nodes beyond the limit are not included.
+
+### F8. Atomic Skip Behavior
+Definition:
+- A node is either fully included or fully skipped (no partial truncation per node).
+
+Inputs:
+1. Use a tight `budget_tokens` or `max_chars` that would allow only part of the next node.
+2. `retrieval_seed_nodes`: `["C0005", "C0006"]`
+3. `graph_expanded_nodes`: `[]`
+4. `prioritization_mode`: `seed_first`
+
+Expected:
+1. If the next node would exceed limit, it is fully skipped.
+2. No partial text for that node appears in `node_texts`.
+3. The returned set contains only fully included nodes.

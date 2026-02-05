@@ -135,9 +135,8 @@ def _merge_filters(
     acl_tags_any = step_raw.get("acl_tags_any")
     if isinstance(acl_tags_any, list) and acl_tags_any:
         clean_any = [s for s in _normalize_str_list(acl_tags_any)]
-        existing_any = _normalize_str_list(filters.get("acl_tags_any") or filters.get("acl_tags_all"))
+        existing_any = _normalize_str_list(filters.get("acl_tags_any"))
         filters["acl_tags_any"] = _normalize_str_list(existing_any + clean_any)
-        filters["acl_tags_all"] = list(filters["acl_tags_any"])  # backward-compatible alias
 
     # Classification labels are ALL/subset semantics.
     classification_labels_all = step_raw.get("classification_labels_all")
@@ -211,8 +210,6 @@ def _normalize_and_validate_filters(filters: Dict[str, Any]) -> Dict[str, Any]:
         out["acl_tags_any"] = out.get("permission_tags_all")
     if "permission_tags_any" in out and "acl_tags_any" not in out:
         out["acl_tags_any"] = out.get("permission_tags_any")
-    if "acl_tags_all" in out and "acl_tags_any" not in out:
-        out["acl_tags_any"] = out.get("acl_tags_all")
 
     if "acl_tags_any" in out:
         tags = out.get("acl_tags_any")
@@ -220,21 +217,16 @@ def _normalize_and_validate_filters(filters: Dict[str, Any]) -> Dict[str, Any]:
             clean = _normalize_str_list(tags)
             if clean:
                 out["acl_tags_any"] = clean
-                out["acl_tags_all"] = list(clean)  # compatibility alias
             else:
                 out.pop("acl_tags_any", None)
-                out.pop("acl_tags_all", None)
         elif tags is None:
             out.pop("acl_tags_any", None)
-            out.pop("acl_tags_all", None)
         else:
             s = str(tags or "").strip()
             if s:
                 out["acl_tags_any"] = [s]
-                out["acl_tags_all"] = [s]
             else:
                 out.pop("acl_tags_any", None)
-                out.pop("acl_tags_all", None)
 
     if "classification_labels_all" in out:
         labels = out.get("classification_labels_all")

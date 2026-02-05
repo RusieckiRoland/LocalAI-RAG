@@ -25,7 +25,7 @@ class FakeAccessProvider:
             group_ids=["anonymous"],
             allowed_pipelines=self._allowed_pipelines,
             allowed_commands=[],
-            acl_tags_all=[],
+            acl_tags_any=[],
         )
 
 

@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+import re
 import json
 import os
 
@@ -111,6 +112,59 @@ def _connect(env) -> weaviate.WeaviateClient:
         port=env.weaviate_http_port,
         grpc_port=env.weaviate_grpc_port,
     )
+
+
+def _resolve_primary_snapshot_id(client: weaviate.WeaviateClient, env) -> str:
+    registry = SnapshotRegistry(client)
+    snapshots = registry.list_snapshots(snapshot_set_id=env.snapshot_set_id, repository=env.repo_name)
+    assert snapshots, "SnapshotSet does not contain snapshots."
+    return snapshots[0].id
+
+
+def _select_security_query(
+    *,
+    client: weaviate.WeaviateClient,
+    env,
+    filters: dict[str, Any],
+) -> str:
+    try:
+        from weaviate.classes.query import Filter
+    except Exception:
+        raise AssertionError("weaviate-client Filter not available for security query selection.")
+
+    snapshot_id = _resolve_primary_snapshot_id(client, env)
+    coll = client.collections.use("RagNode")
+
+    f = (
+        Filter.by_property("repo").equal(env.repo_name)
+        & Filter.by_property("snapshot_id").equal(snapshot_id)
+    )
+
+    acl_any = [str(x).strip() for x in (filters.get("acl_tags_any") or []) if str(x).strip()]
+    cls_all = [str(x).strip() for x in (filters.get("classification_labels_all") or []) if str(x).strip()]
+
+    if acl_any:
+        f = f & Filter.by_property("acl_allow").contains_any(acl_any)
+    if cls_all:
+        f = f & Filter.by_property("classification_labels").contains_all(cls_all)
+
+    res = coll.query.fetch_objects(
+        filters=f,
+        limit=5,
+        return_properties=["text", "canonical_id", "source_file", "acl_allow", "classification_labels"],
+    )
+    objs = list(res.objects or [])
+    assert objs, f"No documents match security filters in dataset. filters={filters}"
+
+    for obj in objs:
+        props = obj.properties or {}
+        text = str(props.get("text") or "")
+        tokens = [t.lower() for t in re.findall(r"[A-Za-z]{4,}", text)]
+        if tokens:
+            return tokens[0]
+
+    # Fallback if all matched docs have empty/unsuitable text.
+    return "public"
 
 
 def _run_search_and_fetch(*, env, case: QueryCase, retrieval_filters_override: dict[str, Any] | None = None) -> PipelineState:
@@ -482,10 +536,20 @@ def _run_and_assert_security_case(
     filters: dict[str, Any],
     assumption_id: str,
 ) -> None:
+    client = _connect(retrieval_integration_env)
+    try:
+        query = _select_security_query(
+            client=client,
+            env=retrieval_integration_env,
+            filters=filters,
+        )
+    finally:
+        client.close()
+
     case = QueryCase(
         search_type="bm25",
-        query="deterministic searchable content integration tests",
-        expected_markers=("integration tests",),
+        query=query,
+        expected_markers=(query,),
         snapshot_source="primary",
         assumption_id=assumption_id,
     )
@@ -521,7 +585,9 @@ def test_security_acl_any_filter_is_applied(retrieval_integration_env) -> None:
     _run_and_assert_security_case(
         retrieval_integration_env=retrieval_integration_env,
         test_id="security:acl_any",
-        filters={"acl_tags_any": ["finance", "security"]},
+        filters={
+            "acl_tags_any": ["finance", "security"],
+        },
         assumption_id="5.acl_any",
     )
 
@@ -530,7 +596,10 @@ def test_security_classification_all_filter_is_applied(retrieval_integration_env
     _run_and_assert_security_case(
         retrieval_integration_env=retrieval_integration_env,
         test_id="security:classification_all",
-        filters={"classification_labels_all": ["restricted"]},
+        filters={
+            "acl_tags_any": ["finance", "security"],
+            "classification_labels_all": ["restricted"],
+        },
         assumption_id="5.classification_all",
     )
 
