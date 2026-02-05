@@ -18,6 +18,7 @@ You can treat pipelines like building blocks (actions) and assemble them as need
 - add / disable actions (translation, routing, search, answer generation…)
 - define your own prompts, filters, context limits, and policies
 - create different work modes (code analysis, UML diagrams, branch comparison)
+- reuse and extend existing YAML pipelines via inheritance, eliminating the need to redefine everything from scratch.
 
 Think of it as **pipeline composition by configuration**, not by code — just like configuring a workflow in a YAML file.
 
@@ -25,7 +26,7 @@ Think of it as **pipeline composition by configuration**, not by code — just l
 
 ```
 ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐
-│ Input        │→→│ Parse/Route  │→→│ Retrieve     │→→│ Expand       │→→│ Generate     │
+│ translate    │→→│ load_history │→→│   search     │→→│ fetch        │→→│   answer     │→→ ....
 │ (Query)      │  │ (YAML step)  │  │ (YAML step)  │  │ (YAML step)  │  │ (YAML step)  │
 └──────────────┘  └──────────────┘  └──────────────┘  └──────────────┘  └──────────────┘
      ↑                          Each block is a configurable action in the YAML pipeline
@@ -41,27 +42,33 @@ More details, diagrams, and examples are available here:
 pipeline:
   id: "rejewski"
   steps:
-    - id: "route"
-      action: "query_router"
+    - id: "translate"
+      action: "translate_in_if_needed"
+      next: "load_history"
+
+    - id: "load_history"
+      action: "load_conversation_history"
+      next: "search"
 
     - id: "search"
       action: "search_nodes"
       search_type: "hybrid"
       top_k: 8
+      next: "expand"    
 
     - id: "fetch"
       action: "fetch_node_texts"
-      prioritization_mode: "seed_first"
-      budget_tokens: 1200
-
-    - id: "expand"
-      action: "expand_dependency_tree"
-      graph_max_depth: 1
-      graph_edge_allowlist: ["Calls", "ReadsFrom", "WritesTo"]
+      top_n_from_settings: "node_text_fetch_top_n"
+      next: "answer"
 
     - id: "answer"
-      action: "generate_answer"
-      prompt: "Answer briefly using the provided context."
+      action: "call_model"
+      prompt_key: "rejewski/answer_v1"
+      next: "finalize"
+
+    - id: "finalize"
+      action: "finalize"
+      end: true
 ```
 
 **Hardware target.** Optimized for a **single NVIDIA RTX 4090** (CUDA 12.x). Defaults (e.g., full llama.cpp CUDA offload) are tuned to comfortably fit 24–32 GB VRAM.
