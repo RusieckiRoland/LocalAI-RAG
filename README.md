@@ -9,7 +9,7 @@
 
 ---
 
-## Architekturally Core Principle: Flexibility
+## Architectural Core Principle: Flexibility
 
 The system is built around **dynamic pipelines defined in YAML files**.  
 You can treat pipelines like building blocks (actions) and assemble them as needed:
@@ -24,10 +24,10 @@ Think of it as **pipeline composition by configuration**, not by code — just l
 **At a glance**
 
 ```
-┌─────────────┐   ┌──────────────┐   ┌──────────────┐   ┌──────────────┐   ┌──────────────┐
-│  Input      │→→ │  Parse/Route │→→ │  Retrieve    │→→ │  Expand      │→→ │  Generate     │
-│  (Query)    │   │  (YAML step) │   │  (YAML step) │   │  (YAML step) │   │  (YAML step)  │
-└─────────────┘   └──────────────┘   └──────────────┘   └──────────────┘   └──────────────┘
+┌──────────────┐  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐
+│ Input        │→→│ Parse/Route  │→→│ Retrieve     │→→│ Expand       │→→│ Generate     │
+│ (Query)      │  │ (YAML step)  │  │ (YAML step)  │  │ (YAML step)  │  │ (YAML step)  │
+└──────────────┘  └──────────────┘  └──────────────┘  └──────────────┘  └──────────────┘
      ↑                          Each block is a configurable action in the YAML pipeline
 ```
 
@@ -35,7 +35,7 @@ More details, diagrams, and examples are available here:
 
 → **`docs/`** – full documentation of pipelines, actions, and configuration
 
-### Minimalny przykład pipeline (YAML)
+### Minimal pipeline example (YAML)
 
 ```yaml
 pipeline:
@@ -61,7 +61,7 @@ pipeline:
 
     - id: "answer"
       action: "generate_answer"
-      prompt: "Odpowiedz krótko na podstawie kontekstu."
+      prompt: "Answer briefly using the provided context."
 ```
 
 **Hardware target.** Optimized for a **single NVIDIA RTX 4090** (CUDA 12.x). Defaults (e.g., full llama.cpp CUDA offload) are tuned to comfortably fit 24–32 GB VRAM.
