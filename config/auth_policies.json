@@ -1,4 +1,15 @@
 {
+  "claim_group_mappings": [
+    {
+      "claim": "user_level",
+      "value_map": {
+        "0": "clearance:public",
+        "10": "clearance:internal",
+        "20": "clearance:restricted",
+        "30": "clearance:critical"
+      }
+    }
+  ],
   "groups": {
     "anonymous": {
       "allowed_pipelines": [
@@ -25,11 +36,40 @@
       ],
       "classification_labels_all": [
         "public",
-        "wewnetrzne",
-        "tajne"
+        "internal",
+        "restricted",
+        "critical"
       ],
       "owner_id": "",
       "source_system_id": ""
+    },
+    "clearance:public": {
+      "allowed_pipelines": [],
+      "allowed_commands": [],
+      "acl_tags_any": [],
+      "classification_labels_all": [],
+      "user_level": 0
+    },
+    "clearance:internal": {
+      "allowed_pipelines": [],
+      "allowed_commands": [],
+      "acl_tags_any": [],
+      "classification_labels_all": [],
+      "user_level": 10
+    },
+    "clearance:restricted": {
+      "allowed_pipelines": [],
+      "allowed_commands": [],
+      "acl_tags_any": [],
+      "classification_labels_all": [],
+      "user_level": 20
+    },
+    "clearance:critical": {
+      "allowed_pipelines": [],
+      "allowed_commands": [],
+      "acl_tags_any": [],
+      "classification_labels_all": [],
+      "user_level": 30
     }
   }
 }

@@ -5,7 +5,7 @@ This document shows the **typical command flow** for working with Weaviate in th
 Assumptions:
 - You run commands from the repo root: `LocalAI-RAG/`
 - You keep secrets in `.env` (not committed) and you pass `--env` to CLIs when needed.
-- Weaviate is already running (see `WEAVIATE_LOCAL_SETUP.md`).
+- Weaviate is already running (see `weaviate_local_setup.md`).
 
 ---
 

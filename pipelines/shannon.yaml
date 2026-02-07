@@ -3,7 +3,7 @@ YAMLpipeline:
 
   settings:
     entry_step_id: set_response
-    snapshot_set_id: "fakeSnapSet"
+    snapshot_set_id: "nopCommerce_4-60_4-90"
 
   steps:
     - id: set_response

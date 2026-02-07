@@ -11,11 +11,20 @@ import uuid
 import zipfile
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable
+from typing import Iterable, List
 from urllib.error import URLError
 from urllib.request import urlopen
 
 import pytest
+
+from tests.integration.retrival.helpers import write_named_log, write_test_results_log
+
+
+@dataclass(frozen=True)
+class RoundConfig:
+    id: str
+    permissions: dict
+    bundle_refs: tuple[str, str]
 
 
 @dataclass(frozen=True)
@@ -26,6 +35,8 @@ class RetrievalIntegrationEnv:
     snapshot_set_id: str
     repo_name: str
     imported_refs: tuple[str, ...]
+    round: RoundConfig
+    bundle_paths: tuple[Path, ...]
 
 
 def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
@@ -117,14 +128,6 @@ def _assert_docker_available() -> None:
         pytest.skip("Docker daemon is not available. Start Docker and rerun integration tests.")
 
 
-def _collect_bundles(bundles_dir: Path) -> list[Path]:
-    pattern = os.getenv("INTEGRATION_BUNDLE_GLOB", "Release_FAKE_ENTERPRISE_*.zip").strip() or "*.zip"
-    bundles = sorted(p for p in bundles_dir.glob(pattern) if p.is_file())
-    if not bundles:
-        pytest.skip(f"No fake repositories found in {bundles_dir} matching {pattern!r}")
-    return bundles
-
-
 def _unique(values: Iterable[str]) -> list[str]:
     out: list[str] = []
     for value in values:
@@ -133,29 +136,179 @@ def _unique(values: Iterable[str]) -> list[str]:
     return out
 
 
-@pytest.fixture(scope="session")
-def retrieval_integration_env() -> RetrievalIntegrationEnv:
-    """
-    End-to-end integration fixture:
-    1) starts dedicated Weaviate container on non-conflicting host ports
-    2) imports fake bundles from tests/repositories/fake
-    3) creates SnapshotSet: Fake_snapshot
-    4) tears down the container after test session
-    """
+def _bundle_paths(repo_root: Path) -> list[Path]:
+    fake_dir = repo_root / "tests" / "repositories" / "fake"
+    return sorted(
+        fake_dir / name
+        for name in (
+            "Release_FAKE_ENTERPRISE_1.0.zip",
+            "Release_FAKE_ENTERPRISE_1.1.zip",
+            "Release_FAKE_ENTERPRISE_2.0.zip",
+            "Release_FAKE_ENTERPRISE_2.1.zip",
+            "Release_FAKE_ENTERPRISE_3.0.zip",
+            "Release_FAKE_ENTERPRISE_3.1.zip",
+            "Release_FAKE_ENTERPRISE_4.0.zip",
+            "Release_FAKE_ENTERPRISE_4.1.zip",
+        )
+    )
+
+
+def _write_permissions_config(repo_root: Path, permissions: dict) -> None:
+    for rel in ("config.json", "tests/config.json"):
+        cfg_path = repo_root / rel
+        if not cfg_path.exists():
+            continue
+        raw = json.loads(cfg_path.read_text(encoding="utf-8"))
+        raw["permissions"] = permissions
+        cfg_path.write_text(json.dumps(raw, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+ROUNDS: list[RoundConfig] = [
+    RoundConfig(
+        id="round-1",
+        permissions={
+            "security_enabled": False,
+            "acl_enabled": False,
+            "require_travel_permission": False,
+        },
+        bundle_refs=("Release_FAKE_ENTERPRISE_1.0", "Release_FAKE_ENTERPRISE_1.1"),
+    ),
+    RoundConfig(
+        id="round-2",
+        permissions={
+            "security_enabled": True,
+            "acl_enabled": True,
+            "require_travel_permission": True,
+            "security_model": {
+                "kind": "clearance_level",
+                "clearance_level": {
+                    "doc_level_field": "doc_level",
+                    "user_level_source": "claim",
+                    "user_level_claim": "user_level",
+                    "default_doc_level": 0,
+                    "allow_missing_doc_level": True,
+                    "levels": {
+                        "public": 0,
+                        "internal": 10,
+                        "restricted": 20,
+                        "critical": 30,
+                    },
+                },
+            },
+        },
+        bundle_refs=("Release_FAKE_ENTERPRISE_2.0", "Release_FAKE_ENTERPRISE_2.1"),
+    ),
+    RoundConfig(
+        id="round-3",
+        permissions={
+            "security_enabled": True,
+            "acl_enabled": True,
+            "require_travel_permission": False,
+            "security_model": {
+                "kind": "labels_universe_subset",
+                "labels_universe_subset": {
+                    "doc_labels_field": "classification_labels",
+                    "user_labels_source": "claim",
+                    "user_labels_claim": "labels",
+                    "allow_unlabeled": True,
+                    "classification_labels_universe": [
+                        "public",
+                        "internal",
+                        "secret",
+                        "restricted",
+                    ],
+                },
+            },
+        },
+        bundle_refs=("Release_FAKE_ENTERPRISE_3.0", "Release_FAKE_ENTERPRISE_3.1"),
+    ),
+    RoundConfig(
+        id="round-4",
+        permissions={
+            "security_enabled": False,
+            "acl_enabled": True,
+            "require_travel_permission": True,
+        },
+        bundle_refs=("Release_FAKE_ENTERPRISE_4.0", "Release_FAKE_ENTERPRISE_4.1"),
+    ),
+]
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _generate_fake_bundles() -> Iterable[Path]:
+    if os.getenv("RUN_INTEGRATION_TESTS", "").strip() != "1":
+        return
+
+    repo_root = Path(__file__).resolve().parents[3]
+    bundles = _bundle_paths(repo_root)
+
+    # Generate fresh bundles for this test session.
+    _run_command([sys.executable, "-m", "tools.generate_retrieval_corpora_bundles"], cwd=repo_root, timeout_s=600)
+
+    missing = [p for p in bundles if not p.exists()]
+    if missing:
+        raise RuntimeError(f"Bundle generation failed; missing: {missing}")
+
+    try:
+        yield bundles
+    finally:
+        for p in bundles:
+            try:
+                if p.exists():
+                    p.unlink()
+            except Exception:
+                # Best-effort cleanup.
+                pass
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _backup_and_restore_config() -> Iterable[None]:
+    if os.getenv("RUN_INTEGRATION_TESTS", "").strip() != "1":
+        return
+
+    repo_root = Path(__file__).resolve().parents[3]
+    backups: dict[Path, str] = {}
+    for rel in ("config.json", "tests/config.json"):
+        cfg_path = repo_root / rel
+        if cfg_path.exists():
+            backups[cfg_path] = cfg_path.read_text(encoding="utf-8")
+
+    try:
+        yield None
+    finally:
+        for path, content in backups.items():
+            try:
+                path.write_text(content, encoding="utf-8")
+            except Exception:
+                pass
+
+
+@pytest.fixture(scope="session", params=ROUNDS, ids=[r.id for r in ROUNDS])
+def retrieval_integration_env(request) -> Iterable[RetrievalIntegrationEnv]:
     if os.getenv("RUN_INTEGRATION_TESTS", "").strip() != "1":
         pytest.skip("Set RUN_INTEGRATION_TESTS=1 to run retrieval integration tests.")
 
     _assert_docker_available()
 
+    round_cfg: RoundConfig = request.param
     repo_root = Path(__file__).resolve().parents[3]
-    fake_bundles_dir = repo_root / "tests" / "repositories" / "fake"
-    bundles = _collect_bundles(fake_bundles_dir)
+
+    _write_permissions_config(repo_root, round_cfg.permissions)
+
+    os.environ["ACL_ENABLED"] = "true" if round_cfg.permissions.get("acl_enabled", True) else "false"
+    os.environ["REQUIRE_TRAVEL_PERMISSION"] = "true" if round_cfg.permissions.get("require_travel_permission", True) else "false"
 
     embed_model = os.getenv("INTEGRATION_EMBED_MODEL", "models/embedding/e5-base-v2").strip()
     if not embed_model:
         pytest.skip("INTEGRATION_EMBED_MODEL is empty.")
 
-    repo_names = _unique(_extract_repo_name(bundle) for bundle in bundles)
+    fake_dir = repo_root / "tests" / "repositories" / "fake"
+    bundle_paths = tuple(fake_dir / f"{ref}.zip" for ref in round_cfg.bundle_refs)
+    for p in bundle_paths:
+        if not p.exists():
+            pytest.skip(f"Missing bundle: {p}")
+
+    repo_names = _unique(_extract_repo_name(bundle) for bundle in bundle_paths)
     if len(repo_names) != 1:
         raise RuntimeError(f"Expected one repository name in fake bundles, got: {repo_names}")
     repo_name = repo_names[0]
@@ -197,13 +350,27 @@ def retrieval_integration_env() -> RetrievalIntegrationEnv:
 
     try:
         _run_command(docker_cmd, cwd=repo_root, timeout_s=90)
+        create_lines = [
+            f"Round : {round_cfg.id}",
+            "Event : container_create",
+            f"Container : {container_name}",
+            f"Host : {host}",
+            f"HTTP port : {http_port}",
+            f"gRPC port : {grpc_port}",
+            f"Bundles : {', '.join(round_cfg.bundle_refs)}",
+        ]
+        print("[integration] container_create")
+        for line in create_lines:
+            print(f"[integration] {line}")
+        write_named_log(stem="container_lifecycle", test_id=f"{round_cfg.id}_create", lines=create_lines)
+        write_test_results_log(test_id=f"container_create::{round_cfg.id}", lines=create_lines)
         try:
             _wait_for_weaviate_ready(host=host, http_port=http_port, timeout_s=180)
         except TimeoutError as ex:
             logs = _docker_logs(container_name)
             raise RuntimeError(f"{ex}\nContainer logs:\n{logs}\n") from ex
 
-        for bundle in bundles:
+        for bundle in bundle_paths:
             ref_name = bundle.stem
             imported_refs.append(ref_name)
             import_cmd = [
@@ -249,7 +416,7 @@ def retrieval_integration_env() -> RetrievalIntegrationEnv:
             "--refs",
             *imported_refs,
             "--description",
-            "Integration tests fake snapshot set",
+            f"Integration tests {round_cfg.id}",
         ]
         _run_command(snapshot_cmd, cwd=repo_root, timeout_s=120)
 
@@ -260,11 +427,26 @@ def retrieval_integration_env() -> RetrievalIntegrationEnv:
             snapshot_set_id=snapshot_set_id,
             repo_name=repo_name,
             imported_refs=tuple(imported_refs),
+            round=round_cfg,
+            bundle_paths=bundle_paths,
         )
     finally:
-        subprocess.run(
+        rm_proc = subprocess.run(
             ["docker", "rm", "-f", container_name],
             text=True,
             capture_output=True,
             check=False,
         )
+        destroy_lines = [
+            f"Round : {round_cfg.id}",
+            "Event : container_destroy",
+            f"Container : {container_name}",
+            f"Return code : {rm_proc.returncode}",
+            f"stdout : {rm_proc.stdout.strip()}",
+            f"stderr : {rm_proc.stderr.strip()}",
+        ]
+        print("[integration] container_destroy")
+        for line in destroy_lines:
+            print(f"[integration] {line}")
+        write_named_log(stem="container_lifecycle", test_id=f"{round_cfg.id}_destroy", lines=destroy_lines)
+        write_test_results_log(test_id=f"container_destroy::{round_cfg.id}", lines=destroy_lines)

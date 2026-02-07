@@ -18,8 +18,8 @@ Expected dataset characteristics:
 - Security metadata distribution target in generated fake bundles:
   - ~70% no access tags
   - ~15% `acl_tags_any`
-  - ~10% `classification_level`
-  - ~5% both `acl_tags_any` and `classification_level`
+  - ~10% `doc_level` (clearance_level)
+  - ~5% both `acl_tags_any` and `doc_level`
 
 ## Run Command
 From repository root:
@@ -268,24 +268,28 @@ Fail means:
 
 ---
 
-## 5) Security Filter Scenarios (`acl_tags_any` + `classification_labels_all`)
+## 5) Security Filter Scenarios (ACL + Clearance Level)
 
-This section defines expected behavior when security filters are present in `retrieval_filters`.
+This section defines expected behavior when security filters are present in `retrieval_filters`
+for the **clearance_level** model (current default in `config.json`).
 
-### Security Logic Contract
-1. `acl_tags_any` is evaluated as OR.
-2. `classification_labels_all` is evaluated as AND.
+### Security Logic Contract (clearance_level)
+1. `acl_tags_any` is evaluated as OR (if `permissions.acl_enabled=true`).
+2. `user_level` is evaluated as `doc_level <= user_level`.
 3. If both are present, effective rule is:
-   - `(document.acl intersects user.acl_tags_any)` AND `(all document.classification labels are allowed)`
-4. Empty document classifications are allowed by default.
-5. `owner_id` is reserved for future use and is not enforced in current integration checks.
+   - `(document.acl intersects user.acl_tags_any)` AND `(doc_level <= user_level)`
+4. Empty ACL is allowed by default.
+5. If `allow_missing_doc_level=true`, missing `doc_level` is treated as public.
+6. Importer rule:
+   - `acl_allow` is written **only when** `acl_enabled=true`.
+   - `doc_level` is written **only when** `security_model.kind=clearance_level`.
 
 ### Expected Trace Fields
 When security scenarios are executed, `state_after.retrieval_filters` should include:
 1. `repo`
 2. `snapshot_id` (or `snapshot_ids_any`)
-3. `acl_tags_any` (always present in security scenarios)
-4. `classification_labels_all` (if classification scenario is active)
+3. `acl_tags_any` (only if ACL is enabled)
+4. `user_level` (only for clearance_level)
 
 Example:
 
@@ -294,37 +298,26 @@ Example:
   "repo": "Fake",
   "snapshot_id": "<resolved_snapshot_id>",
   "acl_tags_any": ["finance", "security"],
-  "classification_labels_all": ["internal", "sensitive"]
+  "user_level": 10
 }
 ```
 
-### Expected Behavior Matrix
+### Expected Behavior Matrix (clearance_level)
 
-#### ACL-only scenario
-User groups: `["finance", "security"]`
+#### Clearance-only scenario (ACL disabled)
+Assume `acl_enabled=false`, `allow_missing_doc_level=true`.
 Expected:
-1. Documents tagged with `finance` are visible.
-2. Documents tagged with `security` are visible.
-3. Documents tagged with `hr` only are not visible.
+1. `doc_level=0`, `user_level=0` -> visible.
+2. `doc_level=10`, `user_level=0` -> not visible.
+3. `doc_level=None`, `user_level=0` -> visible.
 
-#### Classification scenario
-User groups: `["finance", "security"]`
-User classification set: `["public", "internal", "secret"]`
-Expected:
-1. Document labels `[]` -> visible.
-2. Document labels `["public"]` -> visible.
-3. Document labels `["secret"]` -> visible.
-4. Document labels `["internal", "secret"]` -> visible.
-5. Document labels `["sensitive"]` -> not visible.
-
-#### ACL + classification scenario
+#### ACL + clearance scenario (ACL enabled)
 User ACL: `["finance", "security"]`
-User classification: `["public", "internal", "secret"]`
+User level: `10`
 Expected:
-1. Doc ACL `["finance"]`, class `["internal"]` -> visible.
-2. Doc ACL `["security"]`, class `[]` -> visible.
-3. Doc ACL `["hr"]`, class `["internal"]` -> not visible (ACL fail).
-4. Doc ACL `["finance"]`, class `["sensitive"]` -> not visible (classification fail).
+1. Doc ACL `["finance"]`, `doc_level=10` -> visible.
+2. Doc ACL `["hr"]`, `doc_level=10` -> not visible (ACL fail).
+3. Doc ACL `["finance"]`, `doc_level=20` -> not visible (clearance fail).
 
 ### Result Interpretation in Logs
 For security cases, compare:
@@ -336,7 +329,7 @@ Security tests pass when:
 1. The expected filter fields are present in trace.
 2. Allowed documents are retrievable.
 3. Disallowed documents are consistently excluded.
-4. `Observed security` in `test_results_latest.log` confirms ACL/classification metadata for returned documents.
+4. `Observed security` in `test_results_latest.log` confirms ACL and `doc_level` for returned documents.
 
 ---
 
@@ -658,3 +651,236 @@ Expected:
 1. If the next node would exceed limit, it is fully skipped.
 2. No partial text for that node appears in `node_texts`.
 3. The returned set contains only fully included nodes.
+
+=========================
+
+Review Notes on Test Completeness 2026-02-05
+
+The items below summarize **all not fully covered or missing** behaviors from `retrieval_contract_coverage_pl.md`. Each item includes a proposed **integration test** and the **expected result** (grounded in the Fake Enterprise 1.0/1.1 bundles).
+
+1) Gap: `search_nodes` must not materialize text or write `context_blocks` (partial coverage)
+Proposed integration test:
+- Add a case that runs **only** `SearchNodesAction` (without `fetch_node_texts`) using an existing query from the fake dataset, e.g. “Where is the application entry point and bootstrap?”.
+Expected result:
+- `state.retrieval_seed_nodes` is non-empty.
+- `state.node_texts` is empty.
+- `state.context_blocks` is empty.
+
+2) Gap: Fail-fast when `repository` or `snapshot_id` is missing (not covered)
+Proposed integration test:
+- Build a minimal pipeline run that calls `search_nodes` with `state.repository=""` or `state.snapshot_id=""` and the Fake repository (“Fake”) context.
+Expected result:
+- The action raises a runtime error before any retrieval is executed.
+
+3) Gap: `top_k` must be provided by step or settings (not covered)
+Proposed integration test:
+- Run `search_nodes` without `top_k` and without `pipeline_settings["top_k"]`.
+Expected result:
+- Runtime error indicating missing `top_k`.
+
+4) Gap: Rerank only allowed for `semantic`; fail-fast for `bm25`/`hybrid` (not covered)
+Proposed integration test:
+- Execute `search_nodes` with `search_type=bm25` (or `hybrid`) and `rerank=keyword_rerank`.
+Expected result:
+- Runtime error.
+
+5) Gap: Sacred `retrieval_filters` cannot be overridden by parsing (partial coverage)
+Proposed integration test:
+- Provide `state.retrieval_filters` with `acl_tags_any=["finance"]`, then use a query payload that tries to override ACL (e.g., empty or different groups).
+Expected result:
+- Applied filters still include the original ACL; returned docs respect `finance` ACL.
+
+6) Gap: `graph_max_depth` and `graph_max_nodes` are enforced (partial coverage)
+Proposed integration test:
+- Run dependency expansion with `graph_max_depth=1` and `graph_max_nodes=2` using the seed `SQL:dbo.proc_ProcessPayment`.
+Expected result:
+- Expanded nodes do not exceed depth 1.
+- Total expanded nodes <= 2.
+
+7) Gap: Fail-fast when graph settings mapping (`*_from_settings`) is missing (not covered)
+Proposed integration test:
+- Execute `expand_dependency_tree` with missing `max_depth_from_settings` or missing key in settings.
+Expected result:
+- Runtime error before graph expansion.
+
+8) Gap: `graph_debug` minimal schema is required (partial coverage)
+Proposed integration test:
+- After `expand_dependency_tree`, assert `graph_debug` has keys: `seed_count`, `expanded_count`, `edges_count`, `truncated`, `reason`.
+Expected result:
+- All keys present with valid types.
+
+9) Gap: Security trimming in `expand_dependency_tree` (not covered)
+Proposed integration test:
+- Run expansion with `acl_tags_any=["finance","security"]` and `classification_labels_all=["restricted"]`.
+Expected result:
+- Expanded nodes and edges exclude any node failing ACL or classification.
+- Example exclusions in Fake bundles: nodes like `C0027` or `C0003` if tagged outside ACL (as described in section 6).
+
+10) Gap: `node_texts` minimal schema (`id`, `text`, `is_seed`, `depth`, `parent_id`) (partial coverage)
+Proposed integration test:
+- After `fetch_node_texts`, validate schema for each item.
+Expected result:
+- All fields present and consistent (seeds have `depth=0`, `parent_id=None`).
+
+11) Gap: Mutual exclusivity of `budget_tokens` and `max_chars` (not covered)
+Proposed integration test:
+- Run `fetch_node_texts` with both `budget_tokens` and `max_chars` set.
+Expected result:
+- Runtime error before any materialization.
+
+12) Gap: Fail-fast for missing `max_context_tokens` or non-positive values (not covered)
+Proposed integration test:
+- Execute `fetch_node_texts` with `pipeline_settings.max_context_tokens <= 0`.
+Expected result:
+- Runtime error indicating invalid budget source.
+
+13) Gap: Hybrid RRF algorithm (dedup + tie-breaks) (not covered)
+Proposed integration test:
+- Use controlled retrieval results to force RRF ties, then run a hybrid query.
+Expected result:
+- Ordering respects `score → semantic_rank → bm25_rank → ID`.
+
+14) Gap: SnapshotSet resolution and conflicts (not covered)
+Proposed integration test:
+- Build a case that sets only `snapshot_set_id=Fake_snapshot` and confirms it resolves to a concrete snapshot.
+- Build a conflicting case (`snapshot_id` from release-1.0 vs `snapshot_set_id` resolving to release-1.1).
+Expected result:
+- Resolution is deterministic:
+  - Release 1.0 snapshot: `fdb0d25c05c0b1647d4954a0f1850aff13570970`
+  - Release 1.1 snapshot: `0edca56531e955968794aafa95b082a4badf26b9`
+- Conflicts trigger fail-fast.
+
+15) Gap: Reranking with `widen_factor` (not covered)
+Proposed integration test:
+- `semantic + keyword_rerank` with `top_k=5` and `widen_factor=6`.
+Expected result:
+- Backend retrieval is called with `top_k=30`, reranker returns only top 5.
+
+16) Gap: `fetch_node_texts` edge cases (not covered)
+Proposed integration test:
+- Case A: IDs valid but missing text in backend.
+- Case B: all candidate nodes exceed budget individually.
+- Case C: large number of seed nodes + very small budget.
+Expected result:
+- Case A: missing text nodes are skipped or returned empty consistently.
+- Case B: `node_texts == []`.
+- Case C: deterministic subset based on prioritization order.
+
+17) Gap: Empty or degenerate inputs for `expand_dependency_tree` (not covered)
+Proposed integration test:
+- Run expansion with empty `retrieval_seed_nodes`.
+Expected result:
+- No nodes/edges returned; `graph_debug.reason == "no_seeds"` (or equivalent).
+
+18) Gap: Backend abstraction (no direct FAISS usage) (not covered)
+Proposed integration test:
+- Run `search_nodes`/`fetch_node_texts` with a stub backend and assert the actions use `runtime.retrieval_backend` calls.
+Expected result:
+- All retrieval operations go through the injected backend; no direct FAISS access.
+
+19) Gap: Unknown `search_type` must fail-fast (not covered)
+Proposed integration test:
+- Execute `search_nodes` with `search_type="fuzzy"` (or a typo like `semantc`).
+Expected result:
+- Runtime error indicating unsupported search mode.
+
+20) Gap: Merge rules for `retrieval_filters` vs `parsed_filters` (not covered)
+Proposed integration test:
+- Provide `state.retrieval_filters` with ACL/classification, then pass a query payload that tries to override them (e.g., empty or conflicting ACL).
+Expected result:
+- Final applied filters still include the original ACL/classification; parser can only add non-security filters.
+
+21) Gap: `codebert_rerank` is reserved and must fail-fast (not covered)
+Proposed integration test:
+- Execute `search_nodes` with `search_type="semantic"` and `rerank="codebert_rerank"`.
+Expected result:
+- Runtime error indicating the reranker is not available/reserved.
+
+22) Gap: Explicit conflict between `snapshot_id` and `snapshot_set_id` (not covered)
+Proposed integration test:
+- Set `snapshot_id` to release 1.0 (`fdb0d25c05c0b1647d4954a0f1850aff13570970`) and `snapshot_set_id=Fake_snapshot` resolved to release 1.1.
+Expected result:
+- Runtime error due to conflicting snapshot scope.
+
+23) Gap: Very large `top_k` with tiny token budget in `fetch_node_texts` (not covered)
+Proposed integration test:
+- Use `top_k=100` in search, but set `budget_tokens` to allow only 2–3 nodes in fetch.
+Expected result:
+- Deterministic truncation to the smallest set that fits the budget (consistent ordering with prioritization mode).
+
+24) Gap: Empty query in `search_nodes` must fail-fast (not covered)
+Proposed integration test:
+- Execute `search_nodes` with an empty query (after parsing/normalization).
+Expected result:
+- Runtime error indicating empty/invalid query.
+
+25) Gap: Unknown `rerank` value must fail-fast (not covered)
+Proposed integration test:
+- Execute `search_nodes` with `search_type="semantic"` and `rerank="foo_rerank"`.
+Expected result:
+- Runtime error indicating unsupported rerank option.
+
+Note after running integration tests (2026-02-05):
+- Check results in `log/integration/retrival/test_results_latest.log`.
+- These logs are not committed to the repository, so each run must generate them locally and review them.
+
+=========================
+
+Additional ACL + Classification Tests (English, numbered)
+
+Shared assumptions:
+User ACL: `["finance", "security"]`.
+User classification: `["public", "internal", "secret"]`.
+ACL = OR, Classification = ALL/subset, empty ACL = public and allowed.
+Data source:
+- Use the fake bundles imported by integration tests: `tests/repositories/fake/Release_FAKE_ENTERPRISE_1.0.zip` and `Release_FAKE_ENTERPRISE_1.1.zip`.
+- Node metadata comes from those bundles (fields `acl_allow` and `classification_labels`).
+- Test selection rule: pick concrete node IDs or source files from the fake bundles that match each ACL/classification combination.
+Data preparation method (how we guarantee tag combinations):
+- During test setup, query Weaviate directly to select candidate nodes by metadata filters.
+- For each ACL/classification combination, run a metadata-only query (no vector search) and store the resulting node IDs in the test fixture.
+- If a combination returns zero nodes, the test should explicitly fail with a clear message (data coverage gap), not silently skip.
+
+How to obtain nodes for each combination:
+- ACL = public: filter `acl_allow` is empty (or missing) AND no classification constraint.
+- ACL contains `finance`: filter `acl_allow` contains_any `["finance"]`.
+- ACL contains `security`: filter `acl_allow` contains_any `["security"]`.
+- ACL contains `hr` only (negative): filter `acl_allow` contains_any `["hr"]` AND NOT contains_any `["finance","security"]`.
+- Classification subset: filter `classification_labels` contains_all `["public"]` or `["internal","secret"]`.
+- Classification negative: filter `classification_labels` contains_any `["restricted"]` AND NOT contains_all `["public","internal","secret"]`.
+
+How to expand dependency tree with controlled tags:
+- Select seed nodes using the metadata filters above (ACL/classification combinations).
+- Use `expand_dependency_tree` with those seed IDs and `retrieval_filters` set to the user ACL/classification.
+- Validate expansion results by re-querying metadata for all returned node IDs and checking ACL/classification compliance.
+
+Tests for `search_nodes` + `fetch_node_texts`
+1. Test S1 (search_nodes): Doc ACL `[]`, classification `[]`. Data prep: select a node with empty `acl_allow` and empty `classification_labels`. Expected: document is returned (public).
+2. Test S2 (search_nodes): Doc ACL `["finance"]`, classification `[]`. Data prep: select a node where `acl_allow` contains `finance` and `classification_labels` empty. Expected: document is returned.
+3. Test S3 (search_nodes): Doc ACL `["security"]`, classification `[]`. Data prep: select a node where `acl_allow` contains `security` and `classification_labels` empty. Expected: document is returned.
+4. Test S4 (search_nodes): Doc ACL `["finance","security"]`, classification `[]`. Data prep: select a node where `acl_allow` contains both `finance` and `security`. Expected: document is returned.
+5. Test S5 (search_nodes): Doc ACL `["hr"]`, classification `[]`. Data prep: select a node where `acl_allow` contains `hr` and does not contain `finance` or `security`. Expected: document is not returned.
+6. Test S6 (search_nodes): Doc ACL `["finance","hr"]`, classification `[]`. Data prep: select a node where `acl_allow` contains `finance` and `hr`. Expected: document is returned (match on `finance`).
+7. Test S7 (search_nodes): Doc ACL `[]`, classification `["public"]`. Data prep: select a node with empty `acl_allow` and `classification_labels` contains `public`. Expected: document is returned.
+8. Test S8 (search_nodes): Doc ACL `[]`, classification `["internal","secret"]`. Data prep: select a node with empty `acl_allow` and `classification_labels` contains `internal` and `secret`. Expected: document is returned.
+9. Test S9 (search_nodes): Doc ACL `[]`, classification `["public","internal","secret"]`. Data prep: select a node with empty `acl_allow` and `classification_labels` contains all three labels. Expected: document is returned.
+10. Test S10 (search_nodes): Doc ACL `[]`, classification `["public","secret","restricted"]`. Data prep: select a node whose `classification_labels` includes `restricted`. Expected: document is not returned.
+11. Test S11 (search_nodes): Doc ACL `["finance"]`, classification `["internal"]`. Data prep: select a node with `acl_allow` contains `finance` and `classification_labels` contains `internal`. Expected: document is returned.
+12. Test S12 (search_nodes): Doc ACL `["security"]`, classification `[]`. Data prep: select a node with `acl_allow` contains `security` and empty classification. Expected: document is returned.
+13. Test S13 (search_nodes): Doc ACL `["hr"]`, classification `["public"]`. Data prep: select a node with `acl_allow` contains `hr` and `classification_labels` contains `public` but not `finance/security`. Expected: document is not returned (ACL fail).
+14. Test S14 (search_nodes): Doc ACL `["finance"]`, classification `["restricted"]`. Data prep: select a node with `acl_allow` contains `finance` and `classification_labels` includes `restricted`. Expected: document is not returned (classification fail).
+15. Test S15 (search_nodes): Doc ACL `["finance","hr"]`, classification `["internal","secret"]`. Data prep: select a node with `acl_allow` contains `finance` and `hr`, and `classification_labels` contains `internal` and `secret`. Expected: document is returned.
+16. Test S16 (fetch_node_texts): Search results include docs with ACL `[]` and `["finance"]`. Data prep: select one public node and one finance-tagged node, run search to retrieve both. Expected: texts for both are materialized.
+17. Test S17 (fetch_node_texts): Search results include a doc with classification `["restricted"]`. Data prep: include one restricted node in candidate list, run search with classification filter. Expected: that doc is not present in `node_texts`.
+
+Tests for `expand_dependency_tree`
+1. Test E1 (expand_dependency_tree): Seed ACL `[]`, classification `[]`. Data prep: pick a public seed node (empty ACL and empty classification). Expected: expansion returns only compliant nodes.
+2. Test E2 (expand_dependency_tree): Seed ACL `["finance"]`, classification `[]`. Data prep: pick a seed node with `acl_allow` contains `finance`. Expected: expanded nodes are public or contain `finance`.
+3. Test E3 (expand_dependency_tree): Seed ACL `["hr"]`, classification `[]`. Data prep: pick a seed node with `acl_allow` contains `hr` and not `finance/security`. Expected: no nodes/edges returned (ACL fail).
+4. Test E4 (expand_dependency_tree): Seed ACL `[]`, classification `["public"]`. Data prep: pick a seed node with empty ACL and classification containing `public`. Expected: only nodes whose classification is a subset of `["public","internal","secret"]`.
+5. Test E5 (expand_dependency_tree): Seed ACL `[]`, classification `["restricted"]`. Data prep: pick a seed node with classification containing `restricted`. Expected: no nodes/edges returned (classification fail).
+6. Test E6 (expand_dependency_tree): Seed ACL `["finance"]`, classification `["internal"]`. Data prep: pick a seed node with ACL contains `finance` and classification contains `internal`. Expected: only nodes satisfying both conditions.
+7. Test E7 (expand_dependency_tree): Seed ACL `["security"]`, classification `[]`. Data prep: pick a seed node with ACL contains `security`. Expected: public nodes and `security` nodes are returned.
+8. Test E8 (expand_dependency_tree): Seed ACL `["finance"]`, classification `["restricted"]`. Data prep: pick a seed node with ACL contains `finance` and classification contains `restricted`. Expected: no nodes/edges returned (classification fail).
+9. Test E9 (expand_dependency_tree): Seed ACL `[]`, classification `[]` with graph nodes having ACL `["hr"]`. Data prep: ensure graph contains at least one `hr` node reachable from seed. Expected: `["hr"]` nodes are trimmed.
+10. Test E10 (expand_dependency_tree): Seed ACL `[]`, classification `[]` with graph nodes having classification `["restricted"]`. Data prep: ensure graph contains at least one `restricted` node reachable from seed. Expected: `["restricted"]` nodes are trimmed.

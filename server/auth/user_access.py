@@ -1,9 +1,10 @@
 from __future__ import annotations
 
-import json
 import os
 from dataclasses import dataclass, field
 from typing import Dict, Iterable, List, Optional
+
+from .policies_provider import default_json_provider, GroupPolicy
 
 
 @dataclass(frozen=True)
@@ -18,6 +19,7 @@ class UserAccessContext:
     allowed_commands: List[str]
     acl_tags_any: List[str] = field(default_factory=list)
     classification_labels_all: List[str] = field(default_factory=list)
+    user_level: Optional[int] = None
     owner_id: Optional[str] = None
     source_system_id: Optional[str] = None
     # Backward-compatible alias retained during migration.
@@ -36,23 +38,10 @@ class UserAccessProvider:
         user_id: Optional[str],
         token: Optional[str],
         session_id: str,
+        claims: Optional[Dict[str, object]] = None,
     ) -> UserAccessContext:
         raise NotImplementedError
 
-
-@dataclass(frozen=True)
-class GroupPolicy:
-    """
-    Group-level policy: ACL tags, classification labels and allowed pipelines.
-    """
-    allowed_pipelines: List[str] = field(default_factory=list)
-    allowed_commands: List[str] = field(default_factory=list)
-    acl_tags_any: List[str] = field(default_factory=list)
-    classification_labels_all: List[str] = field(default_factory=list)
-    owner_id: Optional[str] = None
-    source_system_id: Optional[str] = None
-    # Backward-compatible alias retained during migration.
-    acl_tags_all: List[str] = field(default_factory=list)
 
 
 class DevUserAccessProvider(UserAccessProvider):
@@ -72,11 +61,13 @@ class DevUserAccessProvider(UserAccessProvider):
         authenticated_group_id: str = "authenticated",
         user_group_prefix: str = "user:",
         group_policies: Optional[Dict[str, GroupPolicy]] = None,
+        claim_group_mappings: Optional[List[Dict[str, object]]] = None,
     ) -> None:
         self._anonymous_group_id = anonymous_group_id
         self._authenticated_group_id = authenticated_group_id
         self._user_group_prefix = user_group_prefix
         self._group_policies = group_policies or {}
+        self._claim_group_mappings = claim_group_mappings or []
 
     def resolve(
         self,
@@ -84,6 +75,7 @@ class DevUserAccessProvider(UserAccessProvider):
         user_id: Optional[str],
         token: Optional[str],
         session_id: str,
+        claims: Optional[Dict[str, object]] = None,
     ) -> UserAccessContext:
         resolved_user_id = self._parse_dev_token(token) or user_id
         has_bearer = self._has_any_bearer_token(token)
@@ -99,8 +91,11 @@ class DevUserAccessProvider(UserAccessProvider):
             group_ids = [self._anonymous_group_id]
             is_anonymous = True
 
+        group_ids = _unique_preserve_order(group_ids + self._map_claims_to_groups(claims or {}))
+
         acl_tags_any = self._merge_acl_tags_any(group_ids)
         classification_labels_all = self._merge_classification_labels(group_ids)
+        user_level = self._merge_user_level(group_ids)
         allowed_pipelines = self._merge_allowed_pipelines(group_ids)
         allowed_commands = self._merge_allowed_commands(group_ids)
         owner_id = self._resolve_owner_id(group_ids)
@@ -114,6 +109,7 @@ class DevUserAccessProvider(UserAccessProvider):
             allowed_commands=allowed_commands,
             acl_tags_any=acl_tags_any,
             classification_labels_all=classification_labels_all,
+            user_level=user_level,
             owner_id=owner_id,
             source_system_id=source_system_id,
             acl_tags_all=list(acl_tags_any),
@@ -192,6 +188,42 @@ class DevUserAccessProvider(UserAccessProvider):
                 return source_system_id
         return None
 
+    def _merge_user_level(self, group_ids: Iterable[str]) -> Optional[int]:
+        levels: List[int] = []
+        for gid in group_ids:
+            policy = self._group_policies.get(gid)
+            if policy and policy.user_level is not None:
+                levels.append(int(policy.user_level))
+        if not levels:
+            return None
+        return max(levels)
+
+    def _map_claims_to_groups(self, claims: Dict[str, object]) -> List[str]:
+        out: List[str] = []
+        for rule in self._claim_group_mappings:
+            if not isinstance(rule, dict):
+                continue
+            claim = str(rule.get("claim") or "").strip()
+            if not claim:
+                continue
+            value = claims.get(claim)
+            if value is None:
+                continue
+            value_map = rule.get("value_map") or {}
+            list_map = rule.get("list_map") or {}
+            if isinstance(value, (list, tuple, set)):
+                for v in value:
+                    key = str(v)
+                    group = list_map.get(key)
+                    if group:
+                        out.append(str(group))
+                continue
+            key = str(value)
+            group = value_map.get(key)
+            if group:
+                out.append(str(group))
+        return out
+
 
 def _unique_preserve_order(items: Iterable[str]) -> List[str]:
     seen = set()
@@ -218,55 +250,13 @@ def get_default_user_access_provider() -> UserAccessProvider:
         # In tests, skip policy loading to avoid unexpected auth failures.
         if os.getenv("PYTEST_CURRENT_TEST"):
             group_policies = {}
+            claim_group_mappings: List[Dict[str, object]] = []
         else:
-            group_policies = _load_group_policies_from_json()
-        _default_provider = DevUserAccessProvider(group_policies=group_policies)
+            provider = default_json_provider()
+            group_policies, claim_group_mappings = provider.load()
+        _default_provider = DevUserAccessProvider(
+            group_policies=group_policies,
+            claim_group_mappings=claim_group_mappings,
+        )
     return _default_provider
 
-
-def _load_group_policies_from_json() -> Dict[str, GroupPolicy]:
-    """
-    Load group policies from a dedicated JSON file.
-    This is a temporary storage mechanism until policies live in a database.
-    """
-    project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-    default_path = os.path.join(project_root, "config", "auth_policies.json")
-    path = os.getenv("AUTH_POLICIES_PATH") or default_path
-
-    try:
-        with open(path, "r", encoding="utf-8") as f:
-            raw = json.load(f)
-    except FileNotFoundError:
-        return {}
-    except Exception:
-        return {}
-
-    groups = raw.get("groups")
-    if not isinstance(groups, dict):
-        return {}
-
-    policies: Dict[str, GroupPolicy] = {}
-    for group_id, payload in groups.items():
-        if not isinstance(payload, dict):
-            continue
-        acl_any = payload.get("acl_tags_any")
-        if acl_any is None:
-            acl_any = payload.get("acl_tags_all")
-        labels_all = payload.get("classification_labels_all") or []
-        allowed = payload.get("allowed_pipelines") or []
-        allowed_commands = payload.get("allowed_commands") or []
-        owner_id = str(payload.get("owner_id") or "").strip() or None
-        source_system_id = str(payload.get("source_system_id") or "").strip() or None
-        if not isinstance(acl_any, list) or not isinstance(labels_all, list) or not isinstance(allowed, list) or not isinstance(allowed_commands, list):
-            continue
-        policies[str(group_id)] = GroupPolicy(
-            acl_tags_any=[str(x) for x in acl_any if str(x).strip()],
-            classification_labels_all=[str(x) for x in labels_all if str(x).strip()],
-            owner_id=owner_id,
-            source_system_id=source_system_id,
-            acl_tags_all=[str(x) for x in acl_any if str(x).strip()],
-            allowed_pipelines=[str(x) for x in allowed if str(x).strip()],
-            allowed_commands=[str(x) for x in allowed_commands if str(x).strip()],
-        )
-
-    return policies

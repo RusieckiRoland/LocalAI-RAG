@@ -3,6 +3,7 @@ from __future__ import annotations
 import weaviate
 from weaviate.classes.query import Filter
 
+
 def _connect(env) -> weaviate.WeaviateClient:
     return weaviate.connect_to_local(
         host=env.weaviate_host,
@@ -11,7 +12,7 @@ def _connect(env) -> weaviate.WeaviateClient:
     )
 
 
-def test_fake_snapshot_set_exists(retrieval_integration_env) -> None:
+def test_snapshot_set_exists(retrieval_integration_env) -> None:
     env = retrieval_integration_env
     client = _connect(env)
     try:
@@ -32,7 +33,7 @@ def test_fake_snapshot_set_exists(retrieval_integration_env) -> None:
         client.close()
 
 
-def test_import_runs_are_completed(retrieval_integration_env) -> None:
+def test_import_runs_completed(retrieval_integration_env) -> None:
     env = retrieval_integration_env
     client = _connect(env)
     try:
@@ -50,5 +51,38 @@ def test_import_runs_are_completed(retrieval_integration_env) -> None:
         tags = [str((obj.properties or {}).get("tag") or "").strip() for obj in result.objects]
         for ref in env.imported_refs:
             assert ref in tags
+    finally:
+        client.close()
+
+
+def test_ragnode_schema_matches_permissions(retrieval_integration_env) -> None:
+    env = retrieval_integration_env
+    client = _connect(env)
+    try:
+        coll = client.collections.get("RagNode")
+        cfg = coll.config.get()
+        props = {p.name for p in (cfg.properties or [])}
+
+        acl_enabled = bool(env.round.permissions.get("acl_enabled", True))
+        security_enabled = bool(env.round.permissions.get("security_enabled", False))
+        security_model = env.round.permissions.get("security_model") or {}
+        kind = str(security_model.get("kind") or "")
+
+        if acl_enabled:
+            assert "acl_allow" in props
+        else:
+            assert "acl_allow" not in props
+
+        if not security_enabled:
+            assert "classification_labels" not in props
+            assert "doc_level" not in props
+            return
+
+        if kind == "clearance_level":
+            assert "doc_level" in props
+            assert "classification_labels" not in props
+        else:
+            assert "classification_labels" in props
+            assert "doc_level" not in props
     finally:
         client.close()

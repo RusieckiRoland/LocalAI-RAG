@@ -32,6 +32,15 @@ CLASSIFICATION_LABELS = [
     "secret",
 ]
 
+CLEARANCE_LEVELS = {
+    "public": 0,
+    "internal": 10,
+    "restricted": 20,
+    "confidential": 20,
+    "secret": 20,
+    "critical": 30,
+}
+
 OWNER_IDS = [
     "team-finance",
     "team-security",
@@ -68,6 +77,17 @@ def _utc_now() -> str:
 
 def _head_sha(seed: str) -> str:
     return hashlib.sha1(seed.encode("utf-8")).hexdigest()
+
+
+def _labels_to_level(labels: List[str]) -> int:
+    if not labels:
+        return CLEARANCE_LEVELS["public"]
+    lvl = CLEARANCE_LEVELS["public"]
+    for label in labels:
+        val = CLEARANCE_LEVELS.get(label, CLEARANCE_LEVELS["public"])
+        if val > lvl:
+            lvl = val
+    return int(lvl)
 
 
 def _base_cs_nodes(release: str) -> List[Tuple[str, str, str, str, str]]:
@@ -157,10 +177,67 @@ def _extra_cs_nodes(count: int, rng: random.Random) -> List[Tuple[str, str, str,
     return out
 
 
-def _build_cs_release(release: str, rng: random.Random) -> Tuple[List[CsNode], Dict[str, List[str]]]:
+def _security_fixtures(
+    release: str,
+) -> Tuple[
+    List[Tuple[str, str, str, str, str]],
+    Dict[str, Tuple[List[str], List[str], int]],
+    Dict[str, List[str]],
+]:
+    fixtures: List[Tuple[str, str, str, str, str]] = []
+    overrides: Dict[str, Tuple[List[str], List[str], int]] = {}
+    deps: Dict[str, List[str]] = {}
+
+    def _add(key: str, token: str, acl: List[str], cls: List[str]) -> None:
+        cls_name = f"SecurityFixture{key.upper()}"
+        member = "Run"
+        file = f"src/FakeEnterprise.SecurityFixtures/{cls_name}.cs"
+        release_token = release.replace(".", "")
+        token_id = f"{token}_{release.replace('.', '_')}"
+        token_slug = f"fixturetoken{token.upper()}R{release_token}"
+        letters = "".join(ch for ch in key if ch.isalpha()).lower()
+        word_token = f"fixtureword{letters}"
+        text = (
+            f"Security fixture {key} for release {release}. "
+            f"Token: SECURITY_FIXTURE_{token_id}. "
+            f"FixtureToken: {token_slug}. "
+            f"FixtureWord: {word_token}. "
+            "Deterministic content for ACL/classification tests."
+        )
+        fixtures.append((f"fixture_{key}", file, cls_name, member, text))
+        overrides[f"fixture_{key}"] = (list(acl), list(cls), _labels_to_level(cls))
+        deps[f"fixture_{key}"] = ["facade"]
+
+    _add("s1_public_empty", "S1", [], [])
+    _add("s2_finance_empty", "S2", ["finance"], [])
+    _add("s3_security_empty", "S3", ["security"], [])
+    _add("s4_finsec_empty", "S4", ["finance", "security"], [])
+    _add("s5_hr_empty", "S5", ["hr"], [])
+    _add("s6_finhr_empty", "S6", ["finance", "hr"], [])
+    _add("s7_public_cls_public", "S7", [], ["public"])
+    _add("s8_public_cls_internal_secret", "S8", [], ["internal", "secret"])
+    _add("s9_public_cls_all", "S9", [], ["public", "internal", "secret"])
+    _add("s10_public_cls_restricted", "S10", [], ["restricted"])
+    _add("s11_finance_cls_internal", "S11", ["finance"], ["internal"])
+    _add("s12_security_empty_dup", "S12", ["security"], [])
+    _add("s13_hr_cls_public", "S13", ["hr"], ["public"])
+    _add("s14_finance_cls_restricted", "S14", ["finance"], ["restricted"])
+    _add("s15_finhr_cls_internal_secret", "S15", ["finance", "hr"], ["internal", "secret"])
+
+    # Ensure expand tests can reach disallowed nodes from a public seed.
+    deps["fixture_s1_public_empty"] = ["facade", "fixture_s5_hr_empty", "fixture_s10_public_cls_restricted"]
+
+    return fixtures, overrides, deps
+
+
+def _build_cs_release(
+    release: str,
+    rng: random.Random,
+) -> Tuple[List[CsNode], Dict[str, List[str]], Dict[str, Tuple[List[str], List[str], int]]]:
     base = _base_cs_nodes(release)
     extras = _extra_cs_nodes(170, rng)
-    items = base + extras
+    fixtures, fixture_overrides, fixture_deps = _security_fixtures(release)
+    items = base + extras + fixtures
 
     if release == "1.1":
         items.append(
@@ -206,6 +283,7 @@ def _build_cs_release(release: str, rng: random.Random) -> Tuple[List[CsNode], D
             ),
             "acl_tags_any": [],
             "classification_labels_all": [],
+            "doc_level": CLEARANCE_LEVELS["public"],
             "owner_id": "",
             "source_system_id": "code.csharp",
         }
@@ -229,6 +307,11 @@ def _build_cs_release(release: str, rng: random.Random) -> Tuple[List[CsNode], D
         if i % 7 == 0:
             deps.append("facade")
 
+    # Add dependencies for security fixtures.
+    for key, key_deps in fixture_deps.items():
+        deps_by_key.setdefault(key, [])
+        deps_by_key[key].extend([k for k in key_deps if k])
+
     # Convert key dependencies to id dependencies.
     dep_map: Dict[str, List[str]] = {}
     for node in nodes:
@@ -237,7 +320,17 @@ def _build_cs_release(release: str, rng: random.Random) -> Tuple[List[CsNode], D
         dep_map[node.obj["Id"]] = sorted(set(id_deps))
         node.deps = dep_map[node.obj["Id"]]
 
-    return nodes, dep_map
+    # Override ACL/classification for security fixtures (post-distribution).
+    for node in nodes:
+        override = fixture_overrides.get(node.key)
+        if override:
+            acl, cls, lvl = override
+            node.obj["acl_tags_any"] = acl
+            node.obj["classification_labels_all"] = cls
+            node.obj["doc_level"] = int(lvl)
+            node.obj["owner_id"] = "team-security"
+
+    return nodes, dep_map, fixture_overrides
 
 
 def _build_sql_release(release: str, rng: random.Random) -> Tuple[List[SqlNode], List[Dict[str, str]], List[Dict[str, str]]]:
@@ -317,6 +410,7 @@ def _build_sql_release(release: str, rng: random.Random) -> Tuple[List[SqlNode],
             "domain": "sql",
             "acl_tags_any": [],
             "classification_labels_all": [],
+            "doc_level": CLEARANCE_LEVELS["public"],
             "owner_id": "",
             "source_system_id": "code.sql",
         }
@@ -416,6 +510,7 @@ def _assign_security_distribution(
             owner = rng.choice(OWNER_IDS)
         doc["acl_tags_any"] = acl
         doc["classification_labels_all"] = cls
+        doc["doc_level"] = _labels_to_level(cls)
         doc["owner_id"] = owner
 
 
@@ -433,11 +528,21 @@ def _build_release_bundle(release: str, out_dir: Path) -> Path:
     root_name = f"Release_FAKE_ENTERPRISE_{release}"
     bundle_path = out_dir / f"{root_name}.zip"
 
-    cs_nodes, cs_deps = _build_cs_release(release, rng)
+    cs_nodes, cs_deps, fixture_overrides = _build_cs_release(release, rng)
     sql_nodes, sql_edges, sql_node_rows = _build_sql_release(release, rng)
 
     all_docs = [n.obj for n in cs_nodes] + [n.obj for n in sql_nodes]
     _assign_security_distribution(docs=all_docs, rng=rng)
+
+    # Re-apply deterministic security fixtures after random distribution.
+    for node in cs_nodes:
+        override = fixture_overrides.get(node.key)
+        if override:
+            acl, cls, lvl = override
+            node.obj["acl_tags_any"] = list(acl)
+            node.obj["classification_labels_all"] = list(cls)
+            node.obj["doc_level"] = int(lvl)
+            node.obj["owner_id"] = "team-security"
 
     repo = "Fake"
     branch = f"release-{release}"

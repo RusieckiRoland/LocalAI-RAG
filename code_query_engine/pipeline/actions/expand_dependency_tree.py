@@ -3,6 +3,10 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
 
+import json
+import os
+from pathlib import Path
+
 from ..definitions import StepDef
 from ..engine import PipelineRuntime
 from ..state import PipelineState
@@ -74,6 +78,64 @@ def _set_graph_debug(
     if extra:
         dbg.update(dict(extra))
     state.graph_debug = dbg
+
+
+def _load_permissions_cfg() -> Dict[str, Any]:
+    try:
+        project_root = Path(__file__).resolve().parents[3]
+        cfg_path = project_root / "config.json"
+        if not cfg_path.exists():
+            return {}
+        return json.loads(cfg_path.read_text(encoding="utf-8")) or {}
+    except Exception:
+        return {}
+
+
+def _require_travel_permission() -> bool:
+    env_val = (os.getenv("REQUIRE_TRAVEL_PERMISSION") or "").strip().lower()
+    if env_val in ("1", "true", "yes", "on"):
+        return True
+    if env_val in ("0", "false", "no", "off"):
+        return False
+    cfg = _load_permissions_cfg()
+    perms = cfg.get("permissions") or {}
+    if isinstance(perms, dict):
+        return bool(perms.get("require_travel_permission", True))
+    return True
+
+
+def _apply_travel_permission(
+    *,
+    seed_nodes: List[str],
+    nodes: List[str],
+    edges: List[Dict[str, str]],
+) -> Dict[str, Any]:
+    allowed_set = set(nodes)
+    seeds_allowed = [s for s in seed_nodes if s in allowed_set]
+    if not seeds_allowed:
+        return {"nodes": [], "edges": []}
+
+    adj: Dict[str, List[str]] = {}
+    for e in edges:
+        frm = str(e.get("from_id") or "").strip()
+        to = str(e.get("to_id") or "").strip()
+        if not frm or not to:
+            continue
+        adj.setdefault(frm, []).append(to)
+
+    visited = set(seeds_allowed)
+    q = list(seeds_allowed)
+    while q:
+        cur = q.pop(0)
+        for nxt in adj.get(cur, []):
+            if nxt in visited:
+                continue
+            visited.add(nxt)
+            q.append(nxt)
+
+    nodes_out = [n for n in nodes if n in visited]
+    edges_out = [e for e in edges if e.get("from_id") in visited and e.get("to_id") in visited]
+    return {"nodes": nodes_out, "edges": edges_out}
 
 
 def _count_edge_types(edges: List[Dict[str, Any]]) -> Dict[str, int]:
@@ -291,18 +353,22 @@ class ExpandDependencyTreeAction(PipelineActionBase):
         filter_fn = getattr(provider, "filter_by_permissions", None)
         if callable(filter_fn):
             allowed_nodes = list(
-            filter_fn(
-                node_ids=list(nodes),
-                retrieval_filters=retrieval_filters,
-                repository=repository,
-                branch=None,
-                snapshot_id=snapshot_id,
-            )
+                filter_fn(
+                    node_ids=list(nodes),
+                    retrieval_filters=retrieval_filters,
+                    repository=repository,
+                    branch=None,
+                    snapshot_id=snapshot_id,
+                )
                 or []
             )
             allowed_set = set(allowed_nodes)
             nodes = [n for n in nodes if n in allowed_set]
             edges = [e for e in edges if e.get("from_id") in allowed_set and e.get("to_id") in allowed_set]
+            if _require_travel_permission():
+                travel = _apply_travel_permission(seed_nodes=list(seed_nodes), nodes=nodes, edges=edges)
+                nodes = list(travel.get("nodes") or [])
+                edges = list(travel.get("edges") or [])
 
         state.graph_seed_nodes = list(seed_nodes)
         state.graph_expanded_nodes = list(nodes)

@@ -5,7 +5,7 @@ This document describes the **CLI tools** used to:
 - **discover** which snapshots exist (and their `head_sha`)
 - **manage SnapshotSets** (named allowlists / query scopes)
 
-Weaviate must already be running (see `WEAVIATE_LOCAL_SETUP.md`).
+Weaviate must already be running (see `weaviate_local_setup.md`).
 
 ---
 
@@ -176,6 +176,7 @@ Commands:
 - `show`      — show one SnapshotSet
 - `add`       — create/update a SnapshotSet (explicit mode)
 - `delete`    — delete a SnapshotSet
+- `purge-snapshot` — delete a snapshot's data + remove it from SnapshotSets (interactive)
 
 ### 4.1 List SnapshotSets
 
@@ -219,6 +220,8 @@ python -m tools.weaviate.snapshot_sets --env snapshots
 Then type:
 - `1,2` to select items 1 and 2 and create a SnapshotSet
 - the tool proposes an ID (you can accept or change it)
+
+Note: the list shows `friendly_name` when available (fallback to tag/branch/ref).
 
 ### 4.4 Add / update a SnapshotSet (explicit mode)
 
@@ -267,6 +270,32 @@ Optional safety check:
 python -m tools.weaviate.snapshot_sets --env delete \
   --id nopCommerce_release-4-60-0_release-4-90-0 \
   --repo nopCommerce
+
+### 4.6 Purge a Snapshot (data + SnapshotSets)
+
+Deletes:
+- `RagNode` + `RagEdge` data for the snapshot
+- `ImportRun` metadata rows for the snapshot
+- Removes the snapshot from all SnapshotSets
+- If a SnapshotSet becomes empty, it is **deleted**
+
+Interactive (recommended):
+
+```bash
+python -m tools.weaviate.snapshot_sets --env purge-snapshot
+```
+
+With repo filter:
+
+```bash
+python -m tools.weaviate.snapshot_sets --env purge-snapshot --repo Fake
+```
+
+Non-interactive:
+
+```bash
+python -m tools.weaviate.snapshot_sets --env purge-snapshot --select 3 --yes
+```
 ```
 
 ---

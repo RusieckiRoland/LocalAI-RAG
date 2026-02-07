@@ -54,6 +54,8 @@ import logging
 import os
 import re
 import sys
+import termios
+import tty
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -78,6 +80,8 @@ LOG = logging.getLogger("snapshot_sets")
 
 COL_IMPORT = "ImportRun"
 COL_SET = "SnapshotSet"
+COL_NODE = "RagNode"
+COL_EDGE = "RagEdge"
 
 
 def utc_now_iso() -> str:
@@ -419,6 +423,215 @@ def _parse_select_numbers(raw: str, max_n: int) -> List[int]:
     return uniq
 
 
+def _read_confirm_with_escape(prompt: str) -> str:
+    """
+    Read confirmation input, but allow ESC to abort immediately without ENTER.
+    Returns the entered string (or empty if aborted).
+    """
+    sys.stdout.write(prompt)
+    sys.stdout.flush()
+
+    if not sys.stdin.isatty():
+        return input().strip()
+
+    fd = sys.stdin.fileno()
+    old = termios.tcgetattr(fd)
+    buf: List[str] = []
+    try:
+        tty.setraw(fd)
+        while True:
+            ch = sys.stdin.read(1)
+            if ch == "\x1b":  # ESC
+                sys.stdout.write("\n")
+                sys.stdout.flush()
+                return ""
+            if ch in ("\r", "\n"):
+                sys.stdout.write("\n")
+                sys.stdout.flush()
+                return "".join(buf).strip()
+            if ch in ("\x7f", "\b"):  # backspace
+                if buf:
+                    buf.pop()
+                    sys.stdout.write("\b \b")
+                    sys.stdout.flush()
+                continue
+            buf.append(ch)
+            sys.stdout.write(ch)
+            sys.stdout.flush()
+    finally:
+        termios.tcsetattr(fd, termios.TCSADRAIN, old)
+
+
+def _jsonify(obj: Any) -> Any:
+    if obj is None or isinstance(obj, (str, int, float, bool)):
+        return obj
+    if isinstance(obj, dict):
+        return {str(k): _jsonify(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple, set)):
+        return [_jsonify(x) for x in obj]
+    if hasattr(obj, "model_dump"):
+        try:
+            return _jsonify(obj.model_dump())
+        except Exception:
+            pass
+    if hasattr(obj, "__dict__"):
+        try:
+            return _jsonify(obj.__dict__)
+        except Exception:
+            pass
+    return str(obj)
+
+
+def _print_snapshots(items: List[Dict[str, Any]]) -> None:
+    for i, p in enumerate(items, start=1):
+        repo = str(p.get("repo") or "").strip()
+        snapshot_id = str(p.get("snapshot_id") or "").strip()
+        head_sha = str(p.get("head_sha") or "").strip()
+        friendly = str(p.get("friendly_name") or "").strip()
+        label = friendly or _choose_ref_label(p)
+        fin = str(p.get("finished_utc") or p.get("started_utc") or "")
+        kind = "tag" if str(p.get("tag") or "").strip() else ("branch" if str(p.get("branch") or "").strip() else "ref")
+        sid = snapshot_id or head_sha
+        friendly_part = f"  friendly={friendly}" if friendly else ""
+        print(f"{i:>3}. repo={repo}  {kind}={label}{friendly_part}  snapshot_id={sid[:12]}...  finished={fin}")
+
+
+def _collect_refs_for_snapshot(client: "weaviate.WeaviateClient", *, repo: str, snapshot_id: str) -> List[str]:
+    coll = client.collections.use(COL_IMPORT)
+    filters = Filter.all_of(
+        [
+            Filter.by_property("repo").equal(repo),
+            Filter.any_of(
+                [
+                    Filter.by_property("snapshot_id").equal(snapshot_id),
+                    Filter.by_property("head_sha").equal(snapshot_id),
+                ]
+            ),
+        ]
+    )
+    res = coll.query.fetch_objects(
+        filters=filters,
+        limit=50,
+        return_properties=["tag", "ref_name", "branch"],
+    )
+    labels: List[str] = []
+    for o in res.objects or []:
+        p = o.properties or {}
+        labels.extend(
+            [
+                str(p.get("tag") or "").strip(),
+                str(p.get("ref_name") or "").strip(),
+                str(p.get("branch") or "").strip(),
+            ]
+        )
+    return [x for x in labels if x]
+
+
+def _delete_many(coll: Any, filters: Any) -> Any:
+    data = getattr(coll, "data", None)
+    if data is None:
+        raise RuntimeError("Weaviate collection missing .data API; cannot delete.")
+    fn = getattr(data, "delete_many", None)
+    if not callable(fn):
+        raise RuntimeError("Weaviate client does not support delete_many on this version.")
+    try:
+        return fn(where=filters)
+    except TypeError:
+        return fn(filters=filters)
+
+
+def _purge_snapshot_data(
+    client: "weaviate.WeaviateClient",
+    *,
+    repo: str,
+    snapshot_id: str,
+) -> Dict[str, Any]:
+    result: Dict[str, Any] = {}
+    node_coll = client.collections.use(COL_NODE)
+    edge_coll = client.collections.use(COL_EDGE)
+    import_coll = client.collections.use(COL_IMPORT)
+
+    node_filter = Filter.all_of(
+        [
+            Filter.by_property("repo").equal(repo),
+            Filter.by_property("snapshot_id").equal(snapshot_id),
+        ]
+    )
+    edge_filter = Filter.all_of(
+        [
+            Filter.by_property("repo").equal(repo),
+            Filter.by_property("snapshot_id").equal(snapshot_id),
+        ]
+    )
+    import_filter = Filter.all_of(
+        [
+            Filter.by_property("repo").equal(repo),
+            Filter.any_of(
+                [
+                    Filter.by_property("snapshot_id").equal(snapshot_id),
+                    Filter.by_property("head_sha").equal(snapshot_id),
+                ]
+            ),
+        ]
+    )
+
+    result["nodes"] = _delete_many(node_coll, node_filter)
+    result["edges"] = _delete_many(edge_coll, edge_filter)
+    result["import_runs"] = _delete_many(import_coll, import_filter)
+    return result
+
+
+def _update_snapshot_sets_remove_snapshot(
+    client: "weaviate.WeaviateClient",
+    *,
+    snapshot_id: str,
+    repo: str,
+) -> List[str]:
+    touched: List[str] = []
+    items = list_snapshot_sets(client, repo=repo, limit=500)
+    if not items:
+        return touched
+
+    refs_for_snapshot = set(_collect_refs_for_snapshot(client, repo=repo, snapshot_id=snapshot_id))
+
+    for it in items:
+        sid = str(it.get("snapshot_set_id") or "").strip()
+        if not sid:
+            continue
+        allowed_snapshot_ids = _normalize_list(it.get("allowed_snapshot_ids") or [])
+        allowed_head_shas = _normalize_list(it.get("allowed_head_shas") or [])
+        allowed_refs = _normalize_list(it.get("allowed_refs") or [])
+
+        if snapshot_id not in allowed_snapshot_ids and snapshot_id not in allowed_head_shas:
+            continue
+
+        allowed_snapshot_ids = [x for x in allowed_snapshot_ids if x != snapshot_id]
+        allowed_head_shas = [x for x in allowed_head_shas if x != snapshot_id]
+        if refs_for_snapshot:
+            allowed_refs = [x for x in allowed_refs if x not in refs_for_snapshot]
+
+        if not allowed_snapshot_ids and not allowed_head_shas and not allowed_refs:
+            delete_snapshot_set(client, snapshot_set_id=sid, repo=repo)
+            touched.append(f"{sid} (deleted)")
+            continue
+
+        rec = SnapshotSetRecord(
+            snapshot_set_id=sid,
+            repo=str(it.get("repo") or repo),
+            allowed_refs=allowed_refs,
+            allowed_snapshot_ids=allowed_snapshot_ids,
+            allowed_head_shas=allowed_head_shas,
+            description=str(it.get("description") or ""),
+            created_utc=str(it.get("created_utc") or utc_now_iso()),
+            updated_utc=utc_now_iso(),
+            is_active=bool(it.get("is_active", True)),
+        )
+        upsert_snapshot_set(client, rec)
+        touched.append(sid)
+
+    return touched
+
+
 def _suggest_snapshot_set_id(repo: str, labels: List[str]) -> str:
     repo_part = _sanitize_id_part(repo) or "repo"
     label_parts = [_sanitize_id_part(x) for x in labels if _sanitize_id_part(x)]
@@ -570,15 +783,7 @@ def _cmd_snapshots(args: argparse.Namespace) -> int:
             return 0
 
         # Print numbered list
-        for i, p in enumerate(items, start=1):
-            repo = str(p.get("repo") or "").strip()
-            snapshot_id = str(p.get("snapshot_id") or "").strip()
-            head_sha = str(p.get("head_sha") or "").strip()
-            label = _choose_ref_label(p)
-            fin = str(p.get("finished_utc") or p.get("started_utc") or "")
-            kind = "tag" if str(p.get("tag") or "").strip() else ("branch" if str(p.get("branch") or "").strip() else "ref")
-            sid = snapshot_id or head_sha
-            print(f"{i:>3}. repo={repo}  {kind}={label}  snapshot_id={sid[:12]}...  finished={fin}")
+        _print_snapshots(items)
 
         max_n = len(items)
 
@@ -657,6 +862,114 @@ def _cmd_snapshots(args: argparse.Namespace) -> int:
         client.close()
 
 
+def _cmd_purge_snapshot(args: argparse.Namespace) -> int:
+    client = connect_weaviate(
+        args.weaviate_host, args.weaviate_http_port, args.weaviate_grpc_port, api_key=args.weaviate_api_key
+    )
+    try:
+        ensure_schema(client)
+
+        raw_items = _list_import_runs(client, repo=args.repo or "", limit=args.limit)
+        items = [x for x in raw_items if _kind_match(x, args.kind)]
+
+        if not items:
+            print("(no imported snapshots found)")
+            return 0
+
+        _print_snapshots(items)
+
+        max_n = len(items)
+        select_raw = (args.select or "").strip()
+        if not select_raw:
+            if not sys.stdin.isatty():
+                raise SystemExit("Non-interactive mode requires --select.")
+            select_raw = input("\nSelect snapshot to purge by number (e.g. 3) or ENTER to exit: ").strip()
+            if not select_raw:
+                return 0
+
+        selected_nums = _parse_select_numbers(select_raw, max_n=max_n)
+        if len(selected_nums) != 1:
+            raise SystemExit("Select exactly one snapshot to purge.")
+        target = items[selected_nums[0] - 1]
+
+        repo = str(target.get("repo") or "").strip()
+        snapshot_id = str(target.get("snapshot_id") or target.get("head_sha") or "").strip()
+        if not repo or not snapshot_id:
+            raise SystemExit("Selected snapshot has missing repo or snapshot_id.")
+
+        affected_sets: List[str] = []
+        # Compute affected SnapshotSets without mutating (best-effort).
+        try:
+            items_sets = list_snapshot_sets(client, repo=repo, limit=500)
+            for it in items_sets:
+                sid = str(it.get("snapshot_set_id") or "").strip()
+                allowed_snapshot_ids = _normalize_list(it.get("allowed_snapshot_ids") or [])
+                allowed_head_shas = _normalize_list(it.get("allowed_head_shas") or [])
+                if snapshot_id in allowed_snapshot_ids or snapshot_id in allowed_head_shas:
+                    affected_sets.append(sid)
+        except Exception as ex:
+            LOG.warning("Failed to precompute affected SnapshotSets: %s", ex)
+
+        if not args.yes:
+            if not sys.stdin.isatty():
+                raise SystemExit("Non-interactive mode requires --yes to confirm purge.")
+            red = "\x1b[31m"
+            bold = "\x1b[1m"
+            reset = "\x1b[0m"
+            affected_note = ""
+            if affected_sets:
+                affected_note = "\nAffected SnapshotSets: " + ", ".join(sorted(affected_sets))
+            prompt = (
+                f"{red}{bold}Are you sure you want to PURGE snapshot '{snapshot_id}' (repo='{repo}')?{reset}\n"
+                "This will delete RagNode/RagEdge data, ImportRun entries, and remove it from SnapshotSets.\n"
+                "If a SnapshotSet becomes empty, it will be deleted.\n"
+                f"{affected_note}\n"
+                "Type DELETE to confirm: "
+            )
+            confirm = _read_confirm_with_escape(prompt)
+            if confirm != "DELETE":
+                print("Aborted.")
+                return 1
+
+        purge_result: Dict[str, Any] = {}
+        touched_sets: List[str] = []
+
+        # SAFEST ORDER:
+        # 1) Delete data (nodes/edges) + ImportRun (metadata) for snapshot
+        # 2) Update SnapshotSets after data removal succeeds
+        try:
+            purge_result = _purge_snapshot_data(client, repo=repo, snapshot_id=snapshot_id)
+        except Exception as ex:
+            LOG.exception("Purge failed while deleting data for snapshot_id=%s repo=%s", snapshot_id, repo)
+            print(f"ERROR: purge failed while deleting data: {ex}")
+            return 2
+
+        try:
+            touched_sets = _update_snapshot_sets_remove_snapshot(client, snapshot_id=snapshot_id, repo=repo)
+        except Exception as ex:
+            LOG.exception("Purge failed while updating SnapshotSets for snapshot_id=%s repo=%s", snapshot_id, repo)
+            print(f"ERROR: purge failed while updating SnapshotSets: {ex}")
+            # Do not roll back data deletion; instruct user to re-run update step.
+            return 3
+
+        print("\nOK (snapshot purged)")
+        deleted_sets = [s for s in touched_sets if "(deleted)" in s]
+        if deleted_sets:
+            print("Note: SnapshotSets deleted because they became empty:")
+            for s in deleted_sets:
+                print(f"- {s}")
+        print(
+            json.dumps(
+                _jsonify({"repo": repo, "snapshot_id": snapshot_id, "purge": purge_result, "snapshot_sets_updated": touched_sets}),
+                ensure_ascii=False,
+                indent=2,
+            )
+        )
+        return 0
+    finally:
+        client.close()
+
+
 def build_arg_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(description="Manage SnapshotSets in Weaviate.")
     p.add_argument("--weaviate-host", default="", help="Optional. Default from config/env.")
@@ -725,6 +1038,17 @@ def build_arg_parser() -> argparse.ArgumentParser:
     p_snap.add_argument("--description", default="", help="Optional description (prompted if interactive and empty).")
     p_snap.add_argument("--inactive", action="store_true", help="Create/update as inactive")
     p_snap.set_defaults(func=_cmd_snapshots)
+
+    p_purge = sub.add_parser(
+        "purge-snapshot",
+        help="Delete a snapshot's data and remove it from SnapshotSets (interactive).",
+    )
+    p_purge.add_argument("--repo", default="", help="Optional repo filter (if omitted: show all repos)")
+    p_purge.add_argument("--kind", choices=["all", "branch", "tag", "ref_name"], default="all", help="Optional kind filter")
+    p_purge.add_argument("--limit", type=int, default=200)
+    p_purge.add_argument("--select", default="", help="Selection by number (e.g. '3'). If omitted: interactive prompt.")
+    p_purge.add_argument("--yes", action="store_true", help="Skip interactive confirmation (non-interactive only).")
+    p_purge.set_defaults(func=_cmd_purge_snapshot)
 
     return p
 

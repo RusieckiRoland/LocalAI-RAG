@@ -47,7 +47,7 @@ def test_search_denies_pipeline_not_allowed(monkeypatch):
     qsd = _import_query_server_dynamic(monkeypatch)
 
     class _Provider:
-        def resolve(self, *, user_id, token, session_id):
+        def resolve(self, *, user_id, token, session_id, claims=None):
             return UserAccessContext(
                 user_id=None,
                 is_anonymous=True,
@@ -104,7 +104,7 @@ def test_search_denies_snapshot_not_in_snapshot_set(monkeypatch):
     qsd = _import_query_server_dynamic(monkeypatch)
 
     class _Provider:
-        def resolve(self, *, user_id, token, session_id):
+        def resolve(self, *, user_id, token, session_id, claims=None):
             return UserAccessContext(
                 user_id=None,
                 is_anonymous=True,
@@ -145,7 +145,7 @@ def test_search_denies_snapshot_b_not_in_snapshot_set(monkeypatch):
     qsd = _import_query_server_dynamic(monkeypatch)
 
     class _Provider:
-        def resolve(self, *, user_id, token, session_id):
+        def resolve(self, *, user_id, token, session_id, claims=None):
             return UserAccessContext(
                 user_id=None,
                 is_anonymous=True,

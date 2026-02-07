@@ -50,8 +50,10 @@ def _rrf_fuse(
     """
     scores: Dict[str, float] = {}
     best_payload: Dict[str, Dict[str, Any]] = {}
+    sem_rank: Dict[str, int] = {}
+    bm_rank: Dict[str, int] = {}
 
-    def add(results: List[Dict[str, Any]], source_priority: int) -> None:
+    def add(results: List[Dict[str, Any]], source_priority: int, rank_map: Dict[str, int]) -> None:
         for idx, r in enumerate(results or [], start=1):
             if not isinstance(r, dict):
                 continue
@@ -60,6 +62,8 @@ def _rrf_fuse(
                 continue
 
             scores[rid] = scores.get(rid, 0.0) + (1.0 / (rrf_k + idx))
+            if rid not in rank_map:
+                rank_map[rid] = idx
 
             # Keep deterministic representative payload:
             # prefer the first time we see it; if tie, prefer source 'a' (priority=0).
@@ -67,12 +71,17 @@ def _rrf_fuse(
                 best_payload[rid] = r
                 best_payload[rid]["_rrf_source_priority"] = source_priority
 
-    add(a, source_priority=0)
-    add(b, source_priority=1)
+    add(a, source_priority=0, rank_map=sem_rank)
+    add(b, source_priority=1, rank_map=bm_rank)
 
     fused_ids = sorted(
         scores.keys(),
-        key=lambda rid: (-scores[rid], best_payload[rid].get("_rrf_source_priority", 99), rid),
+        key=lambda rid: (
+            -scores[rid],
+            sem_rank.get(rid, 10**9),
+            bm_rank.get(rid, 10**9),
+            rid,
+        ),
     )
 
     fused: List[Dict[str, Any]] = []

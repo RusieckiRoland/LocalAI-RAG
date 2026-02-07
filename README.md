@@ -115,7 +115,7 @@ git clone <YOUR-REPO-URL>
 cd <PROJECT-FOLDER>
 ```
 
-> 🔒 **Models are not committed.** Each target folder already contains a `DOWNLOAD_MODEL.md` with instructions.
+> 🔒 **Models are not committed.** Each target folder already contains a `download_model.md` with instructions.
 
 To index your .NET solution:
 
@@ -257,18 +257,18 @@ If any folder lacks files, use the fallback below.
 
 ---
 
-### Fallback: per‑folder `DOWNLOAD_MODEL.md`
+### Fallback: per‑folder `download_model.md`
 
-If something fails, or links change upstream, open the `DOWNLOAD_MODEL.md` located **inside each target folder** and execute its **copy‑paste commands** (run them from the **repo root**, do **not** create new directories):
+If something fails, or links change upstream, open the `download_model.md` located **inside each target folder** and execute its **copy‑paste commands** (run them from the **repo root**, do **not** create new directories):
 
-* `code_analysis/codeLlama_13b_Instruct/DOWNLOAD_MODEL.md` → **code model (GGUF)**
-* `embedding/e5-base-v2/DOWNLOAD_MODEL.md` → **embedding model**
-* `translation/en_pl/Helsinki_NLPopus_mt_en_pl/DOWNLOAD_MODEL.md` → **EN→PL** translation
-* `translation/pl_en/Helsinki-NLPopus-mt-pl-en/DOWNLOAD_MODEL.md` → **PL→EN** translation
+* `code_analysis/codeLlama_13b_Instruct/download_model.md` → **code model (GGUF)**
+* `embedding/e5-base-v2/download_model.md` → **embedding model**
+* `translation/en_pl/Helsinki_NLPopus_mt_en_pl/download_model.md` → **EN→PL** translation
+* `translation/pl_en/Helsinki-NLPopus-mt-pl-en/download_model.md` → **PL→EN** translation
 
-> **Do not duplicate instructions in the README.** Use the commands from the `DOWNLOAD_MODEL.md` files **as‑is**, and place files only into the **existing** directories.
+> **Do not duplicate instructions in the README.** Use the commands from the `download_model.md` files **as‑is**, and place files only into the **existing** directories.
 
-Git tracks **only** the `DOWNLOAD_MODEL.md` placeholders; all downloaded weights remain untracked.
+Git tracks **only** the `download_model.md` placeholders; all downloaded weights remain untracked.
 
 **Do not proceed to tests until all four folders contain the downloaded files.**
 
@@ -397,7 +397,7 @@ if not matches:
         "  - code_analysis/codeLlama_13b_Instruct/\n"
         "  - models/code_analysis/codeLlama_13b_Instruct/\n"
         "  - RAG/... equivalents\n"
-        "Follow the DOWNLOAD_MODEL.md and retry."
+        "Follow the download_model.md and retry."
     )
 
 print("Found models:")
@@ -432,20 +432,20 @@ models/
 ├─ code_analysis/
 │  └─ codeLlama_13b_Instruct/
 │     ├─ CodeLlama-13b-Instruct-hf-Q8_0.gguf    # (ignored by Git)
-│     └─ DOWNLOAD_MODEL.md                      # tracked
+│     └─ download_model.md                      # tracked
 ├─ embedding/
 │  └─ e5-base-v2/
 │     ├─ [HF files: config.json, *.bin, *.safetensors, tokenizer.json, etc.]  # weights/tokenizer (ignored by Git)
-│     └─ DOWNLOAD_MODEL.md                      # tracked
+│     └─ download_model.md                      # tracked
 ├─ translation/
    ├─ en_pl/
    │  └─ Helsinki_NLPopus_mt_en_pl/
    │     ├─ [MarianMT files: config.json, *.bin, *.safetensors, sentencepiece.model]  # (ignored by Git)
-   │     └─ DOWNLOAD_MODEL.md                    # tracked
+   │     └─ download_model.md                    # tracked
    └─ pl_en/
       └─ Helsinki-NLPopus-mt-pl-en/
          ├─ [MarianMT files: config.json, *.bin, *.safetensors, sentencepiece.model]  # (ignored by Git)
-         └─ DOWNLOAD_MODEL.md                   # tracked
+         └─ download_model.md                   # tracked
 
 ```
 ---
@@ -454,7 +454,7 @@ models/
 
 Weaviate setup is documented in a separate file:
 
-- `WEAVIATE_LOCAL_SETUP.md`
+- `weaviate_local_setup.md`
 
 ## 8.5) Branch preparation guide
 
@@ -526,7 +526,7 @@ Security incident logging:
   ```bash
   # Generate checksums after download (commit this file to the repo if you want reproducibility)
   (cd code_analysis/codeLlama_13b_Instruct && sha256sum *.gguf > CHECKSUMS.sha256)
-  (cd embedding && find . -type f ! -name 'DOWNLOAD_MODEL.md' -maxdepth 1 -print0 | xargs -0 sha256sum > CHECKSUMS.sha256)
+  (cd embedding && find . -type f ! -name 'download_model.md' -maxdepth 1 -print0 | xargs -0 sha256sum > CHECKSUMS.sha256)
   (cd translation/en_pl/Helsinki_NLPopus_mt_en_pl && sha256sum * > CHECKSUMS.sha256)
   (cd translation/pl_en/Helsinki-NLPopus-mt-pl-en && sha256sum * > CHECKSUMS.sha256)
 
@@ -538,10 +538,10 @@ Security incident logging:
   ```
 
   If you prefer, store expected digests in `checksums.json` and verify them in an app startup hook.
-* **Deployment hygiene (remove MD placeholders):** production artifacts/images should ship only the code and the weights. Remove the `DOWNLOAD_MODEL.md` files during packaging to avoid leaking internal instructions:
+* **Deployment hygiene (remove MD placeholders):** production artifacts/images should ship only the code and the weights. Remove the `download_model.md` files during packaging to avoid leaking internal instructions:
 
   ```bash
-  find code_analysis embedding translation -name 'DOWNLOAD_MODEL.md' -delete
+  find code_analysis embedding translation -name 'download_model.md' -delete
   ```
 * **GPU concurrency:** for a single GPU, prefer **one process/worker** to avoid loading the model multiple times into VRAM; scale with a queue or per‑GPU processes when needed.
 * **Observability:** expose `/healthz` and `/readyz`, emit structured logs (JSON), and add latency/throughput metrics for retrieval and generation stages.
@@ -634,7 +634,7 @@ pip install --no-deps ./llama_cpp_python-0.3.16-cp311-cp311-linux_x86_64.whl
 chmod +x download_models.sh
 ./download_models.sh
 
-# If anything fails, open each target folder's DOWNLOAD_MODEL.md
+# If anything fails, open each target folder's download_model.md
 # and run its copy‑paste commands exactly (no new folders).
 
 # 4) Verify GPU acceleration (after models are present)

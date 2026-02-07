@@ -47,5 +47,38 @@
   },
   
   "vector_indexes_root": "repositories/nopCommerce/indexes",
-  "repo_name": "nopCommerce"
+  "repo_name": "nopCommerce",
+  "permissions": {
+    "security_enabled": true,
+    "acl_enabled": true,
+    "require_travel_permission": true,
+    "security_model": {
+      "kind": "clearance_level",
+      "clearance_level": {
+        "doc_level_field": "doc_level",
+        "user_level_source": "claim",
+        "user_level_claim": "user_level",
+        "default_doc_level": 0,
+        "allow_missing_doc_level": true,
+        "levels": {
+          "public": 0,
+          "internal": 10,
+          "restricted": 20,
+          "critical": 30
+        }
+      },
+      "labels_universe_subset": {
+        "doc_labels_field": "classification_labels",
+        "user_labels_source": "claim",
+        "user_labels_claim": "labels",
+        "allow_unlabeled": true,
+        "classification_labels_universe": [
+          "public",
+          "internal",
+          "secret",
+          "restricted"
+        ]
+      }
+    }
+  }
 }

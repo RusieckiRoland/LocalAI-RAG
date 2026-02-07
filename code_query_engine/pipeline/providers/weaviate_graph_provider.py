@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import json
 import logging
+import os
 import threading
 from collections import defaultdict, deque
 from typing import Any, DefaultDict, Dict, Iterable, List, Optional, Tuple
+from pathlib import Path
 
 from .ports import IGraphProvider
 
@@ -76,6 +79,9 @@ class WeaviateGraphProvider(IGraphProvider):
         snapshot_id_property: str = "snapshot_id",
         acl_property: str = "acl_allow",
         classification_property: str = "classification_labels",
+        doc_level_property: str = "doc_level",
+        classification_labels_universe: Optional[List[str]] = None,
+        security_config: Optional[Dict[str, Any]] = None,
         page_size: int = 2000,
     ) -> None:
         if client is None:
@@ -94,6 +100,13 @@ class WeaviateGraphProvider(IGraphProvider):
         self._snapshot_id_prop = snapshot_id_property
         self._acl_prop = acl_property
         self._classification_prop = classification_property
+        self._doc_level_prop = doc_level_property
+        self._classification_universe = (
+            _normalize_acl_tags(classification_labels_universe)
+            if classification_labels_universe is not None
+            else _load_classification_universe_from_config()
+        )
+        self._security_cfg = _normalize_security_config(security_config)
         self._page_size = int(page_size) if page_size else 2000
 
         self._adj_cache: Dict[Tuple[str, str], Dict[str, List[Tuple[str, str]]]] = {}
@@ -196,6 +209,10 @@ class WeaviateGraphProvider(IGraphProvider):
         branch: Optional[str] = None,
         snapshot_id: Optional[str] = None,
     ) -> List[str]:
+        try:
+            from weaviate.classes.query import Filter  # type: ignore
+        except Exception as e:
+            raise RuntimeError("WeaviateGraphProvider: cannot import weaviate.classes.query.Filter") from e
         _ = repository
         _ = branch
         _ = snapshot_id
@@ -222,10 +239,19 @@ class WeaviateGraphProvider(IGraphProvider):
         filters = self._build_id_filter(ids)
         acl_filter = self._build_acl_filter(tags)
         classification_filter = self._build_classification_filter(labels)
+        clearance_filter = self._build_clearance_filter(rf)
         if acl_filter is not None:
-            filters = filters & acl_filter
+            acl_or_public = Filter.any_of(
+                [
+                    acl_filter,
+                    Filter.by_property(self._acl_prop).is_none(True),
+                ]
+            )
+            filters = filters & acl_or_public
         if classification_filter is not None:
             filters = filters & classification_filter
+        if clearance_filter is not None:
+            filters = filters & clearance_filter
 
         coll = self._client.collections.get(self._node_collection)
         res = coll.query.fetch_objects(
@@ -347,12 +373,12 @@ class WeaviateGraphProvider(IGraphProvider):
         coll = self._client.collections.get(self._edge_collection)
         adj: DefaultDict[str, List[Tuple[str, str]]] = defaultdict(list)
 
-        after = None
+        offset = 0
         while True:
             res = coll.query.fetch_objects(
                 filters=filters,
                 limit=self._page_size,
-                after=after,
+                offset=offset,
                 return_properties=[self._edge_from_prop, self._edge_to_prop, self._edge_type_prop],
             )
 
@@ -368,11 +394,13 @@ class WeaviateGraphProvider(IGraphProvider):
                     continue
                 adj[frm].append((rel, to))
 
-            after = getattr(res.objects[-1], "uuid", None)
-            if len(res.objects) < self._page_size:
+            got = len(res.objects)
+            offset += got
+            if got < self._page_size:
                 break
 
         return dict(adj)
+
 
     def _build_id_filter(self, ids: List[str]) -> Any:
         try:
@@ -405,7 +433,151 @@ class WeaviateGraphProvider(IGraphProvider):
         except Exception as e:
             raise RuntimeError("WeaviateGraphProvider: cannot import weaviate.classes.query.Filter") from e
 
+        sec = self._security_cfg
+        if not sec.get("enabled"):
+            return None
+        if sec.get("kind") != "labels_universe_subset":
+            return None
+
         cleaned = [str(t).strip() for t in labels if str(t).strip()]
         if not cleaned:
             return None
-        return Filter.by_property(self._classification_prop).contains_all(cleaned)
+
+        allow_unlabeled = bool(sec.get("allow_unlabeled", True))
+        universe = sec.get("classification_labels_universe") or self._classification_universe
+        if universe:
+            disallowed = [x for x in universe if x not in cleaned]
+            if not disallowed:
+                return None
+            f_disallowed = Filter.by_property(self._classification_prop).contains_any(disallowed)
+            f_not_disallowed = _negate_filter(f_disallowed, Filter)
+            if allow_unlabeled:
+                f_public_none = Filter.by_property(self._classification_prop).is_none(True)
+                return Filter.any_of([f_not_disallowed, f_public_none])
+            return f_not_disallowed
+
+        py_logger.warning(
+            "WeaviateGraphProvider: classification_labels_universe not configured; "
+            "falling back to contains_all (stricter than subset semantics)."
+        )
+        f_cls = Filter.by_property(self._classification_prop).contains_all(cleaned)
+        if allow_unlabeled:
+            f_public_none = Filter.by_property(self._classification_prop).is_none(True)
+            return Filter.any_of([f_cls, f_public_none])
+        return f_cls
+
+    def _build_clearance_filter(self, rf: Dict[str, Any]) -> Any:
+        try:
+            from weaviate.classes.query import Filter  # type: ignore
+        except Exception as e:
+            raise RuntimeError("WeaviateGraphProvider: cannot import weaviate.classes.query.Filter") from e
+
+        sec = self._security_cfg
+        if not sec.get("enabled"):
+            return None
+        if sec.get("kind") != "clearance_level":
+            return None
+
+        user_level = _normalize_int(rf.get("user_level"))
+        if user_level is None:
+            user_level = _normalize_int(rf.get("clearance_level"))
+        if user_level is None:
+            user_level = _normalize_int(rf.get("doc_level_max"))
+        if user_level is None:
+            py_logger.warning("WeaviateGraphProvider: clearance_level enabled but no user_level in retrieval_filters.")
+            return None
+
+        allow_missing = bool(sec.get("allow_missing_doc_level", True))
+        f_level = Filter.by_property(self._doc_level_prop).less_or_equal(int(user_level))
+        if allow_missing:
+            f_none = Filter.by_property(self._doc_level_prop).is_none(True)
+            return Filter.any_of([f_level, f_none])
+        return f_level
+
+
+def _load_classification_universe_from_config() -> List[str]:
+    env_val = (os.getenv("CLASSIFICATION_LABELS_UNIVERSE") or "").strip()
+    if env_val:
+        return _normalize_acl_tags([s for s in env_val.split(",")])
+    try:
+        project_root = Path(__file__).resolve().parents[3]
+        cfg_path = project_root / "config.json"
+        if not cfg_path.exists():
+            return []
+        raw = json.loads(cfg_path.read_text(encoding="utf-8"))
+        val = raw.get("classification_labels_universe")
+        if isinstance(val, list):
+            return _normalize_acl_tags(val)
+        if isinstance(val, str):
+            return _normalize_acl_tags([s for s in val.split(",")])
+    except Exception:
+        py_logger.exception("WeaviateGraphProvider: failed to load classification_labels_universe from config.json")
+    return []
+
+
+def _load_security_config_from_config() -> Dict[str, Any]:
+    try:
+        project_root = Path(__file__).resolve().parents[3]
+        cfg_path = project_root / "config.json"
+        if not cfg_path.exists():
+            return {}
+        raw = json.loads(cfg_path.read_text(encoding="utf-8"))
+        return raw.get("permissions") or {}
+    except Exception:
+        py_logger.exception("WeaviateGraphProvider: failed to load security config from config.json")
+        return {}
+
+
+def _normalize_security_config(security_config: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    if security_config is None:
+        security_config = _load_security_config_from_config()
+    if not isinstance(security_config, dict):
+        return {"enabled": False}
+
+    enabled = bool(security_config.get("security_enabled", False))
+    model = security_config.get("security_model") or {}
+    kind = str(model.get("kind") or "").strip()
+    if kind not in ("labels_universe_subset", "clearance_level"):
+        return {"enabled": enabled, "kind": ""}
+
+    if kind == "labels_universe_subset":
+        cfg = model.get("labels_universe_subset") or {}
+        return {
+            "enabled": enabled,
+            "kind": kind,
+            "allow_unlabeled": bool(cfg.get("allow_unlabeled", True)),
+            "classification_labels_universe": _normalize_acl_tags(cfg.get("classification_labels_universe") or []),
+        }
+
+    cfg = model.get("clearance_level") or {}
+    return {
+        "enabled": enabled,
+        "kind": kind,
+        "allow_missing_doc_level": bool(cfg.get("allow_missing_doc_level", True)),
+    }
+
+
+def _normalize_int(value: Any) -> Optional[int]:
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return int(value)
+    try:
+        if isinstance(value, (int, float)):
+            return int(value)
+        s = str(value).strip()
+        if not s:
+            return None
+        return int(float(s))
+    except Exception:
+        return None
+
+
+def _negate_filter(filter_obj: Any, filter_cls: Any) -> Any:
+    try:
+        return ~filter_obj
+    except Exception:
+        not_fn = getattr(filter_cls, "not_", None)
+        if callable(not_fn):
+            return not_fn(filter_obj)
+    raise RuntimeError("WeaviateGraphProvider: cannot negate filter; update weaviate-client or filter API")

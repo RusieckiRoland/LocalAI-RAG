@@ -8,6 +8,7 @@ from ..engine import PipelineRuntime
 from ..providers.retrieval_backend_contract import SearchRequest
 from ..query_parsers import BaseQueryParser, QueryParseResult, JsonishQueryParser
 from ..state import PipelineState
+from server.snapshots.snapshot_registry import SnapshotRegistry
 from .base_action import PipelineActionBase
 
 py_logger = logging.getLogger(__name__)
@@ -297,14 +298,14 @@ def _resolve_top_k(step_raw: Dict[str, Any], settings: Dict[str, Any]) -> int:
     Contract:
     - step.raw.top_k is optional
     - pipeline_settings.top_k is optional
-    - if both missing -> default to 5
+    - if both missing -> runtime error
     """
     top_k = _opt_int(step_raw.get("top_k"))
     if top_k is None:
         top_k = _opt_int(settings.get("top_k"))
 
     if top_k is None:
-        top_k = 5
+        raise ValueError("search_nodes: Missing required top_k (step.raw.top_k or pipeline_settings.top_k).")
 
     if top_k < 1:
         raise ValueError("search_nodes: top_k must be >= 1.")
@@ -333,10 +334,22 @@ def _resolve_rerank(search_type: str, step_raw: Dict[str, Any]) -> str:
     if mode not in _ALLOWED_RERANK_MODES:
         raise ValueError(f"search_nodes: invalid rerank='{mode}'. Allowed: {sorted(_ALLOWED_RERANK_MODES)}")
 
+    if mode == "codebert_rerank":
+        raise ValueError("search_nodes: rerank='codebert_rerank' is reserved and not implemented yet.")
+
     if search_type != "semantic" and mode != "none":
         raise ValueError(f"search_nodes: rerank='{mode}' is only allowed for search_type='semantic' (contract).")
 
     return mode
+
+
+def _log_security_abuse(reason: str, snapshot_set_id: str, snapshot_id: str) -> None:
+    py_logger.warning(
+        "[security_abuse] reason=%s snapshot_set_id=%s snapshot_id=%s",
+        reason,
+        snapshot_set_id,
+        snapshot_id,
+    )
 
 
 class SearchNodesAction(PipelineActionBase):
@@ -441,6 +454,7 @@ class SearchNodesAction(PipelineActionBase):
             raise ValueError("search_nodes: Missing required 'repository' (state.repository or pipeline settings['repository']).")
 
         top_k = _resolve_top_k(raw, settings)
+        original_top_k = int(top_k)
 
         base_filters = _merge_filters(
             settings=settings,
@@ -458,6 +472,33 @@ class SearchNodesAction(PipelineActionBase):
 
         backend = runtime.get_retrieval_backend()
 
+        if snapshot_set_id and snapshot_id:
+            client = getattr(backend, "_client", None)
+            if client is not None:
+                try:
+                    registry = SnapshotRegistry(client)
+                    allowed = registry.list_snapshots(snapshot_set_id=snapshot_set_id, repository=repo)
+                    allowed_ids = {s.id for s in allowed}
+                    if snapshot_id not in allowed_ids:
+                        _log_security_abuse("snapshot_not_in_snapshot_set", snapshot_set_id, snapshot_id)
+                        raise ValueError(
+                            "search_nodes: snapshot_id is not allowed in snapshot_set_id (security abuse)."
+                        )
+                except Exception:
+                    # If registry fails, bubble up as a clear error (fail-fast).
+                    _log_security_abuse("snapshot_set_validation_failed", snapshot_set_id, snapshot_id)
+                    raise
+
+        if state.rerank != "none" and search_type == "semantic":
+            widen_factor = settings.get("rerank_widen_factor", 6)
+            try:
+                widen_factor = int(widen_factor)
+            except Exception:
+                widen_factor = 6
+            if widen_factor < 1:
+                widen_factor = 1
+            top_k = int(original_top_k * widen_factor)
+
         req = SearchRequest(
             search_type=search_type,  # type: ignore[arg-type]
             query=query,
@@ -472,6 +513,8 @@ class SearchNodesAction(PipelineActionBase):
 
         # Contract outputs
         hits = list(resp.hits or [])
+        if state.rerank != "none" and search_type == "semantic":
+            hits = hits[:original_top_k]
         state.retrieval_seed_nodes = [hid for h in hits if (hid := _hit_id(h))]
 
         # A simple, stable debug form of hits (contract-friendly)

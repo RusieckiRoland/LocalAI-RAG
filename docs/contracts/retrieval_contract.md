@@ -6,7 +6,7 @@ This document defines the **data contract** between three retrieval-pipeline act
 - `expand_dependency_tree`
 - `fetch_node_texts`
 
-It also defines **security rules (ACL + classification)** and the **reranking feature contract** (keyword today, CodeBERT-ready later).
+It also defines **security rules (ACL + labels or clearance_level)** and the **reranking feature contract** (keyword today, CodeBERT-ready later).
 
 > **Contract goal:** enable implementation **without fallbacks and without guesswork**.
 > Every input/output field and every behavior must be deterministic and fail-fast where specified.
@@ -18,10 +18,19 @@ It also defines **security rules (ACL + classification)** and the **reranking fe
 - **Seed nodes** — canonical node IDs (chunk/node IDs) returned by retrieval (`search_nodes`).  
   Canonical IDs are snapshot-scoped (they include `snapshot_id`).
 - **Expanded nodes** — seed nodes plus graph dependencies after expansion (`expand_dependency_tree`).
-- **ACL / security filters** — tenant/permissions/group allowlist/tags/classification, etc.
+- **ACL / security filters** — tenant/permissions/group allowlist/tags/labels/clearance.
   Source is **`state.retrieval_filters`** and these filters are **"sacred"**.
-  - `acl_tags_any` uses OR semantics.
-  - `classification_labels_all` uses ALL/subset semantics.
+  - `acl_tags_any` uses OR semantics (only when `permissions.acl_enabled=true`).
+    - Empty ACL on a document means “public” and must be included when `acl_tags_any` is present.
+    - A document is visible if it has no ACL tags or shares at least one tag with `acl_tags_any`.
+    - Importers MUST set ACL fields only when ACL is enabled; missing fields are treated as empty lists (public).
+  - **Labels model** (`security_model.kind=labels_universe_subset`):
+    - `classification_labels_all` uses ALL/subset semantics (`doc_labels ⊆ user_labels`).
+    - Empty classification labels are allowed.
+    - A document is visible only if all its labels are contained in `classification_labels_all`.
+  - **Clearance model** (`security_model.kind=clearance_level`):
+    - `user_level` is enforced as `doc_level <= user_level`.
+    - If `allow_missing_doc_level=true`, missing `doc_level` is treated as public.
 - **Scope** — minimal context where `ID → text` is unique.
   Minimum is **`repository + snapshot_id`** (plus ACL components if they separate data).
   Therefore **`state.repository` and a concrete snapshot (`snapshot_id`) are required** for all three steps.
@@ -99,7 +108,7 @@ class IRetrievalBackend:
     def search(self, req: SearchRequest) -> SearchResponse:
         """Returns ranked canonical IDs for the given search type.
 
-        MUST enforce retrieval_filters (ACL + classification) before returning hits.
+        MUST enforce retrieval_filters (ACL + labels or clearance) before returning hits.
         MUST be deterministic for the same inputs.
         """
 
@@ -114,7 +123,7 @@ class IRetrievalBackend:
     ) -> Dict[str, str]:
         """Returns a mapping {id -> text}.
 
-        MUST enforce retrieval_filters (ACL + classification).
+        MUST enforce retrieval_filters (ACL + labels or clearance).
         MUST return only texts for IDs visible under the given scope (repository + snapshot_id + ACL).
         """
 ```
@@ -401,8 +410,13 @@ Fail-fast:
 
 ### Security
 
-`expand_dependency_tree` MUST apply the same ACL/classification filters as `search_nodes`.
+`expand_dependency_tree` MUST apply the same security filters as `search_nodes`
+(ACL + labels or clearance depending on the active security model).
 This may be done by the graph provider (preferred) or an explicit graph-permission filter.
+
+If `permissions.require_travel_permission=true`:
+- graph traversal **cannot** pass through unauthorized nodes;
+- nodes reachable only through unauthorized nodes must be removed, even if they are individually allowed.
 
 ---
 

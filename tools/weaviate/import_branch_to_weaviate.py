@@ -31,6 +31,7 @@ import csv
 import io
 import json
 import logging
+import os
 import zipfile
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -49,6 +50,46 @@ except Exception as ex:  # pragma: no cover
 
 
 LOG = logging.getLogger("weaviate_import")
+
+
+def _load_security_cfg() -> Dict[str, Any]:
+    try:
+        project_root = Path(__file__).resolve().parents[2]
+        cfg_path = project_root / "config.json"
+        if not cfg_path.exists():
+            return {}
+        return json.loads(cfg_path.read_text(encoding="utf-8")) or {}
+    except Exception:
+        LOG.exception("import: failed to load config.json for security settings")
+        return {}
+
+
+def _is_acl_enabled() -> bool:
+    env_val = (os.getenv("ACL_ENABLED") or "").strip().lower()
+    if env_val in ("1", "true", "yes", "on"):
+        return True
+    if env_val in ("0", "false", "no", "off"):
+        return False
+    cfg = _load_security_cfg()
+    sec = cfg.get("permissions") or {}
+    if isinstance(sec, dict):
+        return bool(sec.get("acl_enabled", True))
+    return True
+
+
+_ACL_ENABLED = _is_acl_enabled()
+
+
+def _load_security_settings() -> Dict[str, Any]:
+    cfg = _load_security_cfg()
+    sec = cfg.get("permissions") or {}
+    return sec if isinstance(sec, dict) else {}
+
+
+_SECURITY_CFG = _load_security_settings()
+_SECURITY_ENABLED = bool(_SECURITY_CFG.get("security_enabled", False))
+_SECURITY_MODEL = _SECURITY_CFG.get("security_model") or {}
+_SECURITY_KIND = str(_SECURITY_MODEL.get("kind") or "").strip()
 
 # ---- Weaviate collections ----
 COL_IMPORT = "ImportRun"
@@ -132,9 +173,17 @@ def ensure_schema(client: "weaviate.WeaviateClient") -> None:
 
     # Nodes: text + metadata + vector
     if COL_NODE not in existing:
+        acl_enabled = _ACL_ENABLED
+        security_enabled = _SECURITY_ENABLED
+        security_kind = _SECURITY_KIND
+        if not acl_enabled:
+            LOG.warning("ACL disabled via config/env. 'acl_allow' field will NOT be created in RagNode schema.")
+        if not security_enabled:
+            LOG.warning("Security disabled via config/env. 'classification_labels' and 'doc_level' will NOT be created in RagNode schema.")
         client.collections.create(
             name=COL_NODE,
             vector_config=wvc.config.Configure.Vectors.self_provided(),
+            inverted_index_config=wvc.config.Configure.inverted_index(index_null_state=True),
             properties=[
                 # Partition / identity
                 wvc.config.Property(name="canonical_id", data_type=wvc.config.DataType.TEXT),
@@ -165,9 +214,22 @@ def ensure_schema(client: "weaviate.WeaviateClient") -> None:
                 wvc.config.Property(name="sql_schema", data_type=wvc.config.DataType.TEXT),
                 wvc.config.Property(name="sql_name", data_type=wvc.config.DataType.TEXT),
 
-                # Variant A: ACL on nodes
-                wvc.config.Property(name="acl_allow", data_type=wvc.config.DataType.TEXT_ARRAY),
-                wvc.config.Property(name="classification_labels", data_type=wvc.config.DataType.TEXT_ARRAY),
+                # Variant A: ACL on nodes (optional)
+                *(
+                    [wvc.config.Property(name="acl_allow", data_type=wvc.config.DataType.TEXT_ARRAY)]
+                    if acl_enabled
+                    else []
+                ),
+                *(
+                    [wvc.config.Property(name="classification_labels", data_type=wvc.config.DataType.TEXT_ARRAY)]
+                    if security_enabled and security_kind in ("labels_universe_subset", "classification_labels")
+                    else []
+                ),
+                *(
+                    [wvc.config.Property(name="doc_level", data_type=wvc.config.DataType.INT)]
+                    if security_enabled and security_kind == "clearance_level"
+                    else []
+                ),
                 wvc.config.Property(name="owner_id", data_type=wvc.config.DataType.TEXT),
                 wvc.config.Property(name="source_system_id", data_type=wvc.config.DataType.TEXT),
 
@@ -346,6 +408,38 @@ def open_bundle(path: str) -> Tuple[BundleReader, RepoMeta]:
 
 
 # ------------------------------
+# Normalization helpers
+# ------------------------------
+
+def _normalize_list_field(value: Any) -> List[str]:
+    if value is None:
+        return []
+    if isinstance(value, list):
+        cleaned = [str(x).strip() for x in value if str(x).strip()]
+        return cleaned
+    if isinstance(value, str):
+        v = value.strip()
+        return [v] if v else []
+    return []
+
+
+def _normalize_int_field(value: Any) -> Optional[int]:
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return int(value)
+    try:
+        if isinstance(value, (int, float)):
+            return int(value)
+        s = str(value).strip()
+        if not s:
+            return None
+        return int(float(s))
+    except Exception:
+        return None
+
+
+# ------------------------------
 # Readers: nodes
 # ------------------------------
 
@@ -369,9 +463,16 @@ def iter_cs_nodes(bundle: BundleReader, meta: RepoMeta) -> Iterator[Dict[str, An
         if not local_id:
             continue
         cid = canonical_id(meta.repo, meta.snapshot_id, "cs", local_id)
-        acl_allow = d.get("acl_allow") or d.get("acl_tags_any") or []
-        classification_labels = d.get("classification_labels") or d.get("classification_labels_all") or []
-        yield {
+        acl_allow = _normalize_list_field(d.get("acl_allow") or d.get("acl_tags_any"))
+        classification_labels = _normalize_list_field(d.get("classification_labels") or d.get("classification_labels_all"))
+        doc_level_raw = d.get("doc_level") or d.get("clearance_level")
+        doc_level = _normalize_int_field(doc_level_raw)
+        if doc_level_raw is not None and doc_level is None:
+            LOG.warning("Invalid doc_level value (expected int). canonical_id=%s value=%r", cid, doc_level_raw)
+        if doc_level is not None and doc_level < 0:
+            LOG.warning("Negative doc_level coerced to None. canonical_id=%s value=%r", cid, doc_level)
+            doc_level = None
+        props = {
             "canonical_id": cid,
             "data_type": "regular_code",
             "file_type": "cs",
@@ -388,12 +489,23 @@ def iter_cs_nodes(bundle: BundleReader, meta: RepoMeta) -> Iterator[Dict[str, An
             "sql_kind": "",
             "sql_schema": "",
             "sql_name": "",
-            "acl_allow": [str(x).strip() for x in acl_allow if str(x).strip()] if isinstance(acl_allow, list) else [],
-            "classification_labels": [str(x).strip() for x in classification_labels if str(x).strip()] if isinstance(classification_labels, list) else [],
+            "acl_allow": (acl_allow if acl_allow else None),
+            "classification_labels": (classification_labels if classification_labels else None),
+            "doc_level": doc_level,
             "owner_id": str(d.get("owner_id") or "").strip(),
             "source_system_id": str(d.get("source_system_id") or "code").strip() or "code",
             "text": str(d.get("Text") or d.get("text") or ""),
         }
+        if not _ACL_ENABLED:
+            props.pop("acl_allow", None)
+        if not _SECURITY_ENABLED:
+            props.pop("classification_labels", None)
+            props.pop("doc_level", None)
+        elif _SECURITY_KIND == "clearance_level":
+            props.pop("classification_labels", None)
+        elif _SECURITY_KIND in ("labels_universe_subset", "classification_labels"):
+            props.pop("doc_level", None)
+        yield props
 
 
 def _iter_sql_nodes_from_jsonl(bundle: BundleReader, meta: RepoMeta, jsonl_rel: str) -> Iterator[Dict[str, Any]]:
@@ -407,9 +519,16 @@ def _iter_sql_nodes_from_jsonl(bundle: BundleReader, meta: RepoMeta, jsonl_rel: 
             if not key:
                 continue
             cid = canonical_id(meta.repo, meta.snapshot_id, "sql", key)
-            acl_allow = d.get("acl_allow") or d.get("acl_tags_any") or []
-            classification_labels = d.get("classification_labels") or d.get("classification_labels_all") or []
-            yield {
+            acl_allow = _normalize_list_field(d.get("acl_allow") or d.get("acl_tags_any"))
+            classification_labels = _normalize_list_field(d.get("classification_labels") or d.get("classification_labels_all"))
+            doc_level_raw = d.get("doc_level") or d.get("clearance_level")
+            doc_level = _normalize_int_field(doc_level_raw)
+            if doc_level_raw is not None and doc_level is None:
+                LOG.warning("Invalid doc_level value (expected int). canonical_id=%s value=%r", cid, doc_level_raw)
+            if doc_level is not None and doc_level < 0:
+                LOG.warning("Negative doc_level coerced to None. canonical_id=%s value=%r", cid, doc_level)
+                doc_level = None
+            props = {
                 "canonical_id": cid,
                 "data_type": str(d.get("data_type") or "sql_code"),
                 "file_type": str(d.get("file_type") or "sql"),
@@ -426,12 +545,23 @@ def _iter_sql_nodes_from_jsonl(bundle: BundleReader, meta: RepoMeta, jsonl_rel: 
                 "sql_kind": str(d.get("kind") or ""),
                 "sql_schema": str(d.get("schema") or ""),
                 "sql_name": str(d.get("name") or ""),
-                "acl_allow": [str(x).strip() for x in acl_allow if str(x).strip()] if isinstance(acl_allow, list) else [],
-                "classification_labels": [str(x).strip() for x in classification_labels if str(x).strip()] if isinstance(classification_labels, list) else [],
+                "acl_allow": (acl_allow if acl_allow else None),
+                "classification_labels": (classification_labels if classification_labels else None),
+                "doc_level": doc_level,
                 "owner_id": str(d.get("owner_id") or "").strip(),
                 "source_system_id": str(d.get("source_system_id") or "code").strip() or "code",
                 "text": str(d.get("body") or d.get("text") or ""),
             }
+            if not _ACL_ENABLED:
+                props.pop("acl_allow", None)
+            if not _SECURITY_ENABLED:
+                props.pop("classification_labels", None)
+                props.pop("doc_level", None)
+            elif _SECURITY_KIND == "clearance_level":
+                props.pop("classification_labels", None)
+            elif _SECURITY_KIND in ("labels_universe_subset", "classification_labels"):
+                props.pop("doc_level", None)
+            yield props
 
 
 def _iter_sql_nodes_from_nodes_csv(bundle: BundleReader, meta: RepoMeta, nodes_csv_rel: str) -> Iterator[Dict[str, Any]]:
@@ -453,7 +583,7 @@ def _iter_sql_nodes_from_nodes_csv(bundle: BundleReader, meta: RepoMeta, nodes_c
                     body = bundle.read_text(alt)
 
         cid = canonical_id(meta.repo, meta.snapshot_id, "sql", key)
-        yield {
+        props = {
             "canonical_id": cid,
             "data_type": "sql_code",
             "file_type": "sql",
@@ -472,10 +602,21 @@ def _iter_sql_nodes_from_nodes_csv(bundle: BundleReader, meta: RepoMeta, nodes_c
             "sql_name": (row.get("name") or "").strip().strip('"'),
             "acl_allow": [],
             "classification_labels": [],
+            "doc_level": None,
             "owner_id": "",
             "source_system_id": "code",
             "text": body.strip(),
         }
+        if not _ACL_ENABLED:
+            props.pop("acl_allow", None)
+        if not _SECURITY_ENABLED:
+            props.pop("classification_labels", None)
+            props.pop("doc_level", None)
+        elif _SECURITY_KIND == "clearance_level":
+            props.pop("classification_labels", None)
+        elif _SECURITY_KIND in ("labels_universe_subset", "classification_labels"):
+            props.pop("doc_level", None)
+        yield props
 
 
 def iter_sql_nodes(bundle: BundleReader, meta: RepoMeta) -> Iterator[Dict[str, Any]]:

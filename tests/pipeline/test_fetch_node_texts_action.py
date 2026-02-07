@@ -3,6 +3,8 @@ from __future__ import annotations
 from types import SimpleNamespace
 from typing import Any, Dict, List, Optional
 
+import pytest
+
 from code_query_engine.pipeline.actions.fetch_node_texts import FetchNodeTextsAction
 from code_query_engine.pipeline.definitions import StepDef
 from code_query_engine.pipeline.state import PipelineState
@@ -101,3 +103,73 @@ def test_fetch_node_texts_calls_provider_and_stores_result() -> None:
         {"id": "A", "text": "node A", "is_seed": False, "depth": 1, "parent_id": None},
         {"id": "B", "text": "node B", "is_seed": False, "depth": 1, "parent_id": None},
     ]
+
+
+def test_fetch_node_texts_budget_tokens_and_max_chars_mutual_exclusive() -> None:
+    step = StepDef(
+        id="fetch_texts",
+        action="fetch_node_texts",
+        raw={"id": "fetch_texts", "action": "fetch_node_texts", "budget_tokens": 10, "max_chars": 50},
+    )
+
+    state = PipelineState(user_query="q", session_id="s", consultant="c", branch=None, translate_chat=False, snapshot_id="snap")
+    state.graph_expanded_nodes = ["A"]
+
+    fake = FakeGraphProvider(node_texts=[{"id": "A", "text": "node A"}])
+
+    rt = SimpleNamespace(
+        pipeline_settings={"repository": "nopCommerce", "snapshot_id": "snap", "max_context_tokens": 4096},
+        graph_provider=fake,
+        retrieval_backend=_RetrievalBackendStub(fake),
+        token_counter=SimpleNamespace(count_tokens=lambda s: len(str(s).split())),
+    )
+
+    with pytest.raises(ValueError, match="max_chars"):
+        FetchNodeTextsAction().execute(step, state, rt)
+
+
+def test_fetch_node_texts_missing_max_context_tokens_fails() -> None:
+    step = StepDef(
+        id="fetch_texts",
+        action="fetch_node_texts",
+        raw={"id": "fetch_texts", "action": "fetch_node_texts"},
+    )
+
+    state = PipelineState(user_query="q", session_id="s", consultant="c", branch=None, translate_chat=False, snapshot_id="snap")
+    state.graph_expanded_nodes = ["A"]
+
+    fake = FakeGraphProvider(node_texts=[{"id": "A", "text": "node A"}])
+
+    rt = SimpleNamespace(
+        pipeline_settings={"repository": "nopCommerce", "snapshot_id": "snap"},
+        graph_provider=fake,
+        retrieval_backend=_RetrievalBackendStub(fake),
+        token_counter=SimpleNamespace(count_tokens=lambda s: len(str(s).split())),
+    )
+
+    with pytest.raises(ValueError, match="max_context_tokens"):
+        FetchNodeTextsAction().execute(step, state, rt)
+
+
+def test_fetch_node_texts_no_nodes_sets_reason() -> None:
+    step = StepDef(
+        id="fetch_texts",
+        action="fetch_node_texts",
+        raw={"id": "fetch_texts", "action": "fetch_node_texts", "budget_tokens": 10},
+    )
+
+    state = PipelineState(user_query="q", session_id="s", consultant="c", branch=None, translate_chat=False, snapshot_id="snap")
+    state.graph_expanded_nodes = []
+    state.retrieval_seed_nodes = []
+
+    rt = SimpleNamespace(
+        pipeline_settings={"repository": "nopCommerce", "snapshot_id": "snap", "max_context_tokens": 4096},
+        graph_provider=None,
+        retrieval_backend=_RetrievalBackendStub(None),
+        token_counter=SimpleNamespace(count_tokens=lambda s: len(str(s).split())),
+    )
+
+    FetchNodeTextsAction().execute(step, state, rt)
+
+    assert state.node_texts == []
+    assert getattr(state, "_fetch_node_texts_debug", {}).get("reason") == "no_nodes_for_fetch_node_texts"
