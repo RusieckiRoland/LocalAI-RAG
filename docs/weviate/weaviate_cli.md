@@ -2,16 +2,49 @@
 
 This document describes the **CLI tools** used to:
 - **import** repository bundles (snapshots) into Weaviate
-- **discover** which snapshots exist (and their `head_sha`)
+- **discover** which snapshots exist (and their `snapshot_id`)
 - **manage SnapshotSets** (named allowlists / query scopes)
 
 Weaviate must already be running (see `weaviate_local_setup.md`).
 
 ---
 
-## 1) Connection and auth model
+## 1) Snapshot identity model (IMPORTANT)
 
-### 1.1 Resolution order (highest → lowest priority)
+### 1.1 `snapshot_id` is the only identifier
+
+- `snapshot_id` is the **real snapshot identifier** used everywhere (CLI, backend, frontend).
+- `snapshot_id` is also the **Weaviate tenant id** (multi-tenancy partition key).
+
+`head_sha` is **informational only** (useful for humans / debugging), and must **never** be used as an identifier in requests.
+
+### 1.2 How `snapshot_id` is computed
+
+Snapshots are identified deterministically from repository metadata:
+
+- If `HeadSha` is present:
+  - `snapshot_id = UUID5("{RepoName}:{HeadSha}")`
+- If `HeadSha` is empty/missing:
+  - `snapshot_id = UUID5("{RepoName}:{FolderFingerprint}")`
+
+Example metadata (`repo_meta.json`):
+
+```json
+{
+  "RepoName": "NopCommerce",
+  "Branch": "release-4.90.0",
+  "HeadSha": "e7a52b9199f9c7651839e92826df47f668f3c767",
+  "RepositoryRoot": "D:/TrainingCode/Nop/nopCommerce",
+  "FolderFingerprint": null,
+  "GeneratedAtUtc": "2026-02-08T16:48:45.3981022Z"
+}
+```
+
+---
+
+## 2) Connection and auth model
+
+### 2.1 Resolution order (highest → lowest priority)
 
 Connection settings are resolved in this order:
 
@@ -20,7 +53,7 @@ Connection settings are resolved in this order:
 3) `config.json` (`weaviate.host/http_port/grpc_port/ready_timeout_seconds`)  
 4) Defaults (`localhost / 18080 / 15005`)  
 
-### 1.2 `.env` loading (`--env`)
+### 2.2 `.env` loading (`--env`)
 
 `.env` is **not** loaded automatically by your shell.
 
@@ -33,7 +66,7 @@ Use `--env` when:
 - your API key is stored in `.env` as `WEAVIATE_API_KEY=...`
 - you run the CLI from a clean shell / terminal
 
-### 1.3 Quiet by default (`--verbose`)
+### 2.3 Quiet by default (`--verbose`)
 
 The CLIs are **quiet by default** (no httpx request spam).
 
@@ -48,35 +81,24 @@ python -m tools.weaviate.import_branch_to_weaviate --env --verbose ...
 
 ---
 
-## 2) Import a snapshot bundle into Weaviate
+## 3) Import a snapshot bundle into Weaviate
 
 Module:
 ```
 tools/weaviate/import_branch_to_weaviate.py
 ```
 
-### 2.1 Import a tag snapshot (.zip)
+### 3.1 Import a branch snapshot (.zip)
 
 ```bash
-python -m tools.weaviate.import_branch_to_weaviate --env \
-  --bundle repositories/nopCommerce/branches/release-4.60.0.zip \
-  --embed-model models/embedding/e5-base-v2 \
-  --ref-type tag \
-  --ref-name release-4.60.0 \
-  --tag release-4.60.0
+python -m tools.weaviate.import_branch_to_weaviate --env   --bundle repositories/nopCommerce/branches/release-4.60.0.zip   --embed-model models/embedding/e5-base-v2   --ref-type branch   --ref-name release-4.60.0
 ```
-
-### 2.2 Import a branch snapshot (.zip)
 
 ```bash
-python -m tools.weaviate.import_branch_to_weaviate --env \
-  --bundle repositories/nopCommerce/branches/release-4.90.0.zip \
-  --embed-model models/embedding/e5-base-v2 \
-  --ref-type branch \
-  --ref-name release-4.90.0
+python -m tools.weaviate.import_branch_to_weaviate --env   --bundle repositories/nopCommerce/branches/release-4.90.0.zip   --embed-model models/embedding/e5-base-v2   --ref-type branch   --ref-name release-4.90.0
 ```
 
-### 2.3 Important: bundle format
+### 3.2 Important: bundle format
 
 `--bundle` must point to:
 - a **folder** containing `repo_meta.json`, or
@@ -88,7 +110,7 @@ If you see:
 
 …it means the path or zip layout is wrong.
 
-### 2.4 Importer flags (high-level)
+### 3.3 Importer flags (high-level)
 
 Required:
 - `--bundle` : bundle folder or `.zip`
@@ -103,13 +125,13 @@ Optional overrides:
 
 ---
 
-## 3) Discover available snapshots (what is in Weaviate)
+## 4) Discover available snapshots (what is in Weaviate)
 
-Imports are recorded in the `ImportRun` collection. Each import corresponds to one immutable `head_sha`.
+Imports are recorded in the `ImportRun` collection.
 
-### 3.1 CLI way (recommended): list snapshots
+Each import corresponds to one `snapshot_id` (tenant id). `head_sha` is recorded as **informational metadata**.
 
-This is the “what can I build a SnapshotSet from?” command.
+### 4.1 CLI way (recommended): list snapshots
 
 ```bash
 python -m tools.weaviate.snapshot_sets --env snapshots
@@ -125,52 +147,52 @@ What you’ll see (conceptually):
 - `repo`
 - `ref_type` + `ref_name` (the label you imported under)
 - `tag` / `branch` (if present)
-- `head_sha`
+- `snapshot_id` (the real id / tenant id)
+- `head_sha` (informational only)
 - timestamps / status
 
-### 3.2 Raw GraphQL way (optional)
+### 4.2 Raw GraphQL way (optional)
 
-Resolve `head_sha` by tag:
+Resolve `snapshot_id` by tag:
 
 ```bash
 TAG="release-4.60.0"
 
-curl -s http://localhost:18080/v1/graphql \
-  -H 'Content-Type: application/json' \
-  -d @- <<JSON | python -m json.tool
+curl -s http://localhost:18080/v1/graphql   -H 'Content-Type: application/json'   -d @- <<JSON | python -m json.tool
 {
-  "query": "{ Get { ImportRun(where:{path:[\"tag\"],operator:Equal,valueText:\"${TAG}\"}, limit:5){ repo branch tag head_sha friendly_name status } } }"
+  "query": "{ Get { ImportRun(where:{path:[\"tag\"],operator:Equal,valueText:\"${TAG}\"}, limit:5){ repo ref_type ref_name branch tag snapshot_id head_sha status started_utc finished_utc } } }"
 }
 JSON
 ```
 
-Resolve `head_sha` by branch:
+Resolve `snapshot_id` by branch:
 
 ```bash
 BRANCH="release-4.90.0"
 
-curl -s http://localhost:18080/v1/graphql \
-  -H 'Content-Type: application/json' \
-  -d @- <<JSON | python -m json.tool
+curl -s http://localhost:18080/v1/graphql   -H 'Content-Type: application/json'   -d @- <<JSON | python -m json.tool
 {
-  "query": "{ Get { ImportRun(where:{path:[\"branch\"],operator:Equal,valueText:\"${BRANCH}\"}, limit:5){ repo branch tag head_sha status } } }"
+  "query": "{ Get { ImportRun(where:{path:[\"branch\"],operator:Equal,valueText:\"${BRANCH}\"}, limit:5){ repo ref_type ref_name branch tag snapshot_id head_sha status started_utc finished_utc } } }"
 }
 JSON
 ```
 
 ---
 
-## 4) SnapshotSets (query scopes)
+## 5) SnapshotSets (query scopes)
 
-A **SnapshotSet** is a named **allowlist** of snapshots that can be queried.
-It later becomes a filter on `RagNode` / `RagEdge` by `head_sha`.
+A **SnapshotSet** is a named **allowlist of `snapshot_id`** values.
+
+- Frontend sends: `snapshot_set_id` + `snapshots: [snapshot_id, ...]`
+- Backend validates: each requested `snapshot_id` belongs to the given `snapshot_set_id`
+- Weaviate access is tenant-scoped by `snapshot_id` (multi-tenancy)
 
 Module:
 ```
 tools/weaviate/snapshot_sets.py
 ```
 
-Commands:
+Commands (high level):
 - `snapshots` — list imported snapshots (from `ImportRun`) and optionally **build** a SnapshotSet from selected items
 - `list`      — list SnapshotSets
 - `show`      — show one SnapshotSet
@@ -178,7 +200,7 @@ Commands:
 - `delete`    — delete a SnapshotSet
 - `purge-snapshot` — delete a snapshot's data + remove it from SnapshotSets (interactive)
 
-### 4.1 List SnapshotSets
+### 5.1 List SnapshotSets
 
 ```bash
 python -m tools.weaviate.snapshot_sets --env list
@@ -190,28 +212,15 @@ Filter by repo:
 python -m tools.weaviate.snapshot_sets --env list --repo nopCommerce
 ```
 
-JSON output:
+### 5.2 Show a SnapshotSet
 
 ```bash
-python -m tools.weaviate.snapshot_sets --env list --format json
+python -m tools.weaviate.snapshot_sets --env show --id nopCommerce_4-60_4-90
 ```
 
-**Tip:** In `list` output, the SnapshotSet **ID** is the second token after the repo name, e.g.
-```
-- nopCommerce / nopCommerce_release-4-60-0_release-4-90-0  active=True  refs=2  shas=2
-             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-             SnapshotSet ID
-```
+### 5.3 Create a SnapshotSet from listed snapshots (interactive)
 
-### 4.2 Show a SnapshotSet
-
-```bash
-python -m tools.weaviate.snapshot_sets --env show --id nopCommerce_release-4-60-0_release-4-90-0
-```
-
-### 4.3 Create a SnapshotSet from listed snapshots (interactive)
-
-Start the snapshot browser (it prints numbered entries and then asks for selection):
+Start the snapshot browser:
 
 ```bash
 python -m tools.weaviate.snapshot_sets --env snapshots
@@ -221,60 +230,42 @@ Then type:
 - `1,2` to select items 1 and 2 and create a SnapshotSet
 - the tool proposes an ID (you can accept or change it)
 
-Note: the list shows `friendly_name` when available (fallback to tag/branch/ref).
+### 5.4 Add / update a SnapshotSet (explicit mode)
 
-### 4.4 Add / update a SnapshotSet (explicit mode)
-
-You can define membership using:
-- `--snapshots` (labels; resolved to `head_sha` via `ImportRun`)
-- `--head-shas` (explicit immutable SHAs)
-
-Example (two snapshot labels):
+Example (two snapshot labels; resolved via `ImportRun` → `snapshot_id`):
 
 ```bash
-python -m tools.weaviate.snapshot_sets --env add \
-  --id nopCommerce_4-60_4-90 \
-  --repo nopCommerce \
-  --snapshots release-4.60.0 release-4.90.0 \
-  --description "Public subset: 4.60 + 4.90"
+python -m tools.weaviate.snapshot_sets --env add   --id nopCommerce_4-60_4-90   --repo nopCommerce   --snapshots release-4.60.0 release-4.90.0   --description "Public subset: 4.60 + 4.90"
 ```
 
-Example (explicit SHAs):
+Example (explicit snapshot ids):
 
 ```bash
-python -m tools.weaviate.snapshot_sets --env add \
-  --id nopCommerce_4-60_4-90 \
-  --repo nopCommerce \
-  --head-shas dcfbf411edb1756d9e8d10721be7b16b9649b34f 0123456789abcdef0123456789abcdef01234567
+python -m tools.weaviate.snapshot_sets --env add   --id nopCommerce_4-60_4-90   --repo nopCommerce   --snapshot-ids 0317701f-8103-5146-bbe9-4cedd73365f4 5fcda9c6-e491-5807-b18b-9eb037b0287a
 ```
 
 Mark as inactive:
 
 ```bash
-python -m tools.weaviate.snapshot_sets --env add \
-  --id nopCommerce_4-60_4-90 \
-  --repo nopCommerce \
-  --snapshots release-4.60.0 release-4.90.0 \
-  --inactive
+python -m tools.weaviate.snapshot_sets --env add   --id nopCommerce_4-60_4-90   --repo nopCommerce   --snapshots release-4.60.0 release-4.90.0   --inactive
 ```
 
-### 4.5 Delete a SnapshotSet
+### 5.5 Delete a SnapshotSet
 
 ```bash
-python -m tools.weaviate.snapshot_sets --env delete --id nopCommerce_release-4-60-0_release-4-90-0
+python -m tools.weaviate.snapshot_sets --env delete --id nopCommerce_4-60_4-90
 ```
 
 Optional safety check:
 
 ```bash
-python -m tools.weaviate.snapshot_sets --env delete \
-  --id nopCommerce_release-4-60-0_release-4-90-0 \
-  --repo nopCommerce
+python -m tools.weaviate.snapshot_sets --env delete   --id nopCommerce_4-60_4-90   --repo nopCommerce
+```
 
-### 4.6 Purge a Snapshot (data + SnapshotSets)
+### 5.6 Purge a snapshot (data + SnapshotSets)
 
 Deletes:
-- `RagNode` + `RagEdge` data for the snapshot
+- `RagNode` + `RagEdge` data for the snapshot (tenant = `snapshot_id`)
 - `ImportRun` metadata rows for the snapshot
 - Removes the snapshot from all SnapshotSets
 - If a SnapshotSet becomes empty, it is **deleted**
@@ -288,7 +279,7 @@ python -m tools.weaviate.snapshot_sets --env purge-snapshot
 With repo filter:
 
 ```bash
-python -m tools.weaviate.snapshot_sets --env purge-snapshot --repo Fake
+python -m tools.weaviate.snapshot_sets --env purge-snapshot --repo nopCommerce
 ```
 
 Non-interactive:
@@ -296,11 +287,10 @@ Non-interactive:
 ```bash
 python -m tools.weaviate.snapshot_sets --env purge-snapshot --select 3 --yes
 ```
-```
 
 ---
 
-## 5) Common CLI failures
+## 6) Common CLI failures
 
 ### `401 Unauthorized`
 Weaviate has API key auth enabled but your CLI did not send a key.
