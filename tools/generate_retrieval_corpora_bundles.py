@@ -228,11 +228,11 @@ def _write_bundle(
     generated_at = _utc_now()
 
     repo_meta = {
+        "RepoName": repo,
         "Branch": branch,
         "HeadSha": head_sha,
-        "SnapshotId": snapshot_id,
         "RepositoryRoot": f"D:/{repo}",
-        "Repo": repo,
+        "FolderFingerprint": None,
         "GeneratedAtUtc": generated_at,
     }
 

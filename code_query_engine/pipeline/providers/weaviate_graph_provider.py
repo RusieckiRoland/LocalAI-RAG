@@ -217,9 +217,20 @@ class WeaviateGraphProvider(IGraphProvider):
         _ = branch
         _ = snapshot_id
 
+        rf = dict(retrieval_filters or {})
+        if rf.get("snapshot_ids_any") is not None:
+            raise ValueError("snapshot_ids_any is not supported with multi-tenancy; use tenant (snapshot_id) scoping per query")
+        tenant_snapshot_id = (snapshot_id or "").strip()
+        if not tenant_snapshot_id:
+            tenant_snapshot_id = str(rf.get("snapshot_id") or "").strip()
+        if not tenant_snapshot_id:
+            raise ValueError("WeaviateGraphProvider: snapshot_id is required for multi-tenant reads.")
+        # Always keep tenant scoping out of where-filters
+        rf.pop("snapshot_id", None)
+
+
         tags: List[str] = []
-        labels: List[str] = []
-        rf = retrieval_filters or {}
+        labels: List[str] = []        
         if "acl_tags_any" in rf:
             tags = _normalize_acl_tags(rf.get("acl_tags_any"))
         elif "permission_tags_any" in rf:
@@ -228,18 +239,21 @@ class WeaviateGraphProvider(IGraphProvider):
             tags = _normalize_acl_tags(rf.get("permission_tags_all"))
         if "classification_labels_all" in rf:
             labels = _normalize_acl_tags(rf.get("classification_labels_all"))
-
-        if not tags and not labels:
-            return list(node_ids or [])
+        
 
         ids = _dedupe_preserve_order(node_ids or [])
         if not ids:
             return []
+        
+        clearance_filter = self._build_clearance_filter(rf)
 
         filters = self._build_id_filter(ids)
         acl_filter = self._build_acl_filter(tags)
         classification_filter = self._build_classification_filter(labels)
-        clearance_filter = self._build_clearance_filter(rf)
+        
+        if not tags and not labels and clearance_filter is None:
+            return list(ids)
+
         if acl_filter is not None:
             acl_or_public = Filter.any_of(
                 [
@@ -253,7 +267,7 @@ class WeaviateGraphProvider(IGraphProvider):
         if clearance_filter is not None:
             filters = filters & clearance_filter
 
-        coll = self._client.collections.get(self._node_collection)
+        coll = self._client.collections.get(self._node_collection).with_tenant(tenant_snapshot_id)
         res = coll.query.fetch_objects(
             filters=filters,
             limit=len(ids),
@@ -269,57 +283,6 @@ class WeaviateGraphProvider(IGraphProvider):
 
         return [i for i in ids if i in allowed_set]
 
-    def fetch_node_texts(
-        self,
-        *,
-        node_ids: List[str],
-        repository: Optional[str] = None,
-        branch: Optional[str] = None,
-        snapshot_id: Optional[str] = None,
-        max_chars: int = 50_000,
-    ) -> List[Dict[str, Any]]:
-        _ = repository
-        _ = branch
-        _ = snapshot_id
-
-        ids = _dedupe_preserve_order(node_ids or [])
-        if not ids:
-            return []
-
-        filters = self._build_id_filter(ids)
-        coll = self._client.collections.get(self._node_collection)
-        res = coll.query.fetch_objects(
-            filters=filters,
-            limit=len(ids),
-            return_properties=[self._id_prop, self._text_prop],
-        )
-
-        text_by_id: Dict[str, str] = {}
-        for obj in res.objects or []:
-            props = obj.properties or {}
-            cid = str(props.get(self._id_prop) or "").strip()
-            if not cid:
-                continue
-            text_by_id[cid] = str(props.get(self._text_prop) or "")
-
-        used = 0
-        out: List[Dict[str, Any]] = []
-        for cid in ids:
-            t = text_by_id.get(cid, "")
-            if t:
-                remaining = max(0, int(max_chars) - used)
-                if remaining <= 0:
-                    t = ""
-                else:
-                    if len(t) > remaining:
-                        t = t[:remaining]
-                    used += len(t)
-            out.append({"id": cid, "text": t})
-            if used >= max_chars:
-                # Continue to keep output order, but remaining texts will be empty.
-                continue
-
-        return out
 
     # ------------------------------------------------------------------
     # Internals
@@ -370,7 +333,7 @@ class WeaviateGraphProvider(IGraphProvider):
             ]
         )
 
-        coll = self._client.collections.get(self._edge_collection)
+        coll = self._client.collections.get(self._edge_collection).with_tenant(snapshot_id)
         adj: DefaultDict[str, List[Tuple[str, str]]] = defaultdict(list)
 
         offset = 0

@@ -86,20 +86,26 @@ class WeaviateRetrievalBackend(IRetrievalBackend):
             if hits:
                 return SearchResponse(hits=hits)
 
-        collection = self._client.collections.get(self._node_collection)
+        
 
         # Minimal filters (repo/branch). More advanced ACL/filter composition can be added next.
         snapshot_id = (request.snapshot_id or "").strip()
+
+        rf = request.retrieval_filters or {}
+
         if not snapshot_id:
-            snapshot_id = str((request.retrieval_filters or {}).get("snapshot_id") or "").strip()
+            snapshot_id = str(rf.get("snapshot_id") or "").strip()
+            
+        rf.pop("snapshot_id", None)  
+
         if not snapshot_id:
             raise ValueError("WeaviateRetrievalBackend: snapshot_id is required.")
 
+        collection = self._client.collections.get(self._node_collection).with_tenant(snapshot_id)  # Ensure we read from the correct snapshot in multi-tenant setup
+
         where_filter = self._build_where_filter(
-            repository=request.repository,
-            snapshot_id=snapshot_id,
-            branch=None,
-            retrieval_filters=request.retrieval_filters,
+            repository=request.repository,            
+            retrieval_filters=rf,
         )
         if os.getenv("WEAVIATE_FILTER_DEBUG", "").strip():
             try:
@@ -109,17 +115,15 @@ class WeaviateRetrievalBackend(IRetrievalBackend):
                     request.top_k,
                     request.repository,
                     snapshot_id,
-                    request.retrieval_filters,
+                    rf,
                     where_filter,
                 )
             except Exception:
                 py_logger.exception("WeaviateRetrievalBackend: failed to log filters debug")
 
         search_type = (request.search_type or "").strip().lower()
-        top_k = max(int(request.top_k or 1), 1)
-        rf = request.retrieval_filters or {}
+        top_k = max(int(request.top_k or 1), 1)        
         return_props = [self._id_prop]
-
         post_filter_labels = False
         allowed_labels: List[str] = []
         allow_unlabeled = True
@@ -246,18 +250,20 @@ class WeaviateRetrievalBackend(IRetrievalBackend):
         """
         if not node_ids:
             return {}
+        
+        rf = retrieval_filters or {}
+        rf.pop("snapshot_id", None)
 
-        collection = self._client.collections.get(self._node_collection)
+        collection = self._client.collections.get(self._node_collection).with_tenant(snapshot_id)  # Ensure we read from the correct snapshot in multi-tenant setup
+        
 
         # We fetch objects and map by canonical_id (id_property).
         # This assumes canonical_id is stored as a property (not UUID).
         where_filter = self._build_in_filter(self._id_prop, node_ids)
 
         scope_filter = self._build_where_filter(
-            repository=repository,
-            snapshot_id=snapshot_id,
-            branch=None,
-            retrieval_filters=retrieval_filters or {},
+            repository=repository,           
+            retrieval_filters=rf,
         )
 
         if scope_filter is not None:
@@ -286,9 +292,7 @@ class WeaviateRetrievalBackend(IRetrievalBackend):
     def _build_where_filter(
         self,
         *,
-        repository: Optional[str],
-        snapshot_id: Optional[str],
-        branch: Optional[str],
+        repository: Optional[str],       
         retrieval_filters: Optional[Dict[str, Any]],
     ) -> Any:
         """
@@ -305,23 +309,9 @@ class WeaviateRetrievalBackend(IRetrievalBackend):
         repo = (repository or "").strip()
         if repo:
             f = Filter.by_property(self._repo_prop).equal(repo) if f is None else f & Filter.by_property(self._repo_prop).equal(repo)
-
-        snap = (snapshot_id or "").strip()
-        rf = retrieval_filters or {}
-        snapshot_ids_any = rf.get("snapshot_ids_any")
-        if isinstance(snapshot_ids_any, list):
-            clean = [str(x).strip() for x in snapshot_ids_any if str(x).strip()]
-            if clean:
-                any_filter = Filter.any_of([Filter.by_property(self._snapshot_id_prop).equal(s) for s in clean])
-                f = any_filter if f is None else f & any_filter
-            elif snap:
-                f = Filter.by_property(self._snapshot_id_prop).equal(snap) if f is None else f & Filter.by_property(self._snapshot_id_prop).equal(snap)
-        elif snap:
-            f = Filter.by_property(self._snapshot_id_prop).equal(snap) if f is None else f & Filter.by_property(self._snapshot_id_prop).equal(snap)
-
-        # Branch is legacy and not used for scoping (snapshot_id is the only scope).
-        _ = branch
-
+        rf = retrieval_filters or {}       
+        if rf.get("snapshot_ids_any") is not None:
+            raise ValueError("snapshot_ids_any is not supported with multi-tenancy; use tenant (snapshot_id) scoping per query")
         sec = self._security_cfg
 
         # ACL tags with OR (any) semantics.
@@ -648,7 +638,7 @@ def _golden_proxy_hits(request: SearchRequest) -> List[SearchHit]:
     if search_type not in ("bm25", "semantic", "hybrid"):
         return []
 
-    snapshot_id = str(request.snapshot_id or rf.get("snapshot_id") or "").strip()
+    snapshot_id = str(request.snapshot_id or "").strip()
     if not snapshot_id:
         return []
 

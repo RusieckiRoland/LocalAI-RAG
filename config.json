@@ -2,83 +2,57 @@
   "output_dir": "branches",
   "model_path_embd": "models/embedding/e5-base-v2",
   "model_path_analysis": "models/code_analysis/codeLlama_13b_Instruct/codellama-13b-instruct.Q8_0.gguf",
-  "model_translation_en_pl":"models/translation/en_pl/Helsinki_NLPopus_mt_en_pl",
-  "model_translation_pl_en":"models/translation/pl_en/Helsinki_NLPopus_mt_pl_en",
-
-  "log_path":"log/ai_interaction.log",
-
+  "model_translation_en_pl": "models/translation/en_pl/Helsinki_NLPopus_mt_en_pl",
+  "model_translation_pl_en": "models/translation/pl_en/Helsinki_NLPopus_mt_pl_en",
+  "log_path": "log/ai_interaction.log",
   "logging": {
-  "dir": "log",
-  "level": "INFO",
-  "interactions_level": "TRACE",
-  "when": "midnight",
-  "interval": 1,
-  "backup_count": 14,
-  "also_stdout": false,
-  "app_file": "app.log",
-  "interactions_file": "ai_interactions.jsonl",
-
-  "ai_interaction": {
-    "capture_jsonl": true,
-    "human_log": true,
-    "human_file": "ai_interaction.log",
-    "lang": "en",
-    "locale_dir": "locales/ai_interaction",
-    "emit_app_log_pointers": true
-  }
-},
-
+    "dir": "log",
+    "level": "INFO",
+    "interactions_level": "TRACE",
+    "when": "midnight",
+    "interval": 1,
+    "backup_count": 14,
+    "also_stdout": false,
+    "app_file": "app.log",
+    "interactions_file": "ai_interactions.jsonl",
+    "ai_interaction": {
+      "capture_jsonl": true,
+      "human_log": true,
+      "human_file": "ai_interaction.log",
+      "lang": "en",
+      "locale_dir": "locales/ai_interaction",
+      "emit_app_log_pointers": true
+    }
+  },
   "use_gpu": true,
   "developement": true,
-  "plantuml_server" : "http://localhost:8080", 
-   "weaviate": {
-      "host": "localhost",
-      "http_port": 18080,
-       "grpc_port": 15005,  
-      "ready_timeout_seconds": 30
-   },
+  "plantuml_server": "http://localhost:8080",
+  "weaviate": {
+    "host": "localhost",
+    "http_port": 18080,
+    "grpc_port": 15005,
+    "ready_timeout_seconds": 30
+  },
   "identity_provider": {
     "enabled": true,
     "issuer": "https://idp.example.com/realms/localai-rag",
     "jwks_url": "https://idp.example.com/realms/localai-rag/protocol/openid-connect/certs",
     "audience": "localai-rag-api",
-    "algorithms": ["RS256"],
-    "required_claims": ["sub", "exp", "iss", "aud"]
+    "algorithms": [
+      "RS256"
+    ],
+    "required_claims": [
+      "sub",
+      "exp",
+      "iss",
+      "aud"
+    ]
   },
-  
   "vector_indexes_root": "repositories/nopCommerce/indexes",
   "repo_name": "nopCommerce",
   "permissions": {
-    "security_enabled": true,
-    "acl_enabled": true,
-    "require_travel_permission": true,
-    "security_model": {
-      "kind": "clearance_level",
-      "clearance_level": {
-        "doc_level_field": "doc_level",
-        "user_level_source": "claim",
-        "user_level_claim": "user_level",
-        "default_doc_level": 0,
-        "allow_missing_doc_level": true,
-        "levels": {
-          "public": 0,
-          "internal": 10,
-          "restricted": 20,
-          "critical": 30
-        }
-      },
-      "labels_universe_subset": {
-        "doc_labels_field": "classification_labels",
-        "user_labels_source": "claim",
-        "user_labels_claim": "labels",
-        "allow_unlabeled": true,
-        "classification_labels_universe": [
-          "public",
-          "internal",
-          "secret",
-          "restricted"
-        ]
-      }
-    }
+    "security_enabled": false,
+    "acl_enabled": false,
+    "require_travel_permission": false
   }
 }

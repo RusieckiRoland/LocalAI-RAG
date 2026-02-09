@@ -284,7 +284,7 @@ def load_observed_sources(client: weaviate.WeaviateClient, state: PipelineState,
     except Exception:
         return []
 
-    coll = client.collections.use("RagNode")
+    coll = client.collections.use("RagNode").with_tenant(state.snapshot_id or "")
     f = (
         Filter.by_property("repo").equal(repo_name)
         & Filter.by_property("canonical_id").contains_any(ids)
@@ -309,7 +309,7 @@ def load_observed_docs(client: weaviate.WeaviateClient, state: PipelineState, re
     except Exception:
         return []
 
-    coll = client.collections.use("RagNode")
+    coll = client.collections.use("RagNode").with_tenant(state.snapshot_id or "")
     props_in_schema: set[str] = set()
     try:
         cfg = coll.config.get()

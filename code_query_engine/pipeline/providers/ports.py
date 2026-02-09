@@ -112,13 +112,4 @@ class IGraphProvider(Protocol):
     ) -> List[str]:
         ...
 
-    def fetch_node_texts(
-        self,
-        *,
-        node_ids: List[str],
-        repository: Optional[str] = None,
-        branch: Optional[str] = None,
-        snapshot_id: Optional[str] = None,
-        max_chars: int = 50_000,
-    ) -> List[Dict[str, Any]]:
-        ...
+    

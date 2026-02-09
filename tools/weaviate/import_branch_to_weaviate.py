@@ -184,6 +184,7 @@ def ensure_schema(client: "weaviate.WeaviateClient") -> None:
             name=COL_NODE,
             vector_config=wvc.config.Configure.Vectors.self_provided(),
             inverted_index_config=wvc.config.Configure.inverted_index(index_null_state=True),
+            multi_tenancy_config=wvc.config.Configure.multi_tenancy(enabled=True),
             properties=[
                 # Partition / identity
                 wvc.config.Property(name="canonical_id", data_type=wvc.config.DataType.TEXT),
@@ -244,6 +245,7 @@ def ensure_schema(client: "weaviate.WeaviateClient") -> None:
         client.collections.create(
             name=COL_EDGE,
             vector_config=wvc.config.Configure.Vectors.self_provided(),
+            multi_tenancy_config=wvc.config.Configure.multi_tenancy(enabled=True),
             properties=[
                 wvc.config.Property(name="import_id", data_type=wvc.config.DataType.TEXT),
                 wvc.config.Property(name="repo", data_type=wvc.config.DataType.TEXT),
@@ -255,6 +257,24 @@ def ensure_schema(client: "weaviate.WeaviateClient") -> None:
             ],
         )
         LOG.info("Created collection: %s", COL_EDGE)
+
+
+def _ensure_tenant(client: "weaviate.WeaviateClient", *, collection_name: str, tenant: str) -> None:
+    # Ensure tenant exists (idempotent enough for imports).
+    coll = client.collections.use(collection_name)
+    try:
+        coll.tenants.create([wvc.tenants.Tenant(name=tenant)])
+    except Exception:
+        # If it already exists, ignore; otherwise re-raise.
+        try:
+            existing = coll.tenants.get()
+            for t in existing:
+                name = getattr(t, "name", None) or (t if isinstance(t, str) else None)
+                if name == tenant:
+                    return
+        except Exception:
+            pass
+        raise
 
 
 def upsert_import_run(
@@ -358,7 +378,8 @@ def open_bundle(path: str) -> Tuple[BundleReader, RepoMeta]:
     # repo name resolution:
     # 1) explicit fields if present
     repo_name = str(
-        meta_json.get("Repo")
+        meta_json.get("RepoName")
+        or meta_json.get("Repo")
         or meta_json.get("Repository")
         or meta_json.get("RepositoryName")
         or meta_json.get("repo")
@@ -378,23 +399,26 @@ def open_bundle(path: str) -> Tuple[BundleReader, RepoMeta]:
 
     branch = str(meta_json.get("Branch") or meta_json.get("branch") or "").strip()
     generated_at = str(meta_json.get("GeneratedAtUtc") or meta_json.get("GeneratedAtUTC") or "").strip()
-    head_sha = str(meta_json.get("HeadSha") or meta_json.get("HeadSHA") or meta_json.get("head_sha") or "").strip()
-    snapshot_id = str(
-        meta_json.get("SnapshotId")
-        or meta_json.get("snapshot_id")
-        or meta_json.get("snapshotId")
-        or ""
-    ).strip()
+
+    head_sha_raw = meta_json.get("HeadSha") or meta_json.get("HeadSHA") or meta_json.get("head_sha")
+    head_sha = str(head_sha_raw or "").strip()
+
+    folder_fp_raw = meta_json.get("FolderFingerprint") or meta_json.get("folder_fingerprint")
+    folder_fingerprint = str(folder_fp_raw or "").strip()
 
     if not branch:
         branch = "(unknown)"
 
-    if not snapshot_id:
-        snapshot_id = head_sha
-
-    if not snapshot_id:
-        # Deterministic fallback when head_sha is not available.
-        snapshot_id = generate_uuid5(f"{repo_name}::{branch}::{generated_at or 'unknown'}")
+    # snapshot_id (requested):
+    # - UUID5("RepoName:HeadSha") if HeadSha present
+    # - else UUID5("FolderFingerprint") if present
+    # - else error
+    if head_sha:
+        snapshot_id = str(generate_uuid5(f"{repo_name}:{head_sha}"))
+    elif folder_fingerprint:
+        snapshot_id = str(generate_uuid5(folder_fingerprint))
+    else:
+        raise ValueError("repo_meta.json: cannot compute snapshot_id (HeadSha and FolderFingerprint are empty)")
 
     meta = RepoMeta(
         repo=repo_name,
@@ -734,7 +758,7 @@ def insert_nodes(
     embed_batch: int,
     weaviate_batch: int,
 ) -> ImportCounts:
-    coll = client.collections.use(COL_NODE)
+    coll = client.collections.use(COL_NODE).with_tenant(meta.snapshot_id)
 
     counts = ImportCounts()
     seen_canonical: set[str] = set()
@@ -801,7 +825,7 @@ def insert_edges(
     edges: Iterable[Tuple[str, str, str]],
     weaviate_batch: int,
 ) -> ImportCounts:
-    coll = client.collections.use(COL_EDGE)
+    coll = client.collections.use(COL_EDGE).with_tenant(meta.snapshot_id)
 
     counts = ImportCounts()
     seen_edge_keys: set[str] = set()
@@ -873,6 +897,9 @@ def run_import(
     client = connect_weaviate(weaviate_host, weaviate_http_port, weaviate_grpc_port, api_key=weaviate_api_key)
     try:
         ensure_schema(client)
+
+        _ensure_tenant(client, collection_name=COL_NODE, tenant=meta.snapshot_id)
+        _ensure_tenant(client, collection_name=COL_EDGE, tenant=meta.snapshot_id)
 
         upsert_import_run(
             client,
