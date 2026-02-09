@@ -12,6 +12,7 @@ LOG = logging.getLogger(__name__)
 
 @dataclass(frozen=True)
 class SnapshotInfo:
+    # NOTE: This is always snapshot_id (the real identifier).
     id: str
     label: str
 
@@ -59,6 +60,7 @@ class SnapshotRegistry:
         res = coll.query.fetch_objects(
             filters=filters,
             limit=1,
+            # NOTE: allowed_head_shas is informational only; the real IDs are allowed_snapshot_ids.
             return_properties=["snapshot_set_id", "repo", "allowed_snapshot_ids", "allowed_head_shas", "allowed_refs"],
         )
         if not res.objects and repository:
@@ -73,9 +75,9 @@ class SnapshotRegistry:
         return res.objects[0].properties or {}
 
     def _allowed_snapshot_ids(self, rec: Dict[str, object]) -> List[str]:
+        # IMPORTANT: snapshot_id is the only valid identifier.
+        # head_sha is informational and must never be used as an ID or fallback.
         allowed = list(rec.get("allowed_snapshot_ids") or [])
-        if not allowed:
-            allowed = list(rec.get("allowed_head_shas") or [])
         cleaned = [str(x).strip() for x in allowed if str(x).strip()]
         return self._unique_preserve_order(cleaned)
 
@@ -107,18 +109,23 @@ class SnapshotRegistry:
             filters = Filter.all_of(
                 [
                     Filter.by_property("repo").equal(repo),
-                    Filter.any_of(
-                        [
-                            Filter.by_property("snapshot_id").equal(snapshot_id),
-                            Filter.by_property("head_sha").equal(snapshot_id),
-                        ]
-                    ),
+                    # IMPORTANT: resolve by snapshot_id only (head_sha is informational).
+                    Filter.by_property("snapshot_id").equal(snapshot_id),
                 ]
             )
             res = coll.query.fetch_objects(
                 filters=filters,
                 limit=5,
-                return_properties=["snapshot_id", "head_sha", "friendly_name", "tag", "ref_name", "branch", "finished_utc", "started_utc"],
+                return_properties=[
+                    "snapshot_id",
+                    "head_sha",
+                    "friendly_name",
+                    "tag",
+                    "ref_name",
+                    "branch",
+                    "finished_utc",
+                    "started_utc",
+                ],
             )
         except Exception:
             LOG.exception("soft-failure: failed to resolve snapshot label for %s", snapshot_id)

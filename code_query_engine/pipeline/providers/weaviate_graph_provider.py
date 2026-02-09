@@ -140,11 +140,16 @@ class WeaviateGraphProvider(IGraphProvider):
         repo = (repository or "").strip()
         if not repo:
             repo = repo_from_ids
-        if not repo or repo != repo_from_ids:
+
+        repo_norm = repo.casefold()
+        repo_ids_norm = (repo_from_ids or "").strip().casefold()
+
+        if not repo_norm or not repo_ids_norm or repo_norm != repo_ids_norm:
             raise ValueError(
                 "WeaviateGraphProvider: repository mismatch or missing "
                 f"(repository={repository!r} repo_from_ids={repo_from_ids!r})"
             )
+
 
         snapshot_id = (snapshot_id or "").strip()
         if snapshot_id and snapshot_id != snapshot_id_from_ids:
@@ -321,46 +326,42 @@ class WeaviateGraphProvider(IGraphProvider):
             return adj
 
     def _load_edges(self, *, repo: str, snapshot_id: str) -> Dict[str, List[Tuple[str, str]]]:
-        try:
-            from weaviate.classes.query import Filter  # type: ignore
-        except Exception as e:
-            raise RuntimeError("WeaviateGraphProvider: cannot import weaviate.classes.query.Filter") from e
-
-        filters = Filter.all_of(
-            [
-                Filter.by_property(self._repo_prop).equal(repo),
-                Filter.by_property(self._snapshot_id_prop).equal(snapshot_id),
-            ]
-        )
-
         coll = self._client.collections.get(self._edge_collection).with_tenant(snapshot_id)
         adj: DefaultDict[str, List[Tuple[str, str]]] = defaultdict(list)
 
-        offset = 0
-        while True:
-            res = coll.query.fetch_objects(
-                filters=filters,
-                limit=self._page_size,
-                offset=offset,
-                return_properties=[self._edge_from_prop, self._edge_to_prop, self._edge_type_prop],
-            )
+        # NOTE:
+        # - iterator() typically does not support server-side filters in v4 client.
+        # - We filter locally to keep semantics similar to the previous implementation.
+        # - If snapshot_id is truly the tenant partition key, object-level snapshot_id filtering is redundant.
+        for obj in coll.iterator(
+            cache_size=self._page_size,
+            return_properties=[
+                self._repo_prop,
+                self._snapshot_id_prop,
+                self._edge_from_prop,
+                self._edge_to_prop,
+                self._edge_type_prop,
+            ],
+        ):
+            props = obj.properties or {}
 
-            if not res.objects:
-                break
+            # Local repo filter (keeps behavior if tenant contains multiple repos)
+            obj_repo = str(props.get(self._repo_prop) or "").strip()
+            if obj_repo != repo:
+                continue
 
-            for obj in res.objects:
-                props = obj.properties or {}
-                frm = str(props.get(self._edge_from_prop) or "").strip()
-                to = str(props.get(self._edge_to_prop) or "").strip()
-                rel = str(props.get(self._edge_type_prop) or "edge").strip() or "edge"
-                if not frm or not to:
-                    continue
-                adj[frm].append((rel, to))
+            # Optional local snapshot_id filter (only if the property exists and is set)
+            obj_snapshot = str(props.get(self._snapshot_id_prop) or "").strip()
+            if obj_snapshot and obj_snapshot != snapshot_id:
+                continue
 
-            got = len(res.objects)
-            offset += got
-            if got < self._page_size:
-                break
+            frm = str(props.get(self._edge_from_prop) or "").strip()
+            to = str(props.get(self._edge_to_prop) or "").strip()
+            rel = str(props.get(self._edge_type_prop) or "edge").strip() or "edge"
+            if not frm or not to:
+                continue
+
+            adj[frm].append((rel, to))
 
         return dict(adj)
 
