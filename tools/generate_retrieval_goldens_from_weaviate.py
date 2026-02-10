@@ -143,14 +143,41 @@ def _assert_docker_available() -> None:
 
 
 def _read_repo_meta(bundle_zip: Path) -> Dict[str, str]:
+    from tools.weaviate.snapshot_id import compute_snapshot_id, extract_folder_fingerprint
+
     with zipfile.ZipFile(bundle_zip, "r") as zf:
         names = [n for n in zf.namelist() if n.endswith("repo_meta.json")]
         if not names:
             raise RuntimeError(f"Bundle {bundle_zip} missing repo_meta.json")
         meta = json.loads(zf.read(names[0]).decode("utf-8", errors="replace"))
+
+    repo = str(
+        meta.get("RepoName")
+        or meta.get("Repo")
+        or meta.get("Repository")
+        or meta.get("RepositoryName")
+        or meta.get("repo")
+        or meta.get("repository")
+        or ""
+    ).strip()
+    if not repo:
+        repo_root = str(meta.get("RepositoryRoot") or "").strip()
+        if repo_root:
+            repo_root = repo_root.rstrip("/\\")
+            repo = repo_root.split("/")[-1].split("\\")[-1].strip()
+    repo = repo or "unknown-repo"
+
+    head_sha = str(meta.get("HeadSha") or meta.get("HeadSHA") or meta.get("head_sha") or "").strip()
+    snapshot_id = str(meta.get("SnapshotId") or meta.get("snapshot_id") or "").strip()
+    if not snapshot_id:
+        snapshot_id = compute_snapshot_id(
+            repo_name=repo,
+            head_sha=head_sha,
+            folder_fingerprint=extract_folder_fingerprint(meta),
+        )
     return {
-        "repo": str(meta.get("Repo") or meta.get("repo") or "").strip(),
-        "snapshot_id": str(meta.get("SnapshotId") or meta.get("snapshot_id") or meta.get("HeadSha") or "").strip(),
+        "repo": repo,
+        "snapshot_id": snapshot_id,
     }
 
 

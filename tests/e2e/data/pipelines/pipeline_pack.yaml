@@ -316,12 +316,6 @@ YAMLpipelines:
     steps:
       - id: load_history
         action: load_conversation_history
-        next: budget
-
-      - id: budget
-        action: check_context_budget
-        inputs: composed_context_for_prompt
-        max_tokens_from_settings: "context_budget_tokens"
         next: call_answer
 
       - id: call_answer

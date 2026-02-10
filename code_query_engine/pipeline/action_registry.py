@@ -35,7 +35,6 @@ def build_default_action_registry() -> ActionRegistry:
     from .actions.translate_in_if_needed import TranslateInIfNeededAction
     from .actions.translate_out_if_needed import TranslateOutIfNeededAction
     from .actions.load_conversation_history import LoadConversationHistoryAction
-    from .actions.check_context_budget import CheckContextBudgetAction
     from .actions.search_nodes import SearchNodesAction
     from .actions.expand_dependency_tree import ExpandDependencyTreeAction
     from .actions.fetch_node_texts import FetchNodeTextsAction
@@ -49,7 +48,6 @@ def build_default_action_registry() -> ActionRegistry:
     r.register("translate_in_if_needed", TranslateInIfNeededAction())
     r.register("translate_out_if_needed", TranslateOutIfNeededAction())
     r.register("load_conversation_history", LoadConversationHistoryAction())
-    r.register("check_context_budget", CheckContextBudgetAction())
     r.register("call_model", CallModelAction())
     r.register("prefix_router", PrefixRouterAction())
     r.register("search_nodes", SearchNodesAction())

@@ -58,7 +58,7 @@ python -m tools.weaviate.import_branch_to_weaviate --env \
 
 ## 2) List imported snapshots (what you can use in SnapshotSets)
 
-Snapshot membership is driven by **ImportRun** records (each import has an immutable `head_sha`).
+Snapshot membership is driven by **ImportRun** records (each import has an immutable `snapshot_id`).
 
 ### 2.1 Show the last 20 imports (recommended)
 
@@ -67,7 +67,7 @@ curl -s http://localhost:18080/v1/graphql \
   -H 'Content-Type: application/json' \
   -d @- <<'JSON' | python -m json.tool
 {
-  "query": "{ Get { ImportRun(limit:20){ repo branch ref_type ref_name tag head_sha status started_utc finished_utc } } }"
+  "query": "{ Get { ImportRun(limit:20){ repo branch ref_type ref_name tag snapshot_id head_sha status started_utc finished_utc } } }"
 }
 JSON
 ```
@@ -75,9 +75,10 @@ JSON
 What to look for:
 - `repo` (this is what you must pass as `--repo` when creating a SnapshotSet)
 - `ref_name` / `branch` / `tag` (your human-readable label)
-- `head_sha` (immutable selector for queries)
+- `snapshot_id` (immutable selector for queries; also the tenant id)
+- `head_sha` (informational only)
 
-### 2.2 Resolve `head_sha` by branch name (optional)
+### 2.2 Resolve `snapshot_id` by branch name (optional)
 
 ```bash
 BRANCH="Release_FAKE_UNIVERSAL_4.60"
@@ -86,7 +87,7 @@ curl -s http://localhost:18080/v1/graphql \
   -H 'Content-Type: application/json' \
   -d @- <<JSON | python -m json.tool
 {
-  "query": "{ Get { ImportRun(where:{path:[\"branch\"],operator:Equal,valueText:\"${BRANCH}\"}, limit:5){ repo branch head_sha status finished_utc } } }"
+  "query": "{ Get { ImportRun(where:{path:[\"branch\"],operator:Equal,valueText:\"${BRANCH}\"}, limit:5){ repo branch snapshot_id head_sha status finished_utc } } }"
 }
 JSON
 ```

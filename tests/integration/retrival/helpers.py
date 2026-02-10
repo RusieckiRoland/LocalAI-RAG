@@ -116,8 +116,6 @@ def _resolve_snapshot_id_for_ref(client: weaviate.WeaviateClient, repo: str, ref
     props = best.properties or {}
     snapshot_id = str(props.get("snapshot_id") or "").strip()
     if not snapshot_id:
-        snapshot_id = str(props.get("head_sha") or "").strip()
-    if not snapshot_id:
         raise RuntimeError(f"ImportRun record for ref '{ref}' has empty snapshot_id (repo={repo}).")
     return snapshot_id
 

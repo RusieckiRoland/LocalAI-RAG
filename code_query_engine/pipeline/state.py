@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import json
+import time
 from typing import Any, Dict, List, Optional, Set
 
 from ..chat_types import Dialog
@@ -73,6 +75,20 @@ class PipelineState:
     # Additional: used by some actions/tests
     seen_chunk_ids: Set[str] = field(default_factory=set)
 
+    # ------------------------------------------------------------------
+    # Inbox (per-run, memory-only)
+    # ------------------------------------------------------------------
+    # List of messages with schema:
+    #   - target_step_id: str (required)
+    #   - topic: str (required)
+    #   - payload: dict (optional; JSON-serializable primitives only)
+    #
+    # Invariant: each new PipelineState starts with an empty inbox.
+    inbox: List[Dict[str, Any]] = field(default_factory=list)
+
+    # Overwritten by the engine/base_action on each step entry (convenience for actions).
+    inbox_last_consumed: List[Dict[str, Any]] = field(default_factory=list)
+
     def history_for_prompt(self) -> str:
         parts: List[str] = []
         for msg in (self.history_dialog or []):
@@ -97,3 +113,96 @@ class PipelineState:
         if self.user_question_en:
             return self.user_question_en
         return self.user_query
+
+    # ------------------------------
+    # Inbox helpers
+    # ------------------------------
+
+    def enqueue_message(
+        self,
+        *,
+        target_step_id: str,
+        topic: str,
+        payload: Optional[Dict[str, Any]] = None,
+        sender_step_id: Optional[str] = None,
+    ) -> None:
+        target = str(target_step_id or "").strip()
+        t = str(topic or "").strip()
+        if not target:
+            raise ValueError("enqueue_message: target_step_id is required")
+        if not t:
+            raise ValueError("enqueue_message: topic is required")
+
+        msg: Dict[str, Any] = {"target_step_id": target, "topic": t}
+        if payload is not None:
+            if not isinstance(payload, dict):
+                raise ValueError("enqueue_message: payload must be a dict (JSON-serializable)")
+            # Validate JSON-serializability deterministically (sorted keys, compact).
+            try:
+                json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+            except Exception as ex:
+                raise ValueError(f"enqueue_message: payload is not JSON-serializable: {ex}") from ex
+            msg["payload"] = payload
+
+        self.inbox.append(msg)
+
+        # Record for log_out augmentation (base_action clears this per-step).
+        try:
+            buf = getattr(self, "_inbox_enqueued_buffer", None)
+            if isinstance(buf, list):
+                buf.append(msg)
+        except Exception:
+            pass
+
+        # Always record an ENQUEUE trace event (if trace collection is enabled, engine will persist it).
+        self._append_pipeline_trace_event(
+            {
+                "event_type": "ENQUEUE",
+                "ts_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                "t_ms": int(time.time() * 1000),
+                "run_id": getattr(self, "pipeline_run_id", None),
+                "session_id": getattr(self, "session_id", None),
+                "pipeline_name": getattr(self, "pipeline_name", None),
+                "sender_step_id": sender_step_id or getattr(self, "_current_step_id", None),
+                "target_step_id": target,
+                "topic": t,
+                "payload_summary": _payload_summary(payload),
+            }
+        )
+
+    def consume_inbox_for_step(self, *, step_id: str) -> List[Dict[str, Any]]:
+        sid = str(step_id or "").strip()
+        if not sid:
+            return []
+        inbox = list(self.inbox or [])
+        keep: List[Dict[str, Any]] = []
+        taken: List[Dict[str, Any]] = []
+        for msg in inbox:
+            try:
+                if str((msg or {}).get("target_step_id") or "").strip() == sid:
+                    taken.append(msg)
+                else:
+                    keep.append(msg)
+            except Exception:
+                keep.append(msg)
+        self.inbox = keep
+        return taken
+
+    def _append_pipeline_trace_event(self, event: Dict[str, Any]) -> None:
+        lst = getattr(self, "pipeline_trace_events", None)
+        if lst is None:
+            lst = []
+            setattr(self, "pipeline_trace_events", lst)
+        lst.append(event)
+
+
+def _payload_summary(payload: Optional[Dict[str, Any]], *, max_len: int = 400) -> str:
+    if payload is None:
+        return ""
+    try:
+        s = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    except Exception:
+        s = repr(payload)
+    if len(s) > max_len:
+        return s[: max_len - 3] + "..."
+    return s

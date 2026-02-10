@@ -98,14 +98,7 @@ YAMLpipeline:
       action: fetch_node_texts
       max_context_tokens: 4096
       top_n_from_settings: "node_text_fetch_top_n"
-      next: check_context_budget
-
-    - id: check_context_budget
-      action: check_context_budget
-      inputs: composed_context_for_prompt
-      max_tokens_from_settings: "max_context_tokens"
-      on_over_limit: call_model_summarize_context
-      on_ok: call_model_answer
+      next: call_model_answer
 
     - id: call_model_summarize_context
       action: call_model

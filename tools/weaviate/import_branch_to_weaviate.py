@@ -43,6 +43,8 @@ import weaviate.classes as wvc
 from vector_db.weaviate_client import create_client, get_settings, load_dotenv
 from weaviate.util import generate_uuid5
 
+from tools.weaviate.snapshot_id import compute_snapshot_id, extract_folder_fingerprint
+
 try:
     from sentence_transformers import SentenceTransformer
 except Exception as ex:  # pragma: no cover
@@ -403,22 +405,15 @@ def open_bundle(path: str) -> Tuple[BundleReader, RepoMeta]:
     head_sha_raw = meta_json.get("HeadSha") or meta_json.get("HeadSHA") or meta_json.get("head_sha")
     head_sha = str(head_sha_raw or "").strip()
 
-    folder_fp_raw = meta_json.get("FolderFingerprint") or meta_json.get("folder_fingerprint")
-    folder_fingerprint = str(folder_fp_raw or "").strip()
+    folder_fingerprint = extract_folder_fingerprint(meta_json)
 
     if not branch:
         branch = "(unknown)"
 
     # snapshot_id (requested):
     # - UUID5("RepoName:HeadSha") if HeadSha present
-    # - else UUID5("FolderFingerprint") if present
-    # - else error
-    if head_sha:
-        snapshot_id = str(generate_uuid5(f"{repo_name}:{head_sha}"))
-    elif folder_fingerprint:
-        snapshot_id = str(generate_uuid5(folder_fingerprint))
-    else:
-        raise ValueError("repo_meta.json: cannot compute snapshot_id (HeadSha and FolderFingerprint are empty)")
+    # - else UUID5("RepoName:FolderFingerprint")
+    snapshot_id = compute_snapshot_id(repo_name=repo_name, head_sha=head_sha, folder_fingerprint=folder_fingerprint)
 
     meta = RepoMeta(
         repo=repo_name,

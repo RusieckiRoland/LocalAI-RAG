@@ -248,9 +248,6 @@ def resolve_refs_to_snapshot_ids(
         props = best.properties or {}
         snapshot_id = str(props.get("snapshot_id") or "").strip()
         if not snapshot_id:
-            # Fallback to head_sha if snapshot_id is missing (legacy imports).
-            snapshot_id = str(props.get("head_sha") or "").strip()
-        if not snapshot_id:
             raise RuntimeError(f"ImportRun record for ref '{ref}' has empty snapshot_id (repo={repo}).")
 
         out[ref] = snapshot_id
@@ -491,9 +488,11 @@ def _print_snapshots(items: List[Dict[str, Any]]) -> None:
         label = friendly or _choose_ref_label(p)
         fin = str(p.get("finished_utc") or p.get("started_utc") or "")
         kind = "tag" if str(p.get("tag") or "").strip() else ("branch" if str(p.get("branch") or "").strip() else "ref")
-        sid = snapshot_id or head_sha
+        sid = snapshot_id
+        sid_short = (sid[:12] + "...") if sid else "(missing)"
         friendly_part = f"  friendly={friendly}" if friendly else ""
-        print(f"{i:>3}. repo={repo}  {kind}={label}{friendly_part}  snapshot_id={sid[:12]}...  finished={fin}")
+        head_part = f"  head_sha={head_sha[:12]}..." if head_sha else ""
+        print(f"{i:>3}. repo={repo}  {kind}={label}{friendly_part}  snapshot_id={sid_short}{head_part}  finished={fin}")
 
 
 def _collect_refs_for_snapshot(client: "weaviate.WeaviateClient", *, repo: str, snapshot_id: str) -> List[str]:
@@ -501,12 +500,7 @@ def _collect_refs_for_snapshot(client: "weaviate.WeaviateClient", *, repo: str, 
     filters = Filter.all_of(
         [
             Filter.by_property("repo").equal(repo),
-            Filter.any_of(
-                [
-                    Filter.by_property("snapshot_id").equal(snapshot_id),
-                    Filter.by_property("head_sha").equal(snapshot_id),
-                ]
-            ),
+            Filter.by_property("snapshot_id").equal(snapshot_id),
         ]
     )
     res = coll.query.fetch_objects(
@@ -814,9 +808,9 @@ def _cmd_snapshots(args: argparse.Namespace) -> int:
         labels = [_choose_ref_label(p) for p in selected]
         snapshot_ids = _normalize_list(
             [
-                str(p.get("snapshot_id") or p.get("head_sha") or "").strip()
+                str(p.get("snapshot_id") or "").strip()
                 for p in selected
-                if str(p.get("snapshot_id") or p.get("head_sha") or "").strip()
+                if str(p.get("snapshot_id") or "").strip()
             ]
         )
         allowed_refs = _normalize_list(labels)
@@ -893,7 +887,7 @@ def _cmd_purge_snapshot(args: argparse.Namespace) -> int:
         target = items[selected_nums[0] - 1]
 
         repo = str(target.get("repo") or "").strip()
-        snapshot_id = str(target.get("snapshot_id") or target.get("head_sha") or "").strip()
+        snapshot_id = str(target.get("snapshot_id") or "").strip()
         if not repo or not snapshot_id:
             raise SystemExit("Selected snapshot has missing repo or snapshot_id.")
 

@@ -21,7 +21,6 @@ class PipelineValidator:
         "translate_in_if_needed",
         "translate_out_if_needed",
         "load_conversation_history",
-        "check_context_budget",
         "search_nodes",
         "expand_dependency_tree",
         "fetch_node_texts",

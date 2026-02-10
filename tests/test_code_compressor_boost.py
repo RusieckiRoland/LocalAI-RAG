@@ -1,5 +1,5 @@
 import re
-from dotnet_sumarizer.code_compressor import compress_chunks
+from dotnet_summarizer.code_compressor import compress_chunks
 
 
 # --- helpers ---

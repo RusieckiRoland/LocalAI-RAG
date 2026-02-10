@@ -33,12 +33,12 @@ It is also the **Weaviate tenant name**.
 
 `snapshot_id` is built deterministically:
 - **Git repositories:** `UUID(repoName:HeadSha)`  
-- **Non-Git repositories:** `UUID(repoName:folderFingerprint)`  
+- **Non-Git repositories:** `UUID(repoName:FolderFingerprint)`  
 
 Where:
 - `repoName` is the stable configured repository name,
 - `HeadSha` is the commit SHA of the imported snapshot,
-- `folderFingerprint` is a content hash (a digest computed from *all project files*) representing the exact folder state.
+- `FolderFingerprint` is a deterministic fingerprint representing the exact folder state.
 
 > Note: The exact UUID construction must remain deterministic for the same inputs. The goal is stable, collision-resistant snapshot identity, not human readability.
 

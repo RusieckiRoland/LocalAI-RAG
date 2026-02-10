@@ -125,14 +125,35 @@ class PipelineEngine:
         # Enable per-interaction trace file in dev via env flag.
         # This flag also enables in-memory step events produced by actions.
         trace_file_enabled = (os.getenv("RAG_PIPELINE_TRACE_FILE") or "").strip().lower() in ("1", "true", "yes", "on")
+        trace_events_enabled = trace_file_enabled or (os.getenv("RAG_PIPELINE_TRACE") or "").strip().lower() in (
+            "1",
+            "true",
+            "yes",
+            "on",
+        )
+        trace_events_enabled = trace_events_enabled or bool(getattr(runtime, "pipeline_trace_enabled", False))
+
+        if trace_events_enabled:
+            # Stable-ish run id for correlating ENQUEUE/CONSUME/RUN_END across one PipelineEngine.run().
+            try:
+                session_id = getattr(state, "session_id", None) or "no-session"
+                pipeline_name = getattr(state, "pipeline_name", None) or pipeline.name or "no-pipeline"
+                safe_session = str(session_id).replace("/", "_").replace("\\", "_").replace(" ", "_")
+                safe_pipeline = str(pipeline_name).replace("/", "_").replace("\\", "_").replace(" ", "_")
+                run_id = getattr(state, "pipeline_run_id", None)
+                if not run_id:
+                    run_id = f"{int(time.time() * 1000)}_{safe_session}_{safe_pipeline}"
+                    setattr(state, "pipeline_run_id", run_id)
+            except Exception:
+                pass
+
+            if getattr(state, "pipeline_trace_events", None) is None:
+                setattr(state, "pipeline_trace_events", [])
+
         if trace_file_enabled:
             # Some actions may check runtime.pipeline_trace_enabled to decide if they should record events.
             # We set it dynamically to avoid changing PipelineRuntime signature.
             setattr(runtime, "pipeline_trace_enabled", True)
-
-            # Ensure the event list exists even if some actions don't append anything.
-            if getattr(state, "pipeline_trace_events", None) is None:
-                setattr(state, "pipeline_trace_events", [])
 
         # We want to write a JSON file even if the pipeline raises.
         trace_error: Optional[Dict[str, Any]] = None
@@ -173,6 +194,14 @@ class PipelineEngine:
 
                 break
 
+            # Policy: fail-fast if inbox is not empty at run end (recommended for tests).
+            fail_fast = (os.getenv("RAG_PIPELINE_INBOX_FAIL_FAST") or "").strip().lower() in ("1", "true", "yes", "on")
+            remaining = list(getattr(state, "inbox", []) or [])
+            if remaining and fail_fast:
+                raise RuntimeError(
+                    f"PIPELINE_INBOX_NOT_EMPTY: remaining={len(remaining)} (set RAG_PIPELINE_INBOX_FAIL_FAST=0 to log-only)"
+                )
+
             # Resolve final answer (what the caller sees)
             final_answer = getattr(state, "answer_en", None) or ""
             if bool(getattr(state, "translate_chat", False)) and getattr(state, "answer_pl", None):
@@ -207,6 +236,38 @@ class PipelineEngine:
             raise
 
         finally:
+            # Always emit RUN_END trace event when tracing is enabled (even on errors).
+            if trace_events_enabled:
+                inbox_remaining = list(getattr(state, "inbox", []) or [])
+                rem_pairs: List[Dict[str, str]] = []
+                for m in inbox_remaining:
+                    if not isinstance(m, dict):
+                        continue
+                    rem_pairs.append(
+                        {
+                            "target_step_id": str(m.get("target_step_id") or "").strip(),
+                            "topic": str(m.get("topic") or "").strip(),
+                        }
+                    )
+                evt = {
+                    "event_type": "RUN_END",
+                    "ts_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                    "t_ms": int(time.time() * 1000),
+                    "run_id": getattr(state, "pipeline_run_id", None),
+                    "session_id": getattr(state, "session_id", None),
+                    "pipeline_name": getattr(state, "pipeline_name", None),
+                    "inbox_remaining_count": len(inbox_remaining),
+                    "inbox_remaining": rem_pairs,
+                }
+                try:
+                    events = getattr(state, "pipeline_trace_events", None)
+                    if events is None:
+                        events = []
+                        setattr(state, "pipeline_trace_events", events)
+                    events.append(evt)
+                except Exception:
+                    pass
+
             if trace_file_enabled:
                 # Write one JSON file per interaction (per PipelineEngine.run()).
                 trace_dir = (os.getenv("RAG_PIPELINE_TRACE_DIR") or "").strip()
@@ -237,6 +298,7 @@ class PipelineEngine:
                     model_input_en = getattr(state, "model_input_en", None) or ""
 
                 payload: Dict[str, Any] = {
+                    "run_id": getattr(state, "pipeline_run_id", None),
                     "ts_utc": ts_utc,
                     "ts_ms": ts_ms,
                     "session_id": getattr(state, "session_id", None),
@@ -271,3 +333,23 @@ class PipelineEngine:
                 with open(tmp_latest, "w", encoding="utf-8") as f:
                     json.dump(payload, f, ensure_ascii=False, indent=2)
                 os.replace(tmp_latest, latest_path)
+
+                # Deterministic JSONL (one event per line) for easier grep/streaming.
+                try:
+                    events = list(getattr(state, "pipeline_trace_events", []) or [])
+                    jsonl_name = filename.replace(".json", ".jsonl")
+                    jsonl_path = Path(trace_dir) / jsonl_name
+                    tmp_jsonl = str(jsonl_path) + ".tmp"
+                    with open(tmp_jsonl, "w", encoding="utf-8") as f:
+                        for ev in events:
+                            f.write(json.dumps(ev, ensure_ascii=False, sort_keys=True, separators=(",", ":")) + "\n")
+                    os.replace(tmp_jsonl, jsonl_path)
+
+                    latest_jsonl = Path(trace_dir) / "latest.jsonl"
+                    tmp_latest_jsonl = str(latest_jsonl) + ".tmp"
+                    with open(tmp_latest_jsonl, "w", encoding="utf-8") as f:
+                        for ev in events:
+                            f.write(json.dumps(ev, ensure_ascii=False, sort_keys=True, separators=(",", ":")) + "\n")
+                    os.replace(tmp_latest_jsonl, latest_jsonl)
+                except Exception:
+                    py_logger.exception("soft-failure: failed to write pipeline trace JSONL")

@@ -11,7 +11,6 @@ class TokenCounter(Protocol):
     Minimal contract required by the pipeline.
 
     - fetch_node_texts expects: count_tokens(...) OR count(...)
-    - check_context_budget expects: count(...)
     We provide both to be safe and explicit.
     """
 
@@ -58,7 +57,7 @@ class LlamaCppTokenCounter(TokenCounter):
         return int(len(tokens))
 
     def count(self, text: str) -> int:
-        # Alias required by check_context_budget
+        # Keep a short alias for compatibility with simpler callers.
         return self.count_tokens(text)
 
 
