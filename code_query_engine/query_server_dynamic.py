@@ -301,7 +301,26 @@ def _resolve_cfg_path(p: str) -> str:
 from .model import Model  # noqa: E402
 
 
-_model = Model(_resolve_cfg_path(str(_runtime_cfg.get("model_path_analysis") or "")))
+_model = Model(
+    _resolve_cfg_path(str(_runtime_cfg.get("model_path_analysis") or "")),
+    default_max_tokens=int(_runtime_cfg.get("model_max_tokens", 1500) or 1500),
+    n_ctx=int(_runtime_cfg.get("model_context_window", 4096) or 4096),
+)
+
+try:
+    _llm = getattr(_model, "llm", None)
+    _n_ctx = None
+    if _llm is not None:
+        v = getattr(_llm, "n_ctx", None)
+        _n_ctx = v() if callable(v) else v
+    py_logger.info(
+        "Model defaults loaded from config.json: model_max_tokens=%s (output), model_context_window=%s (context window), llm_n_ctx=%s",
+        getattr(_model, "default_max_tokens", None),
+        getattr(_model, "n_ctx", None),
+        _n_ctx,
+    )
+except Exception:
+    py_logger.exception("soft-failure: failed to log model defaults; continuing")
 _markdown_translator = MarkdownTranslator(_resolve_cfg_path(str(_runtime_cfg.get("model_translation_en_pl") or "")))
 _translator_pl_en = Translator(_resolve_cfg_path(str(_runtime_cfg.get("model_translation_pl_en") or "")))
 
@@ -418,6 +437,10 @@ _runner = DynamicPipelineRunner(
     token_counter=token_counter,
     logger=_interaction_logger,
     graph_provider=_graph_provider,
+    limits_policy=(
+        (os.getenv("PIPELINE_LIMITS_POLICY") or "").strip().lower()
+        or ("fail_fast" if _development_enabled else "auto_clamp")
+    ),
 )
 
 

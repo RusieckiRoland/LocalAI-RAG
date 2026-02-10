@@ -19,6 +19,7 @@ import inspect
 _TRACE_PROMPT_NAME_ATTR = "_pipeline_trace_prompt_name"
 _TRACE_RENDERED_PROMPT_ATTR = "_pipeline_trace_rendered_prompt"
 _TRACE_RENDERED_CHAT_MESSAGES_ATTR = "_pipeline_trace_rendered_chat_messages"
+_TRACE_HISTORY_TRIM_ATTR = "_pipeline_trace_history_trim"
 
 
 class CallModelAction(PipelineActionBase):
@@ -68,6 +69,10 @@ class CallModelAction(PipelineActionBase):
         out["prompt_key"] = raw.get("prompt_key", "")
         out["native_chat"] = bool(raw.get("native_chat", False))
         out["prompt_format"] = str(raw.get("prompt_format", "") or "")
+
+        hist_trim = getattr(state, _TRACE_HISTORY_TRIM_ATTR, None)
+        if isinstance(hist_trim, dict) and hist_trim:
+            out["history_trim"] = hist_trim
         
         model_resp = getattr(state, "last_model_response", None)
         if isinstance(model_resp, str) and model_resp:
@@ -337,6 +342,31 @@ class CallModelAction(PipelineActionBase):
         # History source is fixed: state.history_dialog (Dialog).
         use_history = bool(raw.get("use_history", False))
         history: Dialog = list(getattr(state, "history_dialog", None) or []) if use_history else []
+        if use_history:
+            max_history_tokens = (getattr(runtime, "pipeline_settings", {}) or {}).get("max_history_tokens")
+            if max_history_tokens is not None:
+                try:
+                    max_history_tokens_i = int(max_history_tokens)
+                except Exception as ex:
+                    raise ValueError("call_model: settings.max_history_tokens must be int") from ex
+                if max_history_tokens_i < 0:
+                    raise ValueError("call_model: settings.max_history_tokens must be >= 0")
+                if max_history_tokens_i == 0:
+                    history = []
+                    setattr(state, _TRACE_HISTORY_TRIM_ATTR, {"policy": "max_history_tokens", "before": len(getattr(state, "history_dialog", []) or []), "after": 0})
+                else:
+                    history_before = len(history)
+                    history = self._trim_history_dialog_by_token_budget(
+                        history=history,
+                        token_budget=max_history_tokens_i,
+                        token_counter=getattr(runtime, "token_counter", None),
+                    )
+                    if len(history) != history_before:
+                        setattr(
+                            state,
+                            _TRACE_HISTORY_TRIM_ATTR,
+                            {"policy": "max_history_tokens", "before": history_before, "after": len(history)},
+                        )
 
         user_parts_out: list[str] = []
 
@@ -367,3 +397,31 @@ class CallModelAction(PipelineActionBase):
 
         user_part = "".join(user_parts_out)
         return system_prompt, user_part, history
+
+    def _trim_history_dialog_by_token_budget(self, *, history: Dialog, token_budget: int, token_counter: Any) -> Dialog:
+        """
+        Best-effort: trims oldest turns first to stay within token_budget.
+        This uses the runtime token counter if available; otherwise it returns history unchanged.
+        """
+        if token_budget <= 0:
+            return []
+        if token_counter is None or not callable(getattr(token_counter, "token_count", None)):
+            return history
+
+        def _turn_tokens(turn: tuple[str, str]) -> int:
+            u, a = turn
+            # Conservative overhead for role wrappers / separators in prompt builder.
+            overhead = 32
+            return int(token_counter.token_count((u or "") + "\n\n" + (a or ""))) + overhead
+
+        # Keep most recent turns; drop from the front until fits.
+        turns = list(history or [])
+        total = sum(_turn_tokens(t) for t in turns)
+        if total <= token_budget:
+            return turns
+
+        while turns and total > token_budget:
+            total -= _turn_tokens(turns[0])
+            turns.pop(0)
+
+        return turns

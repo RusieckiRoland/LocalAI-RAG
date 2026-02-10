@@ -226,6 +226,28 @@ class PipelineLoader:
         info = idx[pipeline_name]
         return self.load_from_path(str(info.file_path), pipeline_name=info.pipeline_name)
 
+    def resolve_files_by_name(self, name: str) -> List[Path]:
+        """
+        Returns the pipeline YAML file path and all YAML files referenced via `extends`.
+
+        This is used for caching decisions (mtime-based). It does NOT parse into PipelineDef;
+        it only follows the extends chain.
+        """
+        pipeline_name = (name or "").strip()
+        if not pipeline_name:
+            raise ValueError("Pipeline name cannot be empty.")
+
+        direct = self._try_direct_file_by_name(pipeline_name)
+        if direct is not None:
+            path, selected_name = direct
+            return self._resolve_extends_files(path=path, pipeline_name=selected_name, depth=0)
+
+        idx = self._get_or_build_index()
+        if pipeline_name not in idx:
+            raise FileNotFoundError(f"Pipeline '{pipeline_name}' not found under '{self._pipelines_root}'.")
+        info = idx[pipeline_name]
+        return self._resolve_extends_files(path=info.file_path, pipeline_name=info.pipeline_name, depth=0)
+
     def list_pipeline_names(self) -> List[str]:
         """
         Returns all known pipeline names under pipelines_root.
@@ -324,6 +346,24 @@ class PipelineLoader:
         merged["YAMLpipeline"].pop("extends", None)
 
         return merged
+
+    def _resolve_extends_files(self, *, path: Path, pipeline_name: Optional[str], depth: int) -> List[Path]:
+        if depth > 20:
+            raise ValueError("Too deep extends chain (possible cycle).")
+
+        out: List[Path] = [path]
+
+        raw = self._read_yaml(path)
+        doc = _select_pipeline_from_doc(raw, pipeline_name=pipeline_name)
+        pipeline = dict(doc.get("YAMLpipeline") or {})
+        extends_val = pipeline.get("extends")
+        if not extends_val:
+            return out
+
+        target_raw, extends_pipeline_name = _parse_extends_value(str(extends_val))
+        parent_path = self._normalize_extends_target(current_path=path, target=target_raw)
+        out.extend(self._resolve_extends_files(path=parent_path, pipeline_name=extends_pipeline_name, depth=depth + 1))
+        return out
 
     def _normalize_extends_target(self, *, current_path: Path, target: str) -> Path:
         """

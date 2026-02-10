@@ -67,7 +67,7 @@ Minimal example:
 ```yaml
 - id: call_answer
   action: call_model
-  prompt_key: "answer_v1"
+  prompt_key: "rejewski/answer_v1"
   next: finalize
 
 - id: finalize

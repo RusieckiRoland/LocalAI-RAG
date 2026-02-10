@@ -60,6 +60,7 @@ class DynamicPipelineRunner:
         graph_provider: Any = None,
         token_counter: Any = None,
         allow_test_pipelines: bool = False,
+        limits_policy: str | None = None,
     ) -> None:
         root = pipelines_root or pipelines_dir
         if not root:
@@ -82,12 +83,14 @@ class DynamicPipelineRunner:
         self.logger = logger
 
         self.allow_test_pipelines = bool(allow_test_pipelines)
+        self.limits_policy = limits_policy
 
         self._loader = PipelineLoader(pipelines_root=self.pipelines_root)
         self._validator = PipelineValidator()
 
         # Engine needs an action registry (tests may override runner._engine anyway).
         self._engine = PipelineEngine(registry=build_default_action_registry())
+        self._budget_contract_cache: dict[str, tuple[dict[str, float], dict[str, Any], PipelineDef]] = {}
 
     def run(
         self,
@@ -119,6 +122,66 @@ class DynamicPipelineRunner:
         effective_settings = dict(pipeline.settings or {})
         if overrides:
             effective_settings.update(dict(overrides))
+
+        # Budget contract (mtime-cached, no file writes). May clamp settings/steps in-memory.
+        try:
+            from .pipeline.budget_contract import enforce_budget_contract, normalize_limits_policy
+
+            policy = normalize_limits_policy(self.limits_policy) or "fail_fast"
+
+            # Cache key: pipeline logical name (post-extends merge uses that name).
+            cache_key = pipe_name
+
+            # Fingerprint sources: YAML chain + prompt files (mtime-based; stat only).
+            prompts_dir = str(effective_settings.get("prompts_dir") or "prompts")
+            prompt_keys: set[str] = set()
+            for s in pipeline.steps:
+                if s.action != "call_model":
+                    continue
+                pk = str((s.raw or {}).get("prompt_key") or "").strip()
+                if pk:
+                    prompt_keys.add(pk)
+
+            files: list[str] = [os.fspath(p) for p in self._loader.resolve_files_by_name(pipe_name)]
+            for pk in sorted(prompt_keys):
+                files.append(os.path.join(prompts_dir, f"{pk}.txt"))
+
+            fp: dict[str, float] = {}
+            for path in files:
+                try:
+                    fp[path] = float(os.path.getmtime(path))
+                except Exception:
+                    fp[path] = -1.0
+
+            cached = self._budget_contract_cache.get(cache_key)
+            if cached and cached[0] == fp:
+                effective_settings = cached[1]
+                pipeline = cached[2]
+            else:
+                model_n_ctx = int(getattr(self.model, "n_ctx", 0) or 0)
+                if model_n_ctx <= 0:
+                    llm = getattr(self.model, "llm", None)
+                    v = getattr(llm, "n_ctx", None) if llm is not None else None
+                    model_n_ctx = int(v() if callable(v) else (v or 0))
+
+                model_default_max = int(getattr(self.model, "default_max_tokens", 1500) or 1500)
+
+                pipe2, settings2, _res, fp2 = enforce_budget_contract(
+                    loader=self._loader,
+                    pipeline=pipeline,
+                    effective_settings=effective_settings,
+                    model_context_window=model_n_ctx,
+                    model_default_max_tokens=model_default_max,
+                    token_counter=self.token_counter,
+                    policy=policy,
+                )
+
+                effective_settings = settings2
+                pipeline = pipe2
+                self._budget_contract_cache[cache_key] = (fp2, effective_settings, pipeline)
+        except Exception:
+            py_logger.exception("fatal: budget contract enforcement failed")
+            raise
 
         state = PipelineState(
             user_query=user_query,

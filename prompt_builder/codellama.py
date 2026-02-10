@@ -24,8 +24,14 @@ class CodellamaPromptBuilder(BasePromptBuilder):
     - Escape braces to avoid accidental .format injection in callers.
     """
 
-    BOS = "<s>"
-    EOS = "</s>"
+    # NOTE:
+    # llama-cpp-python typically adds BOS automatically. If we also include literal "<s>" in the prompt text,
+    # llama.cpp can warn about duplicate leading "<s>" and quality degradation.
+    # Therefore we do NOT emit BOS/EOS markers in the rendered prompt string.
+    #
+    # We still keep the token strings for escaping user-controlled input.
+    BOS_TOKEN = "<s>"
+    EOS_TOKEN = "</s>"
 
     B_INST = "[INST]"
     E_INST = "[/INST]"
@@ -42,8 +48,8 @@ class CodellamaPromptBuilder(BasePromptBuilder):
         out = out.replace(self.E_SYS, "< </SYS> >")
 
         # Also neutralize BOS/EOS markers if the user tries to inject them.
-        out = out.replace(self.BOS, "< s >")
-        out = out.replace(self.EOS, "< /s >")
+        out = out.replace(self.BOS_TOKEN, "< s >")
+        out = out.replace(self.EOS_TOKEN, "< /s >")
         return out
 
     def _escape_braces(self, text: str) -> str:
@@ -151,8 +157,8 @@ class CodellamaPromptBuilder(BasePromptBuilder):
 
             safe_a = self._escape_braces(self._escape_control_tokens(a))
 
-            # History turns are complete: <s>[INST] user [/INST] assistant </s>
-            parts.append(f"{self.BOS}{self.B_INST} {safe_u} {self.E_INST} {safe_a} {self.EOS}")
+            # History turns are complete: [INST] user [/INST] assistant
+            parts.append(f"{self.B_INST} {safe_u} {self.E_INST} {safe_a}")
 
         # Final/current user message:
         final_user = modelFormatedText.strip()
@@ -162,8 +168,8 @@ class CodellamaPromptBuilder(BasePromptBuilder):
         if not system_attached:
             safe_final = _attach_system_if_needed(safe_final, need_system=True)
 
-        # The last message must be from user, without closing </s>, so the model generates the assistant.
-        parts.append(f"{self.BOS}{self.B_INST}\n{safe_final}\n{self.E_INST}")
+        # The last message must be from user, so the model generates the assistant.
+        parts.append(f"{self.B_INST}\n{safe_final}\n{self.E_INST}")
 
         return "\n".join(parts)
    

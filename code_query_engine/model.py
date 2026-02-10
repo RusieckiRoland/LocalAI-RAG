@@ -22,9 +22,15 @@ class Model:
     Prompt construction is NOT done here. It must be done by the pipeline step (call_model).
     """
 
-    def __init__(self, model_path: str):
+    def __init__(self, model_path: str, *, default_max_tokens: int = 1500, n_ctx: int = 4096):
         self.modelPath = model_path  # keep original attribute name for compatibility
-        self.llm = self._create_llama(self.modelPath)
+        self.default_max_tokens = int(default_max_tokens)
+        self.n_ctx = int(n_ctx)
+        if self.default_max_tokens <= 0:
+            raise ValueError("Model: default_max_tokens must be > 0")
+        if self.n_ctx <= 0:
+            raise ValueError("Model: n_ctx must be > 0")
+        self.llm = self._create_llama(self.modelPath, n_ctx=self.n_ctx)
 
     # --------------------------------------------------------------------- #
     # Public API
@@ -42,7 +48,7 @@ class Model:
         top_p: Optional[float] = None,
     ) -> str:
         if max_tokens is None:
-            max_tokens = 1500
+            max_tokens = self.default_max_tokens
         if temperature is None:
             temperature = 0.1
 
@@ -93,7 +99,7 @@ class Model:
           The model does NOT remember history by itself; you must pass it every call.
         """
         if max_tokens is None:
-            max_tokens = 1500
+            max_tokens = self.default_max_tokens
         if temperature is None:
             temperature = 0.1
 
@@ -168,14 +174,14 @@ class Model:
     # Internal helpers
     # --------------------------------------------------------------------- #
 
-    def _create_llama(self, model_path: str) -> Llama:
+    def _create_llama(self, model_path: str, *, n_ctx: int) -> Llama:
         """
         Try GPU first, then fall back to CPU if GPU init fails.
         """
         try:
             return Llama(
                 model_path=model_path,
-                n_ctx=4096,
+                n_ctx=int(n_ctx),
                 n_threads=8,
                 n_gpu_layers=-1,
                 verbose=False,
@@ -184,7 +190,7 @@ class Model:
             logger.warning(f"GPU init failed, falling back to CPU. Error: {gpu_err}")
             return Llama(
                 model_path=model_path,
-                n_ctx=4096,
+                n_ctx=int(n_ctx),
                 n_threads=8,
                 n_gpu_layers=0,
                 verbose=False,

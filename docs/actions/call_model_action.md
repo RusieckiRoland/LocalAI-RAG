@@ -18,8 +18,8 @@ The action loads the system prompt from:
 
 Example:
 - `prompts_dir = "prompts"`
-- `prompt_key = "rejewski/context_summarizer_v1"`  
-→ file: `prompts/rejewski/context_summarizer_v1.txt`
+- `prompt_key = "rejewski/router_v1"`  
+→ file: `prompts/rejewski/router_v1.txt`
 
 `prompt_key` may include **subfolders** (e.g. `e2e/router_v1`). The `.txt` extension is appended automatically.
 
@@ -93,7 +93,7 @@ Result:
 ```yaml
 - id: call_model_summarize_context
   action: call_model
-  prompt_key: "rejewski/context_summarizer_v1"
+  prompt_key: "sumarizer"
   use_history: true
   user_parts:
     evidence:
@@ -106,7 +106,7 @@ Result:
 ```
 
 Meaning:
-- system prompt: `prompts/rejewski/context_summarizer_v1.txt`
+- system prompt: `prompts/sumarizer.txt`
 - `user_part`:
   - `evidence` ← `state.context_blocks` wrapped as `### Evidence:`
   - `user_question` ← `state.user_question_en` wrapped as `### User:`
