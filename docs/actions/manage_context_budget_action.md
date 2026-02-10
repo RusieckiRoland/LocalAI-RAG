@@ -22,7 +22,10 @@ Most common layout:
 
 If `on_over` is used for context compaction, a common pattern is:
 
-`... → fetch_node_texts → manage_context_budget → (on_over: compact_existing_context) → manage_context_budget → ...`
+`... → fetch_node_texts → manage_context_budget → (on_over: call_summarize_context → set_context_from_summary) → manage_context_budget → ...`
+
+Recommended safety:
+- add a dedicated `loop_guard` for this retry loop to avoid infinite retries if compaction does not reduce enough.
 
 ---
 
@@ -222,7 +225,7 @@ Additionally, base action tracing may include inbox consume/enqueue summaries.
 - id: manage_budget
   action: manage_context_budget
   on_ok: call_model_answer
-  on_over: summarize_context
+  on_over: call_summarize_context
 ```
 
 ---
@@ -243,8 +246,50 @@ Additionally, base action tracing may include inbox consume/enqueue summaries.
       - language: dotnet
         policy: always
   on_ok: call_model_answer
-  on_over: summarize_context
+  on_over: call_summarize_context
 ```
+
+---
+
+## Example: on_over compaction loop (call_model + set_variables + retry)
+
+```yaml
+- id: manage_budget
+  action: manage_context_budget
+  on_ok: call_model_answer
+  on_over: budget_loop_guard
+
+- id: budget_loop_guard
+  action: loop_guard
+  max_turn_loops_from_settings: "max_turn_loops"
+  on_allow: call_summarize_context
+  on_deny: call_model_answer
+
+- id: call_summarize_context
+  action: call_model
+  prompt_key: "sumarizer"
+  max_output_tokens: 2000
+  user_parts:
+    context:
+      source: context_blocks
+      template: "### Context:\n{}\n\n"
+    user_question:
+      source: user_question_en
+      template: "### User:\n{}\n\n"
+  next: set_context_from_summary
+
+- id: set_context_from_summary
+  action: set_variables
+  rules:
+    - set: context_blocks
+      from: last_model_response
+      transform: to_context_blocks
+    - set: last_model_response
+      value: null
+  next: manage_budget
+```
+
+This loop compacts the **existing** `context_blocks`, then retries appending `node_texts` under the global budget.
 
 ---
 
