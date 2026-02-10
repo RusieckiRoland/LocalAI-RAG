@@ -65,6 +65,7 @@ class PipelineState:
     graph_edges: List[Dict[str, Any]] = field(default_factory=list)
     graph_debug: Dict[str, Any] = field(default_factory=dict)
     turn_loop_counter: int = 0
+    loop_counters: Dict[str, int] = field(default_factory=dict)
 
     # Final answer (optional convenience)
     final_answer: Optional[str] = None

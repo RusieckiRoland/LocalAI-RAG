@@ -107,12 +107,16 @@ class CallModelAction(PipelineActionBase):
         model_kwargs: Dict[str, Any] = {}
 
         max_tokens = opt_int(get_override(raw=step.raw, settings=runtime.pipeline_settings, key="max_tokens"))
+        # New alias: explicitly express output length limit (maps to model's max_tokens).
+        max_output_tokens = opt_int(get_override(raw=step.raw, settings=runtime.pipeline_settings, key="max_output_tokens"))
         temperature = opt_float(get_override(raw=step.raw, settings=runtime.pipeline_settings, key="temperature"))
         top_k = opt_int(get_override(raw=step.raw, settings=runtime.pipeline_settings, key="top_k"))
         top_p = opt_float(get_override(raw=step.raw, settings=runtime.pipeline_settings, key="top_p"))
 
-
-        if max_tokens is not None:
+        # Precedence: max_output_tokens overrides max_tokens if both are provided.
+        if max_output_tokens is not None:
+            model_kwargs["max_tokens"] = max_output_tokens
+        elif max_tokens is not None:
             model_kwargs["max_tokens"] = max_tokens
         if temperature is not None:
             model_kwargs["temperature"] = temperature

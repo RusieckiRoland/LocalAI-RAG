@@ -119,11 +119,16 @@ Meaning:
 ## Generation parameters (overrides) and default values
 `call_model` may optionally pass:
 - `max_tokens`
+- `max_output_tokens`
 - `temperature`
 - `top_k`
 - `top_p`
 
 If a parameter is not provided in YAML, `call_model` **does not override** it.
+
+Notes:
+- `max_output_tokens` is an explicit alias for the model output length limit. It maps to the model client parameter `max_tokens`.
+- If both `max_output_tokens` and `max_tokens` are provided, `max_output_tokens` **wins**.
 
 **Default values in the repo’s default `Model` implementation:**
 - `max_tokens = 1500`

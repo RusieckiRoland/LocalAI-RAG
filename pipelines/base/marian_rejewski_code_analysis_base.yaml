@@ -98,19 +98,41 @@ YAMLpipeline:
       action: fetch_node_texts
       max_context_tokens: 4096
       top_n_from_settings: "node_text_fetch_top_n"
-      next: call_model_answer
+      next: manage_budget
 
-    - id: call_model_summarize_context
+    - id: manage_budget
+      action: manage_context_budget
+      on_ok: call_model_answer
+      on_over: budget_loop_guard
+
+    - id: budget_loop_guard
+      action: loop_guard
+      max_turn_loops_from_settings: "max_turn_loops"
+      on_allow: call_summarize_context
+      on_deny: call_model_answer
+
+    - id: call_summarize_context
       action: call_model
-      prompt_key: "rejewski/context_summarizer_v1"
+      prompt_key: "sumarizer"
+      max_output_tokens: 2000
       user_parts:
-        evidence:
+        context:
           source: context_blocks
-          template: "### Evidence:\n{}\n\n"
+          template: "### Context:\n{}\n\n"
         user_question:
           source: user_question_en
           template: "### User:\n{}\n\n"
-      next: call_model_answer
+      next: set_context_from_summary
+
+    - id: set_context_from_summary
+      action: set_variables
+      rules:
+        - set: context_blocks
+          from: last_model_response
+          transform: to_context_blocks
+        - set: last_model_response
+          value: null
+      next: manage_budget
 
     - id: call_model_answer
       action: call_model
