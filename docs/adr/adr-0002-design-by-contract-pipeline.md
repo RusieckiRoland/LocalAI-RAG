@@ -30,6 +30,17 @@ We adopt **Design by Contract (DbC)** for the pipeline system, implemented as:
 
 This strengthens correctness without restricting extensibility: new actions can be added by defining their contracts.
 
+## Runtime messaging (intra-pipeline control)
+
+In addition to DbC validation, the runtime supports **intra-pipeline message passing** to allow actions to coordinate deterministically within a single run:
+
+- `PipelineState.inbox` is an in-memory queue of messages addressed by `target_step_id` (exact `StepDef.id`).
+- Any action may `enqueue_message(...)` to request/trigger behavior in a later step.
+- Every action **must consume and clear** messages addressed to its own `step.id` on step entry (even if it ignores them).
+- The inbox is **per-run only** (always starts empty; no persistence between runs).
+
+This mechanism is intentionally explicit (no broadcast) and debuggable via pipeline tracing.
+
 ## Rationale
 
 ### Why DbC is architecturally preferable

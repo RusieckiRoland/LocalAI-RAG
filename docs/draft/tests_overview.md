@@ -33,6 +33,7 @@ These layers are not equal in terms of expected churn.
 - Required YAML fields (e.g. `search_type`, `routes`, `user_parts`)
 - Input/output normalization
 - State mutations (`retrieval_mode`, `context_blocks`, `seed_nodes`)
+- Intra-pipeline control via `PipelineState.inbox` (message enqueue/consume by `step.id`)
 - Edge cases (empty payloads, duplicates, missing IDs)
 
 **What will break these tests:**
@@ -61,7 +62,8 @@ These tests should be updated **immediately** when an action contract changes.
 **What they cover:**
 - Engine step execution order
 - Interaction between router → fetch → answer
-- History loading, budget checks, finalization
+- History loading, evidence budgeting, finalization
+- Action coordination via inbox messaging (when used by a scenario)
 - Minimal model / retriever interaction
 
 **What will break these tests:**

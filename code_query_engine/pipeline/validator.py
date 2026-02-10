@@ -27,7 +27,8 @@ class PipelineValidator:
         "finalize",      
         "loop_guard",
         "set_variables",
-        "add_command_action"
+        "add_command_action",
+        "manage_context_budget",
     }
 
     def validate(self, pipeline: Any) -> List[str]:

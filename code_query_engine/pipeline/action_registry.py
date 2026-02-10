@@ -42,6 +42,7 @@ def build_default_action_registry() -> ActionRegistry:
     from .actions.finalize import FinalizeAction
     from .actions.set_variables import SetVariablesAction
     from .actions.add_command_action import AddCommandAction
+    from .actions.manage_context_budget import ManageContextBudgetAction
 
     r = ActionRegistry()
 
@@ -57,5 +58,6 @@ def build_default_action_registry() -> ActionRegistry:
     r.register("add_command_action", AddCommandAction())
     r.register("finalize", FinalizeAction())
     r.register("set_variables", SetVariablesAction())
+    r.register("manage_context_budget", ManageContextBudgetAction())
 
     return r
