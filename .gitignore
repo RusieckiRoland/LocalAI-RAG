@@ -90,4 +90,7 @@ clip_dump_*.txt
 
 /log/
 
-docs_pl/
+# Polish documentation (default: ignore), but allow selected tracked contracts.
+docs_pl/**
+!docs_pl/contacts/
+!docs_pl/contacts/conversation_history_service_contract.md
