@@ -58,6 +58,9 @@ class IRetrievalBackend(Protocol):
 
 
 class IMarkdownTranslatorEnPl(Protocol):
+    def translate_markdown(self, markdown_en: str) -> str:
+        ...
+
     def translate(self, text: str) -> str:
         ...
 

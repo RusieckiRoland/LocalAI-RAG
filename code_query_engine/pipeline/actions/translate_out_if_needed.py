@@ -17,9 +17,13 @@ class TranslateOutIfNeededAction(PipelineActionBase):
 
     def log_in(self, step: StepDef, state: PipelineState, runtime: PipelineRuntime) -> Dict[str, Any]:
         tr = getattr(runtime, "markdown_translator", None)
+        has_translate_markdown = bool(tr is not None and callable(getattr(tr, "translate_markdown", None)))
+        has_translate = bool(tr is not None and callable(getattr(tr, "translate", None)))
         return {
             "translate_chat": bool(getattr(state, "translate_chat", False)),
-            "translator_present": bool(tr is not None and hasattr(tr, "translate")),
+            "translator_present": bool(has_translate_markdown or has_translate),
+            "translator_has_translate_markdown": has_translate_markdown,
+            "translator_has_translate": has_translate,
             "answer_en_present": bool((getattr(state, "answer_en", None) or "").strip()),
         }
 
@@ -48,6 +52,14 @@ class TranslateOutIfNeededAction(PipelineActionBase):
         # Prefer markdown-aware translation if available.
         translator = getattr(runtime, "markdown_translator", None)
         if translator is not None:
+            fn_md = getattr(translator, "translate_markdown", None)
+            if callable(fn_md):
+                try:
+                    state.answer_translated = fn_md(answer_en)
+                    return None
+                except Exception:
+                    pass
+
             fn = getattr(translator, "translate", None)
             if callable(fn):
                 try:

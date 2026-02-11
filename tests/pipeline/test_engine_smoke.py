@@ -14,8 +14,11 @@ class DummyTranslator:
 
 
 class DummyMarkdownTranslator:
-    def translate(self, markdown_en: str) -> str:
+    def translate_markdown(self, markdown_en: str) -> str:
         return markdown_en
+
+    def translate(self, text: str) -> str:
+        return text
 
 
 class DummyHistory:

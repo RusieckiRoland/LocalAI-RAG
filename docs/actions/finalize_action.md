@@ -5,7 +5,7 @@
 `FinalizeAction` is a pipeline action that **finalizes a turn’s answer**:
 
 1) **Materializes the user-visible output** into `state.final_answer`.
-2) Keeps answer fields in a consistent state (`answer_en`, `answer_translated`).
+2) Produces the final user-visible answer (`final_answer`) from `answer_en`/`answer_translated`.
 3) (Optionally) performs **persist/logging** side-effects: writes to history and emits an interaction log.
 
 Key rule: `FinalizeAction` is the single place that **sets `state.final_answer`** as the answer shown to the user.
@@ -14,7 +14,8 @@ Key rule: `FinalizeAction` is the single place that **sets `state.final_answer`*
 
 `FinalizeAction` is deterministic and follows this priority:
 
-- if `state.answer_translated` is non-empty → `state.final_answer = state.answer_translated`
+- if `state.translate_chat` is enabled and `state.answer_translated` is non-empty → `state.final_answer = state.answer_translated`
+- otherwise → `state.final_answer = state.answer_en`
 - otherwise:
   - take `state.last_model_response` (strip)
   - copy it into `state.answer_en`
@@ -31,7 +32,8 @@ Always:
   - `answer_translated` if present,
   - otherwise `answer_en`.
 
-The action **does not translate**. If translation is needed, it should be done earlier (e.g., `translate_out_if_needed`) which populates `state.answer_translated`.
+The action **does not translate** and **does not populate** `answer_en`. Upstream steps should set `state.answer_en`,
+and (optionally) `translate_out_if_needed` can populate `state.answer_translated`.
 
 ## Persist / logging — optional
 

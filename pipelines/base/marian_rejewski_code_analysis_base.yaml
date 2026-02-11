@@ -64,23 +64,23 @@ YAMLpipeline:
       routes:
         semantic:
           prefix: "[SEMANTIC:]"
-          next: fetch_semantic
+          next: search_semantic
         bm25:
           prefix: "[BM25:]"
-          next: fetch_bm25
+          next: search_bm25
         direct:
           prefix: "[DIRECT:]"
           next: call_model_answer
       on_other: call_model_answer
 
-    - id: fetch_semantic
+    - id: search_semantic
       search_type: semantic
       action: search_nodes
       top_k: 12
       query_parser: JsonishQueryParser
       next: expand_dependency_tree
 
-    - id: fetch_bm25
+    - id: search_bm25
       search_type: bm25
       action: search_nodes
       top_k: 12
@@ -153,18 +153,26 @@ YAMLpipeline:
       routes:
         answer:
           prefix: "[Answer:]"
-          next: translate_out
+          next: set_answer_from_last_model_response
         followup:
           prefix: "[REQUESTING DATA ON:]"
           next: loop_guard
-      on_other: translate_out
+      on_other: set_answer_from_last_model_response
 
     - id: loop_guard
       action: loop_guard
       max_turn_loops_from_settings: "max_turn_loops"
       on_allow: call_model_router
-      on_deny: translate_out
+      on_deny: set_answer_from_last_model_response
 
+    - id: set_answer_from_last_model_response
+      action: set_variables
+      rules:
+        - set: answer_en
+          from: last_model_response
+        - set: answer_translated
+          value: null
+      next: translate_out
 
     - id: translate_out
       action: translate_out_if_needed

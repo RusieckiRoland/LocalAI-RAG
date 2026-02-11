@@ -44,17 +44,17 @@ class FinalizeAction(PipelineActionBase):
         persist_enabled = bool(raw.get("persist_turn", True))
 
         # Finalize materializes the user-visible answer:
-        # - Prefer answer_translated if present.
-        # - Always copy last_model_response into answer_en.
-        # - If answer_translated is empty, final_answer = answer_en.
-        last_model_response = (state.last_model_response or "").strip()
+        # - If translate_chat is enabled and answer_translated is present -> final_answer = answer_translated.
+        # - Otherwise -> final_answer = answer_en.
+        #
+        # NOTE: This action does NOT populate answer_en/answer_translated. Upstream steps must do it.
+        answer_en = (state.answer_en or "").strip()
+        answer_translated = (state.answer_translated or "").strip()
 
-        state.answer_en = last_model_response
-
-        if (state.answer_translated or "").strip():
-            state.final_answer = str(state.answer_translated)
+        if bool(getattr(state, "translate_chat", False)) and answer_translated:
+            state.final_answer = answer_translated
         else:
-            state.final_answer = state.answer_en
+            state.final_answer = answer_en
 
         if not persist_enabled:
             return None
@@ -90,7 +90,7 @@ class FinalizeAction(PipelineActionBase):
                     log_fn(
                         original_question=state.user_query,
                         model_input_en=state.model_input_en_or_fallback(),
-                        codellama_response=last_model_response,
+                        codellama_response=(state.last_model_response or "").strip(),
                         final_answer=answer_out,
                         metadata={
                             "consultant": data["consultant"],

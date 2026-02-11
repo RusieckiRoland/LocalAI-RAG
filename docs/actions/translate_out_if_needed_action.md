@@ -13,7 +13,7 @@ by `finalize` to select the user-visible output.
 Reads:
 - `state.translate_chat`
 - `state.answer_en`
-- `runtime.markdown_translator` (preferred, must provide `.translate(str)`)
+- `runtime.markdown_translator` (preferred, supports `.translate_markdown(str)`; may also provide `.translate(str)`)
 
 Writes:
 - `state.answer_translated`
@@ -32,7 +32,9 @@ No additional step parameters are required.
 
 - If `translate_chat` is false → no-op.
 - If `answer_en` is empty → no-op.
-- If `runtime.markdown_translator.translate` is available:
+- If `runtime.markdown_translator.translate_markdown` is available:
+  - `state.answer_translated = translator.translate_markdown(answer_en)`
+- Else if `runtime.markdown_translator.translate` is available:
   - `state.answer_translated = translator.translate(answer_en)`
 - Otherwise:
   - `state.answer_translated = answer_en` (fallback)
