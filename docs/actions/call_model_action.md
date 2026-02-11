@@ -167,7 +167,7 @@ A very common pipeline pattern is:
 
 Examples:
 - Model returns: `[DIRECT:] ...`, `[BM25:] ...`, `[SEMANTIC:] ...` → `PrefixRouterAction` routes the pipeline to the corresponding step.
-- Model returns: `[Answer:] ...` or `[Requesting data on:] ...` → `PrefixRouterAction` decides whether to finish (`finalize`) or to enter a loop (follow-up / loop guard).
+- Model returns: `[Answer:] ...` or `[REQUESTING DATA ON:] ...` → `PrefixRouterAction` decides whether to finish (`finalize`) or to enter a loop (follow-up / loop guard).
 
 In this setup:
 - `call_model` always **produces an output** and writes it into `state.last_model_response`,

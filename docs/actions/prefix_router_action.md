@@ -79,7 +79,7 @@ For each `routes.<kind>`:
       prefix: "[Answer:]"
       next: finalize
     followup:
-      prefix: "[Requesting data on:]"
+      prefix: "[REQUESTING DATA ON:]"
       next: loop_guard
   on_other: finalize
 ```
