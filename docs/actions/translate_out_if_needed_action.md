@@ -5,7 +5,7 @@ Updated: 2026-02-03
 ## Purpose
 
 `translate_out_if_needed` translates the final English answer into Polish when
-`translate_chat` is enabled. It populates `state.answer_pl`, which is then used
+`translate_chat` is enabled. It populates `state.answer_translated`, which is then used
 by `finalize` to select the user-visible output.
 
 ## Input
@@ -16,7 +16,7 @@ Reads:
 - `runtime.markdown_translator` (preferred, must provide `.translate(str)`)
 
 Writes:
-- `state.answer_pl`
+- `state.answer_translated`
 
 ## Step configuration (YAML)
 
@@ -33,9 +33,9 @@ No additional step parameters are required.
 - If `translate_chat` is false → no-op.
 - If `answer_en` is empty → no-op.
 - If `runtime.markdown_translator.translate` is available:
-  - `state.answer_pl = translator.translate(answer_en)`
+  - `state.answer_translated = translator.translate(answer_en)`
 - Otherwise:
-  - `state.answer_pl = answer_en` (fallback)
+  - `state.answer_translated = answer_en` (fallback)
 
 ## Notes
 

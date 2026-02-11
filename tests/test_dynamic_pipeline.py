@@ -48,7 +48,7 @@ class DummyHistoryManager:
     def start_user_query(self, model_input_en: str, original_pl: str, user_id: Optional[str] = None) -> None:
         return
 
-    def set_final_answer(self, en: str, pl: Optional[str] = None) -> None:
+    def set_final_answer(self, en: str, answer_translated: Optional[str] = None) -> None:
         return
 
     def get_context_blocks(self) -> list[str]:

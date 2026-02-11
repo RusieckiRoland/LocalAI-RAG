@@ -20,7 +20,7 @@ class FinalizeAction(PipelineActionBase):
         return {
             "consultant": getattr(state, "consultant", None),
             "answer_en": getattr(state, "answer_en", None),
-            "answer_pl": getattr(state, "answer_pl", None),
+            "answer_translated": getattr(state, "answer_translated", None),
             "last_model_response": getattr(state, "last_model_response", None),
             "persist_turn": bool((step.raw or {}).get("persist_turn", True)),
         }
@@ -44,15 +44,15 @@ class FinalizeAction(PipelineActionBase):
         persist_enabled = bool(raw.get("persist_turn", True))
 
         # Finalize materializes the user-visible answer:
-        # - Prefer answer_pl if present.
+        # - Prefer answer_translated if present.
         # - Always copy last_model_response into answer_en.
-        # - If answer_pl is empty, final_answer = answer_en.
+        # - If answer_translated is empty, final_answer = answer_en.
         last_model_response = (state.last_model_response or "").strip()
 
         state.answer_en = last_model_response
 
-        if (state.answer_pl or "").strip():
-            state.final_answer = str(state.answer_pl)
+        if (state.answer_translated or "").strip():
+            state.final_answer = str(state.answer_translated)
         else:
             state.final_answer = state.answer_en
 
@@ -103,7 +103,7 @@ class FinalizeAction(PipelineActionBase):
                     pass
 
         try:
-            runtime.history_manager.set_final_answer(state.answer_en or "", state.answer_pl)
+            runtime.history_manager.set_final_answer(state.answer_en or "", state.answer_translated)
         except Exception:
             py_logger.exception("soft-failure: history_manager.set_final_answer failed; continuing")
             pass

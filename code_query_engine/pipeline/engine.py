@@ -34,7 +34,7 @@ class PipelineResult:
 
     # Answers (expected by tests)
     answer_en: Optional[str]
-    answer_pl: Optional[str]
+    answer_translated: Optional[str]
 
     # Final view
     final_answer: str
@@ -204,8 +204,8 @@ class PipelineEngine:
 
             # Resolve final answer (what the caller sees)
             final_answer = getattr(state, "answer_en", None) or ""
-            if bool(getattr(state, "translate_chat", False)) and getattr(state, "answer_pl", None):
-                final_answer = state.answer_pl
+            if bool(getattr(state, "translate_chat", False)) and getattr(state, "answer_translated", None):
+                final_answer = state.answer_translated
 
             state.final_answer = final_answer
 
@@ -220,7 +220,7 @@ class PipelineEngine:
                 steps_used=state.steps_used,
                 step_trace=list(state.step_trace),
                 answer_en=getattr(state, "answer_en", None),
-                answer_pl=getattr(state, "answer_pl", None),
+                answer_translated=getattr(state, "answer_translated", None),
                 final_answer=final_answer,
                 query_type=getattr(state, "query_type", None) or "",
                 model_input_en=model_input_en,
@@ -310,7 +310,7 @@ class PipelineEngine:
                     "translate_chat": bool(getattr(state, "translate_chat", False)),
                     "model_input_en": (result.model_input_en if result is not None else model_input_en),
                     "answer_en": getattr(state, "answer_en", None),
-                    "answer_pl": getattr(state, "answer_pl", None),
+                    "answer_translated": getattr(state, "answer_translated", None),
                     "final_answer": (
                         result.final_answer
                         if result is not None

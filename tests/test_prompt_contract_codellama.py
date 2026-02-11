@@ -31,7 +31,7 @@ def _compose_model_formatted_text(*, context: str, question: str) -> str:
             "",
             [],
             "Where is the entry point?",
-            "<s>[INST]\n"
+            "[INST]\n"
             "<<SYS>>\nSYS\n<</SYS>>\n\n"
             "### Context:\n(none)\n\n"
             "### User:\nWhere is the entry point?\n\n"
@@ -43,7 +43,7 @@ def _compose_model_formatted_text(*, context: str, question: str) -> str:
             "File: Program.cs\nstatic void Main() {}",
             [],
             "Where is the entry point?",
-            "<s>[INST]\n"
+            "[INST]\n"
             "<<SYS>>\nSYS\n<</SYS>>\n\n"
             "### Context:\nFile: Program.cs\nstatic void Main() {}\n\n"
             "### User:\nWhere is the entry point?\n\n"
@@ -55,8 +55,8 @@ def _compose_model_formatted_text(*, context: str, question: str) -> str:
             "",
             [("hi", "hello")],
             "Where is the entry point?",
-            "<s>[INST] <<SYS>>\nSYS\n<</SYS>>\n\nhi [/INST] hello </s>\n"
-            "<s>[INST]\n"
+            "[INST] <<SYS>>\nSYS\n<</SYS>>\n\nhi [/INST] hello\n"
+            "[INST]\n"
             "### Context:\n(none)\n\n"
             "### User:\nWhere is the entry point?\n\n"
             "### Answer:\n"
@@ -67,8 +67,8 @@ def _compose_model_formatted_text(*, context: str, question: str) -> str:
             "File: Program.cs\nstatic void Main() {}",
             [("hi", "hello")],
             "Where is the entry point?",
-            "<s>[INST] <<SYS>>\nSYS\n<</SYS>>\n\nhi [/INST] hello </s>\n"
-            "<s>[INST]\n"
+            "[INST] <<SYS>>\nSYS\n<</SYS>>\n\nhi [/INST] hello\n"
+            "[INST]\n"
             "### Context:\nFile: Program.cs\nstatic void Main() {}\n\n"
             "### User:\nWhere is the entry point?\n\n"
             "### Answer:\n"

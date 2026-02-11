@@ -109,8 +109,14 @@ def _fingerprint_paths(paths: Iterable[str]) -> Dict[str, float]:
 
 
 def _resolve_pipeline_files(*, loader: PipelineLoader, pipeline_name: str) -> List[str]:
-    files = loader.resolve_files_by_name(pipeline_name)
-    return [os.fspath(p) for p in files]
+    resolve_fn = getattr(loader, "resolve_files_by_name", None)
+    if not callable(resolve_fn):
+        # Some unit tests stub PipelineLoader with a minimal interface (load_by_name only).
+        # Budget contract uses this only for fingerprinting; missing file list is acceptable.
+        return []
+
+    files = resolve_fn(pipeline_name)
+    return [os.fspath(p) for p in (files or [])]
 
 
 def enforce_budget_contract(
@@ -318,4 +324,3 @@ def enforce_budget_contract(
         files=files,
     )
     return pipe2, eff2, result, fp
-

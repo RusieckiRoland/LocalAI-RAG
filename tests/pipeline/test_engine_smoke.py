@@ -25,7 +25,7 @@ class DummyHistory:
     def add_iteration(self, followup, faiss_results):
         return None
 
-    def set_final_answer(self, answer_en, answer_pl):
+    def set_final_answer(self, answer_en, answer_translated):
         return None
 
 

@@ -48,7 +48,7 @@ class PipelineState:
     # Answer fields expected by multiple actions/engine
     draft_answer_en: Optional[str] = None  
     answer_en: Optional[str] = None
-    answer_pl: Optional[str] = None
+    answer_translated: Optional[str] = None
 
     # Translation artifacts
     user_question_en: Optional[str] = None

@@ -34,7 +34,7 @@ class TranslateOutIfNeededAction(PipelineActionBase):
     ) -> Dict[str, Any]:
         return {
             "next_step_id": next_step_id,
-            "answer_pl_present": bool((getattr(state, "answer_pl", None) or "").strip()),
+            "answer_translated_present": bool((getattr(state, "answer_translated", None) or "").strip()),
         }
 
     def do_execute(self, step: StepDef, state: PipelineState, runtime: PipelineRuntime) -> Optional[str]:
@@ -51,11 +51,11 @@ class TranslateOutIfNeededAction(PipelineActionBase):
             fn = getattr(translator, "translate", None)
             if callable(fn):
                 try:
-                    state.answer_pl = fn(answer_en)
+                    state.answer_translated = fn(answer_en)
                     return None
                 except Exception:
                     pass
 
         # Fallback: keep EN if no translator is available.
-        state.answer_pl = answer_en
+        state.answer_translated = answer_en
         return None

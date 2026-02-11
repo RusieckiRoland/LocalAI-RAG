@@ -85,8 +85,8 @@ class AddCommandAction(PipelineActionBase):
     def _select_base_text(self, state: PipelineState) -> tuple[Optional[str], str]:
         if state.final_answer:
             return state.final_answer, "final_answer"
-        if state.answer_pl:
-            return state.answer_pl, "answer_pl"
+        if state.answer_translated:
+            return state.answer_translated, "answer_translated"
         if state.answer_en:
             return state.answer_en, "answer_en"
         if state.last_model_response:

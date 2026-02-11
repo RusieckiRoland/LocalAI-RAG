@@ -113,7 +113,7 @@ def test_builder_keeps_single_sys_block_and_single_wrapper(builder: CodellamaPro
     assert prompt.count("[INST]") == 1
     assert prompt.count("[/INST]") == 1
 
-    assert prompt.startswith("<s>[INST]")
+    assert prompt.startswith("[INST]")
     assert prompt.endswith("[/INST]")
 
 

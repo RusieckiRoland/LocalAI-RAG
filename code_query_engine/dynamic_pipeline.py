@@ -123,6 +123,15 @@ class DynamicPipelineRunner:
         if overrides:
             effective_settings.update(dict(overrides))
 
+        # Budget contract requires some numeric settings to be present even for pipelines
+        # with no call_model steps (e.g., unit-test pipelines). Provide safe defaults.
+        if effective_settings.get("max_context_tokens") is None:
+            effective_settings["max_context_tokens"] = 5000
+        if effective_settings.get("max_history_tokens") is None:
+            effective_settings["max_history_tokens"] = 0
+        if effective_settings.get("budget_safety_margin_tokens") is None:
+            effective_settings["budget_safety_margin_tokens"] = 128
+
         # Budget contract (mtime-cached, no file writes). May clamp settings/steps in-memory.
         try:
             from .pipeline.budget_contract import enforce_budget_contract, normalize_limits_policy
@@ -142,7 +151,10 @@ class DynamicPipelineRunner:
                 if pk:
                     prompt_keys.add(pk)
 
-            files: list[str] = [os.fspath(p) for p in self._loader.resolve_files_by_name(pipe_name)]
+            files: list[str] = []
+            resolve_fn = getattr(self._loader, "resolve_files_by_name", None)
+            if callable(resolve_fn):
+                files = [os.fspath(p) for p in resolve_fn(pipe_name)]
             for pk in sorted(prompt_keys):
                 files.append(os.path.join(prompts_dir, f"{pk}.txt"))
 
@@ -158,13 +170,27 @@ class DynamicPipelineRunner:
                 effective_settings = cached[1]
                 pipeline = cached[2]
             else:
-                model_n_ctx = int(getattr(self.model, "n_ctx", 0) or 0)
+                def _coerce_int(value: Any, *, default: int) -> int:
+                    try:
+                        v = value() if callable(value) else value
+                        if v is None:
+                            return default
+                        return int(v)
+                    except Exception:
+                        return default
+
+                model_n_ctx = _coerce_int(getattr(self.model, "n_ctx", 0), default=0)
                 if model_n_ctx <= 0:
                     llm = getattr(self.model, "llm", None)
-                    v = getattr(llm, "n_ctx", None) if llm is not None else None
-                    model_n_ctx = int(v() if callable(v) else (v or 0))
+                    model_n_ctx = _coerce_int(getattr(llm, "n_ctx", None) if llm is not None else None, default=0)
+                if model_n_ctx <= 0:
+                    # Fallback for test stubs or model wrappers that don't expose n_ctx.
+                    # Keep a conservative, positive default so budget_contract can run deterministically.
+                    model_n_ctx = _coerce_int(effective_settings.get("model_context_window", None), default=4096)
+                    if model_n_ctx <= 0:
+                        model_n_ctx = 4096
 
-                model_default_max = int(getattr(self.model, "default_max_tokens", 1500) or 1500)
+                model_default_max = _coerce_int(getattr(self.model, "default_max_tokens", 1500), default=1500) or 1500
 
                 pipe2, settings2, _res, fp2 = enforce_budget_contract(
                     loader=self._loader,
