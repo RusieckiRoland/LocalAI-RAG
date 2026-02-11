@@ -1,7 +1,7 @@
 {
   "output_dir": "branches",
   "model_path_embd": "models/embedding/e5-base-v2",
-  "model_path_analysis": "models/code_analysis/codeLlama_13b_Instruct/codellama-13b-instruct.Q8_0.gguf",
+  "model_path_analysis": "models/code_analysis/codeLlama_34_Instruct/codellama-34b-instruct.Q4_K_M.gguf",
   "model_max_tokens": 1500,
   "model_context_window": 9600,
   "model_translation_en_pl": "models/translation/en_pl/Helsinki_NLPopus_mt_en_pl",

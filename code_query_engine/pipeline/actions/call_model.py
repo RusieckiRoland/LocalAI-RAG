@@ -51,23 +51,28 @@ class CallModelAction(PipelineActionBase):
         error: Optional[Dict[str, Any]],
     ) -> Dict[str, Any]:
         raw = getattr(step, "raw", {}) or {}
+        native_chat = bool(raw.get("native_chat", False))
         out = {
             "next_step_id": next_step_id,
             "error": error,
         }
 
-        rendered = getattr(state, _TRACE_RENDERED_PROMPT_ATTR, None)
-        if isinstance(rendered, str) and rendered:
-            # log bounded
-            out["rendered_prompt"] = rendered[:9999]
+        # Log ONLY the relevant rendered input for the current mode.
+        # Otherwise, a previous call_model step may leave stale trace fields in state.
+        if not native_chat:
+            rendered = getattr(state, _TRACE_RENDERED_PROMPT_ATTR, None)
+            if isinstance(rendered, str) and rendered:
+                # DEV requirement: log full prompt (unbounded)
+                out["rendered_prompt"] = rendered
 
-        rendered_msgs = getattr(state, _TRACE_RENDERED_CHAT_MESSAGES_ATTR, None)
-        if isinstance(rendered_msgs, list) and rendered_msgs:
-            # log bounded (as JSON)
-            out["rendered_chat_messages"] = json.dumps(rendered_msgs, ensure_ascii=False)[:9999]
+        if native_chat:
+            rendered_msgs = getattr(state, _TRACE_RENDERED_CHAT_MESSAGES_ATTR, None)
+            if isinstance(rendered_msgs, list) and rendered_msgs:
+                # DEV requirement: log full chat payload (unbounded)
+                out["rendered_chat_messages"] = json.dumps(rendered_msgs, ensure_ascii=False)
 
         out["prompt_key"] = raw.get("prompt_key", "")
-        out["native_chat"] = bool(raw.get("native_chat", False))
+        out["native_chat"] = native_chat
         out["prompt_format"] = str(raw.get("prompt_format", "") or "")
 
         hist_trim = getattr(state, _TRACE_HISTORY_TRIM_ATTR, None)
@@ -81,6 +86,15 @@ class CallModelAction(PipelineActionBase):
         return out
 
     def do_execute(self, step: StepDef, state: PipelineState, runtime: PipelineRuntime) -> Optional[str]:
+        # Logging-only: ensure per-step trace fields don't leak across multiple call_model steps
+        # in a single pipeline run (router/summarizer/answer/etc.).
+        try:
+            setattr(state, _TRACE_RENDERED_PROMPT_ATTR, None)
+            setattr(state, _TRACE_RENDERED_CHAT_MESSAGES_ATTR, None)
+            setattr(state, _TRACE_HISTORY_TRIM_ATTR, None)
+        except Exception:
+            pass
+
         raw = getattr(step, "raw", {}) or {}
         prompt_key = str(raw.get("prompt_key") or "").strip()
         if not prompt_key:

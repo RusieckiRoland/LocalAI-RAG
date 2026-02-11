@@ -135,15 +135,16 @@ YAMLpipeline:
       next: manage_budget
 
     - id: call_model_answer
+      native_chat: false
       action: call_model
       prompt_key: "rejewski/answer_v1"
       user_parts:
-        evidence:
-          source: context_blocks
-          template: "### Evidence:\n{}\n\n"
-        user_question:
+         user_question:
           source: user_question_en
-          template: "### User:\n{}\n\n"
+          template: "\n<<<USER_QUESTION:\n{}\nUSER_QUESTION\n\n"
+         evidence:
+          source: context_blocks
+          template: "<<<EVIDENCE:\n{}\nEVIDENCE"       
       next: handle_answer_prefix
 
 
@@ -152,17 +153,22 @@ YAMLpipeline:
       routes:
         answer:
           prefix: "[Answer:]"
-          next: finalize
+          next: translate_out
         followup:
-          prefix: "[Requesting data on:]"
+          prefix: "[REQUESTING DATA ON:]"
           next: loop_guard
-      on_other: finalize
+      on_other: translate_out
 
     - id: loop_guard
       action: loop_guard
       max_turn_loops_from_settings: "max_turn_loops"
       on_allow: call_model_router
-      on_deny: finalize
+      on_deny: translate_out
+
+
+    - id: translate_out
+      action: translate_out_if_needed
+      next: finalize
 
     - id: finalize
       action: finalize

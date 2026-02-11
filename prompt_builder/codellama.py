@@ -21,7 +21,6 @@ class CodellamaPromptBuilder(BasePromptBuilder):
 
     Security hardening:
     - Escape template control tokens in all user-controlled text (history and modelFormatedText).
-    - Escape braces to avoid accidental .format injection in callers.
     """
 
     # NOTE:
@@ -51,11 +50,6 @@ class CodellamaPromptBuilder(BasePromptBuilder):
         out = out.replace(self.BOS_TOKEN, "< s >")
         out = out.replace(self.EOS_TOKEN, "< /s >")
         return out
-
-    def _escape_braces(self, text: str) -> str:
-        # Avoid .format injection via braces in user-controlled data
-        # (even though we do not .format here).
-        return (text or "").replace("{", "{{").replace("}", "}}")
 
     def _eval_text(self, v: Any) -> str:
         # Defensive: callers should pass strings, but we harden against callables.
@@ -150,12 +144,12 @@ class CodellamaPromptBuilder(BasePromptBuilder):
             u = u_raw.strip()
             a = a_raw.strip()
 
-            safe_u = self._escape_braces(self._escape_control_tokens(u))
+            safe_u = self._escape_control_tokens(u)
             if not system_attached:
                 safe_u = _attach_system_if_needed(safe_u, need_system=True)
                 system_attached = True
 
-            safe_a = self._escape_braces(self._escape_control_tokens(a))
+            safe_a = self._escape_control_tokens(a)
 
             # History turns are complete: [INST] user [/INST] assistant
             parts.append(f"{self.B_INST} {safe_u} {self.E_INST} {safe_a}")
@@ -164,7 +158,7 @@ class CodellamaPromptBuilder(BasePromptBuilder):
         final_user = modelFormatedText.strip()
 
         # If there was no history, attach SYSTEM to the current message.
-        safe_final = self._escape_braces(self._escape_control_tokens(final_user))
+        safe_final = self._escape_control_tokens(final_user)
         if not system_attached:
             safe_final = _attach_system_if_needed(safe_final, need_system=True)
 
