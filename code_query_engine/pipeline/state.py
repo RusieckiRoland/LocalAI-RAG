@@ -15,6 +15,7 @@ class PipelineState:
     user_query: str
     session_id: str
     consultant: str
+    request_id: Optional[str] = None
     branch: Optional[str] = None
     translate_chat: bool = False
 
@@ -39,6 +40,8 @@ class PipelineState:
 
     # Context
     history_dialog: Dialog = field(default_factory=list)
+    history_blocks: List[str] = field(default_factory=list)
+    history_qa_neutral: Dict[str, str] = field(default_factory=dict)
     context_blocks: List[str] = field(default_factory=list)
 
     # Model outputs

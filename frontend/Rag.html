@@ -637,13 +637,14 @@
       queryTooLong: "Za długie zapytanie",
       snapshotChangeSingleTitle: "Rozpocząć nową rozmowę?",
       snapshotChangeSingleBody: "Wskazany konsultant korzysta z innego zakresu wersji. Żeby się przełączyć rozpocznij nową rozmowę.",
-      snapshotChangeMultiTitle: "Zmienić zakres wersji?",
-      snapshotChangeMultiBody: "Zmiana zakresu wersji w trakcie tej samej rozmowy może pomieszać kontekst. Kontynuować?",
-      modalConfirm: "Nowa rozmowa",
-      modalCancel: "Anuluj",
-      modalContinue: "Kontynuuj"
-    },
-    en: {
+	      snapshotChangeMultiTitle: "Zmienić zakres wersji?",
+	      snapshotChangeMultiBody: "Zmiana zakresu wersji w trakcie tej samej rozmowy może pomieszać kontekst. Kontynuować?",
+	      snapshotChanged: (from, to) => `Zmieniono wersję: ${from} → ${to}`,
+	      modalConfirm: "Nowa rozmowa",
+	      modalCancel: "Anuluj",
+	      modalContinue: "Kontynuuj"
+	    },
+	    en: {
       send: "Send",
       wait: "Please wait...",
       error: "An error occurred while processing the request.",
@@ -662,13 +663,14 @@
       queryTooLong: "Query is too long",
       snapshotChangeSingleTitle: "Start a new chat?",
       snapshotChangeSingleBody: "The selected consultant uses a different version scope. To switch, start a new chat.",
-      snapshotChangeMultiTitle: "Change version scope?",
-      snapshotChangeMultiBody: "Changing the version scope within the same chat may mix context. Continue?",
-      modalConfirm: "Start new chat",
-      modalCancel: "Cancel",
-      modalContinue: "Continue"
-    }
-  };
+	      snapshotChangeMultiTitle: "Change version scope?",
+	      snapshotChangeMultiBody: "Changing the version scope within the same chat may mix context. Continue?",
+	      snapshotChanged: (from, to) => `Snapshot changed: ${from} → ${to}`,
+	      modalConfirm: "Start new chat",
+	      modalCancel: "Cancel",
+	      modalContinue: "Continue"
+	    }
+	  };
 
   function showUiError(msg) {
     if (!uiError) return;
@@ -1163,7 +1165,13 @@
         const nextLabel = chosen?.label || v;
         updateSnapshotState(v, nextLabel, getSnapshotSetId(c));
         if (responseDiv.children.length > 0 && prevId && prevId !== v) {
-          addSystemMessage(`Snapshot changed: ${prevLabel || prevId} → ${nextLabel}`);
+          const t = getTexts(getCurrentLang());
+          const from = prevLabel || prevId;
+          addSystemMessage(
+            (typeof t.snapshotChanged === "function")
+              ? t.snapshotChanged(from, nextLabel)
+              : `Snapshot changed: ${from} → ${nextLabel}`
+          );
         }
       });
       branchControls.appendChild(selA);

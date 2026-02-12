@@ -275,6 +275,10 @@ def _make_history_backend() -> Any:
 
 _history_backend = _make_history_backend()
 
+from code_query_engine.conversation_history.factory import build_conversation_history_service  # noqa: E402
+
+_conversation_history_service = build_conversation_history_service(session_backend=_history_backend)
+
 
 # ------------------------------------------------------------
 # Searchers (Semantic + BM25)
@@ -437,6 +441,7 @@ _runner = DynamicPipelineRunner(
     token_counter=token_counter,
     logger=_interaction_logger,
     graph_provider=_graph_provider,
+    conversation_history_service=_conversation_history_service,
     limits_policy=(
         (os.getenv("PIPELINE_LIMITS_POLICY") or "").strip().lower()
         or ("fail_fast" if _development_enabled else "auto_clamp")
@@ -955,11 +960,14 @@ def _handle_query_request(*, require_bearer_auth: bool):
     if custom_auth_error is not None:
         return custom_auth_error
 
+    request_id = (request.headers.get("X-Request-ID") or "").strip() or str(uuid.uuid4())
+
     try:
         runner_result = _runner.run(
             user_query=original_query,
             session_id=session_id,
             user_id=user_id,
+            request_id=request_id,
             consultant=consultant_id,
             branch=branch,
             translate_chat=translate_chat,

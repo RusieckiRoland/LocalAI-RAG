@@ -30,6 +30,12 @@ Missing file → **fail-fast**:
 
 ## Two model invocation modes
 
+### `native_chat` can be global (pipeline settings) or per-step
+`native_chat` is resolved with the same override rules as token settings:
+- if the YAML step contains `native_chat`, it wins,
+- otherwise `pipeline.settings.native_chat` is used (if present),
+- otherwise it defaults to `false`.
+
 ### 1) `native_chat: true` (chat/messages mode)
 In this mode, **the model client/library formats chat messages**. The pipeline provides:
 - the system prompt (from the file referenced by `prompt_key`),

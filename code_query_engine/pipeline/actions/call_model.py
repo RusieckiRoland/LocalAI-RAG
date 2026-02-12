@@ -13,7 +13,7 @@ from ..state import PipelineState
 from .base_action import PipelineActionBase
 
 from prompt_builder.factory import get_prompt_builder_by_prompt_format
-from ..utils.step_overrides import get_override, opt_float, opt_int
+from ..utils.step_overrides import get_override, opt_bool, opt_float, opt_int
 import inspect
 
 _TRACE_PROMPT_NAME_ATTR = "_pipeline_trace_prompt_name"
@@ -51,7 +51,7 @@ class CallModelAction(PipelineActionBase):
         error: Optional[Dict[str, Any]],
     ) -> Dict[str, Any]:
         raw = getattr(step, "raw", {}) or {}
-        native_chat = bool(raw.get("native_chat", False))
+        native_chat = opt_bool(get_override(raw=raw, settings=runtime.pipeline_settings, key="native_chat")) or False
         out = {
             "next_step_id": next_step_id,
             "error": error,
@@ -100,7 +100,7 @@ class CallModelAction(PipelineActionBase):
         if not prompt_key:
             raise ValueError("call_model: prompt_key is required")
 
-        native_chat = bool(raw.get("native_chat", False))
+        native_chat = opt_bool(get_override(raw=raw, settings=runtime.pipeline_settings, key="native_chat")) or False
 
         prompt_format = str(raw.get("prompt_format") or "").strip()
         if not prompt_format:
@@ -261,7 +261,10 @@ class CallModelAction(PipelineActionBase):
     ) -> str:
         ask_chat = getattr(model, "ask_chat", None)
         if not callable(ask_chat):
-            raise ValueError("call_model: native_chat=true requires model.ask_chat(...)")
+            raise ValueError(
+                "call_model: native_chat=true requires model.ask_chat(...). "
+                "Disable via step.native_chat: false or pipeline settings.native_chat: false."
+            )
 
         # history is Dialog (list of {"role": "...", "content": "..."}) or empty.
         hist_dialog: Optional[Dialog] = None

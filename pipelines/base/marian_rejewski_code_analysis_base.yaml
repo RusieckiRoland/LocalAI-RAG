@@ -7,6 +7,9 @@ YAMLpipeline:
 
     # Defaults (must be overridden in child pipeline)
 
+    # call_model default (step.native_chat overrides this)
+    native_chat: true
+
     # Loop guard
     max_turn_loops: 4
 
@@ -135,7 +138,6 @@ YAMLpipeline:
       next: manage_budget
 
     - id: call_model_answer
-      native_chat: false
       action: call_model
       prompt_key: "rejewski/answer_v1"
       user_parts:
@@ -162,8 +164,14 @@ YAMLpipeline:
     - id: loop_guard
       action: loop_guard
       max_turn_loops_from_settings: "max_turn_loops"
-      on_allow: call_model_router
+      on_allow: search_semantic
       on_deny: set_answer_from_last_model_response
+
+    - id: search_hybryid
+      search_type: hybrid
+      action: search_nodes
+      top_k: 12      
+      next: expand_dependency_tree
 
     - id: set_answer_from_last_model_response
       action: set_variables

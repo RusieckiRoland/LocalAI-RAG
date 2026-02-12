@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import uuid
 from typing import Any, Dict, Optional
 
 from ..definitions import StepDef
@@ -107,5 +108,58 @@ class FinalizeAction(PipelineActionBase):
         except Exception:
             py_logger.exception("soft-failure: history_manager.set_final_answer failed; continuing")
             pass
+
+        # New contract (best-effort): write question/answer in neutral + translated form.
+        svc = getattr(runtime, "conversation_history_service", None)
+        on_started = getattr(svc, "on_request_started", None) if svc is not None else None
+        on_finalized = getattr(svc, "on_request_finalized", None) if svc is not None else None
+        if callable(on_started) and callable(on_finalized):
+            try:
+                request_id = str(getattr(state, "request_id", "") or "").strip() or str(uuid.uuid4())
+                setattr(state, "request_id", request_id)
+
+                question_neutral = state.model_input_en_or_fallback()
+                question_translated = None
+                if bool(getattr(state, "translate_chat", False)):
+                    question_translated = (getattr(state, "user_question_pl", None) or state.user_query) or None
+
+                turn_id = on_started(
+                    session_id=state.session_id,
+                    request_id=request_id,
+                    identity_id=getattr(state, "user_id", None),
+                    translate_chat=bool(getattr(state, "translate_chat", False)),
+                    question_neutral=question_neutral,
+                    question_translated=question_translated,
+                    meta={
+                        "pipeline_name": getattr(state, "pipeline_name", "") or "",
+                        "consultant": getattr(state, "consultant", "") or "",
+                        "repository": getattr(state, "repository", None),
+                        "snapshot_id": getattr(state, "snapshot_id", None),
+                    },
+                )
+                setattr(state, "conversation_turn_id", turn_id)
+
+                answer_neutral = (state.answer_en or "").strip()
+                answer_translated = (state.answer_translated or "").strip() or None
+                translated_is_fallback = None
+                if bool(getattr(state, "translate_chat", False)):
+                    if answer_translated:
+                        translated_is_fallback = False
+                    else:
+                        answer_translated = answer_neutral
+                        translated_is_fallback = True
+
+                on_finalized(
+                    session_id=state.session_id,
+                    request_id=request_id,
+                    identity_id=getattr(state, "user_id", None),
+                    turn_id=turn_id,
+                    answer_neutral=answer_neutral,
+                    answer_translated=answer_translated,
+                    answer_translated_is_fallback=translated_is_fallback,
+                    meta=None,
+                )
+            except Exception:
+                py_logger.exception("soft-failure: conversation_history_service write failed; continuing")
 
         return None

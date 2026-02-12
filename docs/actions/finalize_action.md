@@ -16,30 +16,24 @@ Key rule: `FinalizeAction` is the single place that **sets `state.final_answer`*
 
 - if `state.translate_chat` is enabled and `state.answer_translated` is non-empty → `state.final_answer = state.answer_translated`
 - otherwise → `state.final_answer = state.answer_en`
-- otherwise:
-  - take `state.last_model_response` (strip)
-  - copy it into `state.answer_en`
-  - set `state.final_answer = state.answer_en`
-
-So `last_model_response` is treated as “the final model answer” *at the point finalize runs*.
+(`FinalizeAction` does not fall back to `last_model_response` — upstream steps should set `state.answer_en`.)
 
 ## What it writes to state
 
 Always:
 
-- `state.answer_en` — set to `state.last_model_response` (strip).
-- `state.final_answer` — set by priority:
-  - `answer_translated` if present,
-  - otherwise `answer_en`.
+- `state.final_answer` — set by priority: translated if present (and `translate_chat=true`), otherwise neutral.
 
-The action **does not translate** and **does not populate** `answer_en`. Upstream steps should set `state.answer_en`,
-and (optionally) `translate_out_if_needed` can populate `state.answer_translated`.
+The action **does not translate**. Upstream steps should set:
+- `state.answer_en` (neutral)
+- (optionally) `state.answer_translated` (translated)
 
 ## Persist / logging — optional
 
 `FinalizeAction` can also perform persistence side-effects:
 
-- history write: `runtime.history_manager.set_final_answer(state.answer_en, state.answer_translated)`
+- history write (preferred): `runtime.conversation_history_service` (neutral + translated)
+- history write (legacy): `runtime.history_manager.set_final_answer(state.answer_en, state.answer_translated)`
 - interaction log: `runtime.logger.log_interaction(...)` (question, consultant, branches, and answer)
 
 You can **disable** persistence via a step flag:

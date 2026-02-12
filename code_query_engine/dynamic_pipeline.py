@@ -59,6 +59,7 @@ class DynamicPipelineRunner:
         semantic_rerank_searcher: Any = None,
         graph_provider: Any = None,
         token_counter: Any = None,
+        conversation_history_service: Any = None,
         allow_test_pipelines: bool = False,
         limits_policy: str | None = None,
     ) -> None:
@@ -81,6 +82,7 @@ class DynamicPipelineRunner:
         self.markdown_translator = markdown_translator
         self.translator_pl_en = translator_pl_en
         self.logger = logger
+        self.conversation_history_service = conversation_history_service
 
         self.allow_test_pipelines = bool(allow_test_pipelines)
         self.limits_policy = limits_policy
@@ -101,6 +103,7 @@ class DynamicPipelineRunner:
         branch: str = "",
         translate_chat: bool = False,
         user_id: Optional[str] = None,
+        request_id: Optional[str] = None,
         pipeline_name: Optional[str] = None,
         repository: Optional[str] = None,
         snapshot_id: Optional[str] = None,
@@ -212,6 +215,7 @@ class DynamicPipelineRunner:
         state = PipelineState(
             user_query=user_query,
             session_id=session_id,
+            request_id=request_id,
             consultant=consultant,
             branch=branch,
             translate_chat=bool(translate_chat),
@@ -265,6 +269,7 @@ class DynamicPipelineRunner:
             markdown_translator=self.markdown_translator,
             translator_pl_en=self.translator_pl_en,
             history_manager=history_manager,
+            conversation_history_service=self.conversation_history_service,
             logger=self.logger,
             constants=constants,
             retrieval_backend=retrieval_backend,

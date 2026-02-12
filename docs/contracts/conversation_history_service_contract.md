@@ -8,12 +8,13 @@ Provide a professional, scalable way to persist and replay conversation history 
 
 The system must preserve language pairing and identity mapping:
 - `session_id` is always present.
-- Neutral language is **English**:
-  - `question_en` (neutral)
-  - `answer_en` (neutral)
-- If translation is enabled and/or user provided a national-language query (Polish):
-  - `question_pl` (optional)
-  - `answer_pl` (optional)
+- Conceptual model (do not bind to concrete languages):
+  - `question_neutral` / `answer_neutral` (required)
+  - `question_translated` / `answer_translated` (optional)
+
+Current project mapping (today):
+- neutral = English (`*_en`)
+- translated = Polish (`*_pl`)
 - For authenticated users:
   - `identity_id` must be linked with `session_id`.
 

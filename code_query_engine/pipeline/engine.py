@@ -22,6 +22,7 @@ from .providers.ports import (
     ITranslatorPlEn,
     IRetrievalBackend,
 )
+from code_query_engine.conversation_history.ports import IConversationHistoryService
 
 py_logger = logging.getLogger(__name__)
 
@@ -60,8 +61,9 @@ class PipelineRuntime:
         markdown_translator: Optional[IMarkdownTranslatorEnPl],
         translator_pl_en: Optional[ITranslatorPlEn],
         history_manager: Optional[IHistoryManager],
-        logger: Optional[IInteractionLogger],
-        constants: Any,
+        conversation_history_service: Optional[IConversationHistoryService] = None,
+        logger: Optional[IInteractionLogger] = None,
+        constants: Any = None,
         retrieval_backend: Optional[IRetrievalBackend] = None,
         graph_provider: Optional[IGraphProvider] = None,
         token_counter: Optional[ITokenCounter] = None,
@@ -77,6 +79,7 @@ class PipelineRuntime:
         self.markdown_translator = markdown_translator
         self.translator_pl_en = translator_pl_en
         self.history_manager = history_manager
+        self.conversation_history_service = conversation_history_service
         self.logger = logger
         self.constants = constants
 

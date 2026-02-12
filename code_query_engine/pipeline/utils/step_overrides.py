@@ -32,6 +32,24 @@ def opt_float(v: object) -> Optional[float]:
     return float(s)
 
 
+def opt_bool(v: object) -> Optional[bool]:
+    if v is None:
+        return None
+    if isinstance(v, bool):
+        return v
+    if isinstance(v, int):
+        return bool(v)
+
+    s = str(v or "").strip().lower()
+    if not s:
+        return None
+    if s in ("1", "true", "yes", "y", "on"):
+        return True
+    if s in ("0", "false", "no", "n", "off"):
+        return False
+    return None
+
+
 def get_override(*, raw: Mapping[str, Any], settings: Mapping[str, Any], key: str) -> Any:
     """
     Step-level value wins if present (even if None is explicitly set).
