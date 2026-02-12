@@ -164,14 +164,26 @@ YAMLpipeline:
     - id: loop_guard
       action: loop_guard
       max_turn_loops_from_settings: "max_turn_loops"
-      on_allow: search_semantic
-      on_deny: set_answer_from_last_model_response
+      on_allow: search_hybrid
+      on_deny: call_model_answer_not_sure
 
-    - id: search_hybryid
+    - id: search_hybrid
       search_type: hybrid
       action: search_nodes
       top_k: 12      
       next: expand_dependency_tree
+
+    - id: call_model_answer_not_sure
+      action: call_model
+      prompt_key: "rejewski/answer_not_sure"
+      user_parts:
+         user_question:
+          source: user_question_en
+          template: "\n<<<USER_QUESTION:\n{}\nUSER_QUESTION\n\n"
+         evidence:
+          source: context_blocks
+          template: "<<<EVIDENCE:\n{}\nEVIDENCE"       
+      next: set_answer_from_last_model_response
 
     - id: set_answer_from_last_model_response
       action: set_variables
