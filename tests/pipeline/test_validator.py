@@ -36,3 +36,19 @@ def test_validator_transition_target_must_exist() -> None:
     )
     with pytest.raises(ValueError):
         PipelineValidator().validate(p)
+
+
+def test_validator_translate_out_requires_translate_prompt_key_when_using_main_model() -> None:
+    p = PipelineDef(
+        name="x",
+        settings={"entry_step_id": "t"},
+        steps=[
+            StepDef(
+                id="t",
+                action="translate_out_if_needed",
+                raw={"id": "t", "action": "translate_out_if_needed", "use_main_model": True, "end": True},
+            ),
+        ],
+    )
+    with pytest.raises(ValueError, match="translate_prompt_key"):
+        PipelineValidator().validate(p)

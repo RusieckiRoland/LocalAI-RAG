@@ -70,6 +70,8 @@ class PipelineValidator:
                 self._validate_call_model(s)
             elif action == "prefix_router":
                 self._validate_prefix_router_contract(s, steps_by_id, warnings)
+            elif action == "translate_out_if_needed":
+                self._validate_translate_out_if_needed(s)
 
         warnings.extend(self._lint_pipeline(steps))
         return warnings
@@ -173,6 +175,16 @@ class PipelineValidator:
                     raise ValueError(
                         f"prefix_router contract broken: {k} references unknown step: {v}"
                     )
+
+    def _validate_translate_out_if_needed(self, step: Any) -> None:
+        raw = step.raw
+        sid = step.id
+
+        use_main_model = raw.get("use_main_model")
+        if use_main_model is True:
+            k = raw.get("translate_prompt_key")
+            if not (isinstance(k, str) and k.strip()):
+                raise ValueError(f"step {sid}: translate_out_if_needed requires translate_prompt_key when use_main_model is true")
 
     def _lint_pipeline(self, steps: List[Any]) -> List[str]:
         warnings: List[str] = []
