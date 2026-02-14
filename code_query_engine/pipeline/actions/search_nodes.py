@@ -53,6 +53,9 @@ def _cleanup_retrieval_artifacts(state: PipelineState) -> None:
     if hasattr(state, "node_texts"):
         setattr(state, "node_texts", [])
 
+def _norm_query_for_history(q: str) -> str:
+    return " ".join((q or "").strip().lower().split())
+
 
 def _resolve_snapshot_scope(
     settings: Dict[str, Any],
@@ -429,22 +432,72 @@ class SearchNodesAction(PipelineActionBase):
         _cleanup_retrieval_artifacts(state)
 
         # search_type must be explicit in YAML
-        search_type = str(raw.get("search_type") or "").strip().lower()
-        if search_type not in _ALLOWED_SEARCH_TYPES:
-            raise ValueError(f"search_nodes: invalid search_type='{search_type}'. Allowed: {sorted(_ALLOWED_SEARCH_TYPES)}")
-        state.search_type = search_type
-
-        # Fail-fast validation of rerank mode (contract)
-        state.rerank = _resolve_rerank(search_type, raw)
+        search_type_cfg = str(raw.get("search_type") or "").strip().lower()
+        allowed_cfg = sorted(list(_ALLOWED_SEARCH_TYPES | {"auto"}))
+        if search_type_cfg not in (_ALLOWED_SEARCH_TYPES | {"auto"}):
+            raise ValueError(f"search_nodes: invalid search_type='{search_type_cfg}'. Allowed: {allowed_cfg}")
 
         payload = (state.last_model_response or "").strip()
         parsed_query, parsed_filters, _warnings = ("", {}, [])
         if payload:
             parsed_query, parsed_filters, _warnings = _parse_payload_if_configured(raw, payload)
 
+        parsed_filters = dict(parsed_filters or {})
+        # Reserved parser-provided retrieval meta (not filters passed to backend)
+        payload_search_type = str(parsed_filters.pop("__search_type", "") or "").strip().lower()
+        payload_top_k = parsed_filters.pop("__top_k", None)
+        payload_rrf_k = parsed_filters.pop("__rrf_k", None)
+
+        # Resolve effective search_type if configured as auto.
+        search_type = search_type_cfg
+        if search_type_cfg == "auto":
+            # 1) from payload (if provided)
+            if payload_search_type:
+                if payload_search_type == "semantic_rerank":
+                    search_type = "semantic"
+                else:
+                    search_type = payload_search_type
+            # 2) from prefix_router kind (state.last_prefix)
+            if search_type == "auto":
+                lp = str(getattr(state, "last_prefix", "") or "").strip().lower()
+                if lp in ("semantic", "bm25", "hybrid"):
+                    search_type = lp
+                elif lp == "semantic_rerank":
+                    search_type = "semantic"
+
+            # 3) fallback default (deterministic)
+            if search_type == "auto":
+                search_type = str(raw.get("default_search_type") or "hybrid").strip().lower() or "hybrid"
+
+        if search_type not in _ALLOWED_SEARCH_TYPES:
+            raise ValueError(f"search_nodes: resolved invalid search_type='{search_type}'. Allowed: {sorted(_ALLOWED_SEARCH_TYPES)}")
+        state.search_type = search_type
+
+        # Fail-fast validation of rerank mode (contract)
+        state.rerank = _resolve_rerank(search_type, raw)
+
         query = (parsed_query or payload or "").strip()
         if not query:
             raise ValueError("search_nodes: Empty query after parsing/normalization is not allowed by retrieval_contract.")
+
+        # Persist the effective query in state for downstream prompts (e.g., "do not repeat last query").
+        state.retrieval_query = query
+        state.retrieval_mode = search_type
+
+        # Record retrieval queries for this run (dedupe by normalized form).
+        qn = _norm_query_for_history(query)
+        if qn:
+            norm_set = getattr(state, "retrieval_queries_asked_norm", None)
+            if not isinstance(norm_set, set):
+                norm_set = set()
+                state.retrieval_queries_asked_norm = norm_set
+            if qn not in norm_set:
+                norm_set.add(qn)
+                lst = getattr(state, "retrieval_queries_asked", None)
+                if not isinstance(lst, list):
+                    lst = []
+                    state.retrieval_queries_asked = lst
+                lst.append(query)
 
         repo = (state.repository or settings.get("repository") or "").strip()
         snapshot_id, snapshot_id_b_effective, snapshot_ids_any = _resolve_snapshot_scope(settings, state, raw)
@@ -455,6 +508,18 @@ class SearchNodesAction(PipelineActionBase):
 
         top_k = _resolve_top_k(raw, settings)
         original_top_k = int(top_k)
+
+        # Optional: allow payload to reduce top_k (never increase) if explicitly enabled.
+        allow_top_k_from_payload = bool(raw.get("allow_top_k_from_payload", False))
+        if allow_top_k_from_payload:
+            try:
+                pt = _opt_int(payload_top_k)
+            except Exception:
+                pt = None
+            if pt is not None and pt >= 1:
+                top_k = min(int(original_top_k), int(pt))
+                if top_k < 1:
+                    top_k = 1
 
         base_filters = _merge_filters(
             settings=settings,
@@ -507,6 +572,11 @@ class SearchNodesAction(PipelineActionBase):
             snapshot_id=snapshot_id,
             snapshot_set_id=snapshot_set_id or None,
             retrieval_filters=filters,
+            rrf_k=(
+                max(1, int(v))
+                if (search_type == "hybrid" and raw.get("allow_rrf_k_from_payload", False) and (v := _opt_int(payload_rrf_k)) is not None)
+                else None
+            ),
         )
 
         resp = backend.search(req)

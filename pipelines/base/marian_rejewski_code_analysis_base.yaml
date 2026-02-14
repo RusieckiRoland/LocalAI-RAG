@@ -59,32 +59,20 @@ YAMLpipeline:
         question:
           source: user_question_en
           template: "### User:\n{}\n\n"
-      next: handle_router_prefix
+      next: handle_router_decision
 
 
-    - id: handle_router_prefix
-      action: prefix_router
+    - id: handle_router_decision
+      action: json_decision_router
       routes:
-        semantic:
-          prefix: "[SEMANTIC:]"
-          next: search_semantic
-        bm25:
-          prefix: "[BM25:]"
-          next: search_bm25
         direct:
-          prefix: "[DIRECT:]"
-          next: call_model_answer
-      on_other: call_model_answer
+          next: call_model_direct_answer
+        retrieve:
+          next: search_auto
+      on_other: call_model_direct_answer
 
-    - id: search_semantic
-      search_type: semantic
-      action: search_nodes
-      top_k: 12
-      query_parser: JsonishQueryParser
-      next: expand_dependency_tree
-
-    - id: search_bm25
-      search_type: bm25
+    - id: search_auto
+      search_type: auto
       action: search_nodes
       top_k: 12
       query_parser: JsonishQueryParser
@@ -105,14 +93,14 @@ YAMLpipeline:
 
     - id: manage_budget
       action: manage_context_budget
-      on_ok: call_model_answer
+      on_ok: suff_loop_guard
       on_over: budget_loop_guard
 
     - id: budget_loop_guard
       action: loop_guard
       max_turn_loops_from_settings: "max_turn_loops"
       on_allow: call_summarize_context
-      on_deny: call_model_answer
+      on_deny: call_model_answer_not_sure
 
     - id: call_summarize_context
       action: call_model
@@ -137,41 +125,73 @@ YAMLpipeline:
           value: null
       next: manage_budget
 
-    - id: call_model_answer
-      action: call_model
-      prompt_key: "rejewski/answer_v1"
-      user_parts:
-         user_question:
-          source: user_question_en
-          template: "\n<<<USER_QUESTION:\n{}\nUSER_QUESTION\n\n"
-         evidence:
-          source: context_blocks
-          template: "<<<EVIDENCE:\n{}\nEVIDENCE"       
-      next: handle_answer_prefix
-
-
-    - id: handle_answer_prefix
-      action: prefix_router
-      routes:
-        answer:
-          prefix: "[Answer:]"
-          next: set_answer_from_last_model_response
-        followup:
-          prefix: "[REQUESTING DATA ON:]"
-          next: loop_guard
-      on_other: set_answer_from_last_model_response
-
-    - id: loop_guard
+    - id: suff_loop_guard
       action: loop_guard
       max_turn_loops_from_settings: "max_turn_loops"
-      on_allow: search_hybrid
+      on_allow: call_model_sufficiency
       on_deny: call_model_answer_not_sure
 
-    - id: search_hybrid
-      search_type: hybrid
-      action: search_nodes
-      top_k: 12      
-      next: expand_dependency_tree
+    - id: call_model_sufficiency
+      action: call_model
+      prompt_key: "rejewski/sufficiency_router_v1"
+      max_output_tokens: 256
+      use_history: true
+      user_parts:
+        context:
+          source: composed_context_for_prompt
+          template: "### Context:\n{}\n\n"
+        user_question:
+          source: user_question_en
+          template: "### User:\n{}\n\n"
+        last_query:
+          source: retrieval_query
+          template: "<<<LAST QUERY  : {}\n"
+        previous_queries:
+          source: retrieval_queries_asked
+          template: "<<<PREVIOUS QUERIES:\n{}\n"
+      next: handle_sufficiency_decision
+
+
+    - id: handle_sufficiency_decision
+      action: json_decision_router
+      routes:
+        sufficient:
+          next: call_model_sure_answer
+        retrieve:
+          next: guard_repeat_query
+      on_other: call_model_answer_not_sure
+
+    - id: guard_repeat_query
+      action: repeat_query_guard
+      query_parser: JsonishQueryParser
+      on_ok: search_auto
+      on_repeat: suff_loop_guard
+
+    - id: call_model_sure_answer
+      action: call_model
+      prompt_key: "rejewski/sure_answer_v1"
+      use_history: true
+      user_parts:
+        context:
+          source: composed_context_for_prompt
+          template: "### Context:\n{}\n\n"
+        user_question:
+          source: user_question_en
+          template: "### User:\n{}\n\n"
+      next: set_answer_from_last_model_response
+
+    - id: call_model_direct_answer
+      action: call_model
+      prompt_key: "rejewski/direct_answer_v1"
+      use_history: true
+      user_parts:
+        user_question:
+          source: user_question_en
+          template: "### User:\n{}\n\n"
+        history:
+          source: history_for_prompt
+          template: "### History:\n{}\n\n"
+      next: set_answer_from_last_model_response
 
     - id: call_model_answer_not_sure
       action: call_model

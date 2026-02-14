@@ -29,6 +29,8 @@ class PipelineValidator:
         "set_variables",
         "add_command_action",
         "manage_context_budget",
+        "repeat_query_guard",
+        "json_decision_router",
     }
 
     def validate(self, pipeline: Any) -> List[str]:

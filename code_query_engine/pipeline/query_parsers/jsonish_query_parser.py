@@ -4,7 +4,7 @@ from __future__ import annotations
 import ast
 import json
 import re
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from .base_query_parser import BaseQueryParser, QueryParseResult
 
@@ -12,6 +12,8 @@ from .base_query_parser import BaseQueryParser, QueryParseResult
 _RE_TRAILING_COMMA = re.compile(r",\s*([}\]])")
 _RE_UNQUOTED_KEY = re.compile(r"(?P<prefix>[{,]\s*)(?P<key>[A-Za-z_][A-Za-z0-9_\-]*)\s*:")
 _RE_EQUAL_ASSIGN = re.compile(r"(?P<key>[A-Za-z_][A-Za-z0-9_\-]*)\s*=\s*")
+
+_ALLOWED_SEARCH_TYPES = {"semantic", "bm25", "hybrid", "semantic_rerank"}
 
 
 def _strip_code_fences(s: str) -> str:
@@ -31,6 +33,22 @@ def _coerce_dict(obj: Any) -> Tuple[Dict[str, Any], List[str]]:
         return obj, warnings
     warnings.append(f"filters was not a dict (got {type(obj).__name__}); ignoring.")
     return {}, warnings
+
+
+def _coerce_int(v: Any) -> Optional[int]:
+    if v is None:
+        return None
+    if isinstance(v, bool):
+        return None
+    if isinstance(v, int):
+        return v
+    try:
+        s = str(v).strip()
+        if not s:
+            return None
+        return int(s)
+    except Exception:
+        return None
 
 
 class JsonishQueryParser(BaseQueryParser):
@@ -62,6 +80,28 @@ class JsonishQueryParser(BaseQueryParser):
         if not isinstance(obj, dict):
             return QueryParseResult(query=raw.strip(), filters={}, warnings=warnings)
 
+        # Optional retrieval metadata at top-level (kept out of the query string).
+        # NOTE: These are returned via reserved keys inside filters for backward compatibility.
+        meta_filters: Dict[str, Any] = {}
+        st_val = obj.get("search_type", obj.get("mode"))
+        if isinstance(st_val, str):
+            st = st_val.strip().lower()
+            if st:
+                if st not in _ALLOWED_SEARCH_TYPES:
+                    warnings.append(f"unknown search_type/mode '{st}'; ignoring.")
+                else:
+                    meta_filters["__search_type"] = st
+        elif st_val is not None:
+            warnings.append(f"search_type/mode was not a string (got {type(st_val).__name__}); ignoring.")
+
+        top_k = _coerce_int(obj.get("top_k", None))
+        if top_k is not None:
+            meta_filters["__top_k"] = top_k
+
+        rrf_k = _coerce_int(obj.get("rrf_k", None))
+        if rrf_k is not None:
+            meta_filters["__rrf_k"] = rrf_k
+
         query_val = obj.get("query")
         if isinstance(query_val, str):
             query = query_val.strip()
@@ -81,6 +121,10 @@ class JsonishQueryParser(BaseQueryParser):
             if not ks:
                 continue
             norm_filters[ks] = v
+
+        # Merge reserved meta keys last (do not allow nested "filters" to override them).
+        if meta_filters:
+            norm_filters.update(meta_filters)
 
         return QueryParseResult(query=query, filters=norm_filters, warnings=warnings)
 

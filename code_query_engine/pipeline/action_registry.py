@@ -43,6 +43,8 @@ def build_default_action_registry() -> ActionRegistry:
     from .actions.set_variables import SetVariablesAction
     from .actions.add_command_action import AddCommandAction
     from .actions.manage_context_budget import ManageContextBudgetAction
+    from .actions.repeat_query_guard import RepeatQueryGuardAction
+    from .actions.json_decision_router import JsonDecisionRouterAction
 
     r = ActionRegistry()
 
@@ -59,5 +61,7 @@ def build_default_action_registry() -> ActionRegistry:
     r.register("finalize", FinalizeAction())
     r.register("set_variables", SetVariablesAction())
     r.register("manage_context_budget", ManageContextBudgetAction())
+    r.register("repeat_query_guard", RepeatQueryGuardAction())
+    r.register("json_decision_router", JsonDecisionRouterAction())
 
     return r

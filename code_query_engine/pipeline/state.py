@@ -35,6 +35,10 @@ class PipelineState:
     retrieval_filters: Dict[str, Any] = field(default_factory=dict)   
     query_type: Optional[str] = None
 
+    # Retrieval query history within this pipeline run (used to prevent repeats).
+    retrieval_queries_asked: List[str] = field(default_factory=list)
+    retrieval_queries_asked_norm: Set[str] = field(default_factory=set)
+
     # Materialized node texts 
     node_texts: List[Dict[str, Any]] = field(default_factory=list)
 
