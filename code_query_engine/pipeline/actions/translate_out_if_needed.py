@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import os
 from typing import Any, Dict, Optional
 
@@ -16,6 +17,7 @@ from ..utils.step_overrides import get_override, opt_bool, opt_float, opt_int
 _TRACE_TRANSLATE_RENDERED_PROMPT_ATTR = "_pipeline_trace_translate_rendered_prompt"
 _TRACE_TRANSLATE_RENDERED_CHAT_MESSAGES_ATTR = "_pipeline_trace_translate_rendered_chat_messages"
 _TRACE_TRANSLATE_MODEL_RESPONSE_ATTR = "_pipeline_trace_translate_model_response"
+_TRACE_TRANSLATE_INPUT_SUMMARY_ATTR = "_pipeline_trace_translate_input_summary"
 
 
 class TranslateOutIfNeededAction(PipelineActionBase):
@@ -28,12 +30,14 @@ class TranslateOutIfNeededAction(PipelineActionBase):
         tr = getattr(runtime, "markdown_translator", None)
         has_translate_markdown = bool(tr is not None and callable(getattr(tr, "translate_markdown", None)))
         has_translate = bool(tr is not None and callable(getattr(tr, "translate", None)))
+        answer_en = (getattr(state, "answer_en", None) or "").strip()
         return {
             "translate_chat": bool(getattr(state, "translate_chat", False)),
             "translator_present": bool(has_translate_markdown or has_translate),
             "translator_has_translate_markdown": has_translate_markdown,
             "translator_has_translate": has_translate,
-            "answer_en_present": bool((getattr(state, "answer_en", None) or "").strip()),
+            "answer_en_present": bool(answer_en),
+            "answer_en_chars": len(answer_en),
             "use_main_model": bool(raw.get("use_main_model") is True),
             "translate_prompt_key": str(raw.get("translate_prompt_key") or ""),
         }
@@ -51,6 +55,9 @@ class TranslateOutIfNeededAction(PipelineActionBase):
             "next_step_id": next_step_id,
             "answer_translated_present": bool((getattr(state, "answer_translated", None) or "").strip()),
         }
+        summary = getattr(state, _TRACE_TRANSLATE_INPUT_SUMMARY_ATTR, None)
+        if isinstance(summary, dict) and summary:
+            out["translate_input_summary"] = summary
         rendered = getattr(state, _TRACE_TRANSLATE_RENDERED_PROMPT_ATTR, None)
         if isinstance(rendered, str) and rendered:
             out["rendered_prompt"] = rendered
@@ -69,6 +76,7 @@ class TranslateOutIfNeededAction(PipelineActionBase):
             setattr(state, _TRACE_TRANSLATE_RENDERED_PROMPT_ATTR, None)
             setattr(state, _TRACE_TRANSLATE_RENDERED_CHAT_MESSAGES_ATTR, None)
             setattr(state, _TRACE_TRANSLATE_MODEL_RESPONSE_ATTR, None)
+            setattr(state, _TRACE_TRANSLATE_INPUT_SUMMARY_ATTR, None)
         except Exception:
             pass
 
@@ -105,10 +113,13 @@ class TranslateOutIfNeededAction(PipelineActionBase):
             # If the translation prompt expects a delimited input block, comply.
             # Heuristic: detect common markers used in our prompt templates.
             user_payload = answer_en
+            wrap_mode = ""
             if "<<<MARKDOWN_EN" in system_prompt and "MARKDOWN_EN" in system_prompt:
                 user_payload = f"<<<MARKDOWN_EN\n{answer_en}\nMARKDOWN_EN"
+                wrap_mode = "MARKDOWN_EN"
             elif "<<<TEXT" in system_prompt and "\nTEXT" in system_prompt:
                 user_payload = f"<<<TEXT\n{answer_en}\nTEXT"
+                wrap_mode = "TEXT"
 
             model_kwargs: Dict[str, Any] = {}
             max_tokens = opt_int(get_override(raw=raw, settings=runtime.pipeline_settings, key="max_tokens"))
@@ -130,6 +141,38 @@ class TranslateOutIfNeededAction(PipelineActionBase):
 
             native_chat = opt_bool(get_override(raw=raw, settings=runtime.pipeline_settings, key="native_chat")) or False
             try:
+                # Trace what goes into the model (compact + safe-ish).
+                # Full payload is already recorded when tracing is enabled and native_chat is used,
+                # but this summary helps quickly spot accidental context injection.
+                try:
+                    def _sha256(s: str) -> str:
+                        return hashlib.sha256((s or "").encode("utf-8")).hexdigest()
+
+                    payload = user_payload or ""
+                    summary = {
+                        "native_chat": bool(native_chat),
+                        "prompt_format": str(raw.get("prompt_format") or "").strip() or "codellama_inst_7_34",
+                        "wrap_mode": wrap_mode,
+                        "answer_en_chars": len(answer_en),
+                        "user_payload_chars": len(payload),
+                        "user_payload_lines": payload.count("\n") + (1 if payload else 0),
+                        "sha256_system_prompt": _sha256(system_prompt),
+                        "sha256_user_payload": _sha256(payload),
+                        "contains_markers": {
+                            "has_evidence_block": ("<<<EVIDENCE" in payload) or ("\nEVIDENCE" in payload),
+                            "has_node_blocks": ("--- NODE ---" in payload),
+                            "has_user_question_block": ("<<<USER_QUESTION" in payload) or ("\nUSER_QUESTION" in payload),
+                        },
+                        "counts": {
+                            "triple_backticks": payload.count("```"),
+                            "node_blocks": payload.count("--- NODE ---"),
+                        },
+                        "user_payload_preview": payload[:400],
+                    }
+                    setattr(state, _TRACE_TRANSLATE_INPUT_SUMMARY_ATTR, summary)
+                except Exception:
+                    pass
+
                 if native_chat:
                     ask_chat = getattr(model, "ask_chat", None)
                     if not callable(ask_chat):

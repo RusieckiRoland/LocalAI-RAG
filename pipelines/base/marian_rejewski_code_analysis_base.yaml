@@ -11,7 +11,7 @@ YAMLpipeline:
     native_chat: true
 
     # Loop guard
-    max_turn_loops: 4
+    max_turn_loops: 2
 
     # Token budgets
     max_context_tokens: 5000
@@ -196,9 +196,7 @@ YAMLpipeline:
 
     
     - id: translate_out
-      action: translate_out_if_needed
-      use_main_model: true
-      translate_prompt_key: utility\translate_md_en_pl
+      action: translate_out_if_needed      
       next: finalize
 
     - id: finalize

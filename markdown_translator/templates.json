@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "templates": [
+    {
+      "id": "search_limit_note_quote",
+      "match": "prefix",
+      "en": ">⚠️  Search-limit note:",
+      "pl": ">⚠️  Osiągnięto limit cyklów wyszukiwania.\n\n"
+    }
+  ],
+  "never_translate_terms": [
+    "Class",
+    "Namespace",
+    "Method",
+    "Property",
+    "Interface",
+    "Enum",
+    "Struct",
+    "JSON",
+    "YAML",
+    "HTTP",
+    "URL",
+    "CLI",
+    "SQL",
+    "C#",
+    "C++",
+    "JavaScript",
+    "TypeScript",
+    "Python",
+    "Java",
+    "Linux",
+    "Windows",
+    "macOS"
+  ]
+}
