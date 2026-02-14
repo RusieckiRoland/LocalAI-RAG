@@ -1,0 +1,348 @@
+Do-Not-Translate (EN→PL) — IT Glossary
+Practical list of English technical terms commonly left untranslated in Polish IT writing.
+
+Notes
+- This is a pragmatic industry list (docs, tickets, code reviews, UI strings).
+- Leave these terms in English unless your style guide explicitly requires Polish equivalents.
+- When in doubt: keep terms that appear in code/CLI/config, standards, acronyms, or product/feature names.
+- This file is a human-oriented glossary; the translator runtime loads "never translate" terms from
+  `templates.json` (see `never_translate_terms_files`), e.g. `never-translate-terms-safe.txt`.
+
+Software engineering & delivery
+- API
+- SDK
+- framework
+- library (lib)
+- runtime
+- build
+- pipeline
+- CI / CD
+- refactor / refactoring
+- code review
+- pull request (PR)
+- commit
+- branch
+- merge
+- rebase
+- tag
+- release
+- hotfix
+- breaking change
+- backward compatibility
+- issue / ticket
+- backlog
+- roadmap
+
+Tools & environment
+- IDE
+- debugger
+- profiler
+- linter
+- formatter
+- plugin
+- extension
+- snippet
+- template
+- workspace
+- repository / repo
+- monorepo
+- package manager
+- dependency / dependencies
+- lockfile
+
+Backend / cloud / DevOps
+- Docker / container
+- Kubernetes (K8s)
+- Helm
+- registry
+- container image
+- deployment
+- staging
+- production (prod)
+- environment (env)
+- config
+- secret(s)
+- observability
+- logging
+- tracing
+- metrics
+- telemetry
+- SLO / SLA / SLI
+- incident
+- postmortem
+- on-call
+
+Networking / web protocols
+- HTTP / HTTPS
+- REST
+- GraphQL
+- WebSocket
+- gRPC
+- endpoint
+- request / response
+- payload
+- header(s)
+- cookie(s)
+- proxy
+- CDN
+- DNS
+- firewall
+- load balancer
+- routing
+- timeout
+- retry / retries
+- rate limit / throttling
+
+Databases & data
+- SQL
+- NoSQL
+- ORM
+- migration(s)
+- schema
+- index / indexing
+- query
+- join
+- view
+- trigger
+- stored procedure (SP)
+- transaction
+- rollback
+- deadlock
+- cache
+- TTL
+- replication
+- sharding
+- partitioning
+- ETL / ELT
+- dataset
+- data lake
+- data warehouse
+
+Security
+- authentication (auth)
+- authorization (authz)
+- IAM
+- SSO
+- OAuth
+- OpenID Connect (OIDC)
+- JWT
+- token
+- refresh token
+- secret
+- key
+- certificate
+- hashing
+- salting
+- encryption
+- threat model
+- vulnerability
+- exploit
+
+Frontend / UI / UX
+- UI / UX
+- layout
+- component
+- widget
+- design system
+- theme
+- responsive
+- breakpoint
+- accessibility (a11y)
+- tooltip
+- modal
+- dialog
+- dropdown
+- checkbox / radio
+- input
+- placeholder
+- scroll
+- hover
+- focus
+- drag & drop
+- toast
+- snackbar
+- badge
+- chip(s)
+
+Testing & quality
+- unit test(s)
+- integration test(s)
+- e2e (end-to-end)
+- mock
+- stub
+- fixture
+- snapshot test
+- coverage
+- flaky test
+- regression
+- benchmark
+
+Programming languages — concepts & tooling
+- compiler
+- interpreter
+- transpiler
+- toolchain
+- build system
+- specification (spec)
+- grammar
+- syntax
+- semantics
+- parser
+- lexer
+- token(s)
+- AST
+- IR
+- bytecode
+- JIT
+- AOT
+- REPL
+- keyword(s)
+- identifier
+- literal
+- statement
+- expression
+- block
+- scope
+- namespace
+- module
+- package
+- import(s)
+- export(s)
+- declaration
+- definition
+- signature
+- annotation(s)
+- attribute(s)
+- decorator(s)
+- macro(s)
+- directive(s)
+- pragma
+- type system
+- type inference
+- static / dynamic typing
+- type safety
+- generics
+- type parameter(s)
+- type constraint(s)
+- covariance / contravariance
+- nullability
+- reflection
+- boxing / unboxing
+- casting
+- class
+- struct
+- record
+- interface
+- trait
+- enum
+- object
+- method
+- function
+- lambda
+- closure
+- delegate
+- overload(ing)
+- override
+- virtual
+- abstract
+- inheritance
+- polymorphism
+- mixin
+- extension method(s)
+- operator overloading
+- property
+- getter / setter
+- event(s)
+- callback(s)
+- control flow
+- branch(ing)
+- loop(s)
+- iteration
+- recursion
+- exception
+- try/catch/finally
+- throw
+- stack trace
+- stack
+- heap
+- GC (garbage collection)
+- allocation
+- memory leak
+- ownership
+- borrowing
+- mutability / immutability
+- concurrency
+- parallelism
+- thread(s)
+- async / await
+- task
+- coroutine(s)
+- scheduler
+- type checker
+- static analysis
+- compiler warnings
+- build flags
+- target
+- cross-compilation
+- runtime flags
+
+Industry / hardware & integrations
+- signature pad / signaturepad / SignaturePad
+- pen display
+- stylus
+- digitizer
+- touch panel
+- barcode scanner
+- QR scanner
+- card reader
+- smart card
+- NFC reader
+- biometric reader
+- fingerprint reader
+- label printer
+- thermal printer
+- receipt printer
+- print spooler
+- driver
+- firmware
+- USB device
+- HID
+- serial / COM port
+- Bluetooth LE (BLE)
+- shipping label
+- tracking number
+- parcel
+- pickup point
+- dispatch
+- fulfillment
+- carrier API
+- webhook
+- ERP
+- WMS
+- CRM
+- POS
+- middleware
+- connector
+- adapter
+- gateway
+- broker
+- message bus
+- queue
+- topic
+- consumer / producer
+- event stream
+- PDF
+- OCR
+- e-signature
+- audit log
+- compliance
+- retention policy
+- hardware abstraction layer (HAL)
+- capability detection
+- feature flag(s)
+
+Examples (recommended writing)
+- Add a retry with timeout and rate limit handling.
+- Run unit tests in CI and publish coverage.
+- Update SDK integration for signaturepad + HID devices.
+- Fix breaking change in API contract; bump major version.

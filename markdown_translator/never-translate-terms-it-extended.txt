@@ -1,0 +1,147 @@
+# IT-focused "do not translate" list (EN→PL).
+# More aggressive: may cause awkward output in non-technical contexts.
+# One term per line. Case-sensitive.
+
+# Core acronyms/standards (kept)
+API
+SDK
+IDE
+CI
+CD
+CI/CD
+UI
+UX
+UI/UX
+CLI
+HTTP
+HTTPS
+URL
+URI
+REST
+GraphQL
+WebSocket
+gRPC
+JSON
+YAML
+SQL
+NoSQL
+ORM
+OAuth
+OpenID Connect
+OIDC
+JWT
+SSO
+IAM
+DNS
+CDN
+
+# Languages / OS
+C#
+C++
+JavaScript
+TypeScript
+Python
+Java
+Linux
+Windows
+macOS
+
+# Tools / platforms
+Docker
+Kubernetes
+Helm
+K8s
+
+# Common engineering terms (use with caution)
+framework
+library
+runtime
+build
+pipeline
+refactor
+refactoring
+code review
+pull request
+PR
+commit
+branch
+merge
+rebase
+tag
+release
+hotfix
+breaking change
+backward compatibility
+issue
+ticket
+backlog
+roadmap
+
+deployment
+staging
+production
+prod
+environment
+env
+config
+secret
+observability
+logging
+tracing
+metrics
+telemetry
+incident
+postmortem
+on-call
+
+endpoint
+request
+response
+payload
+header
+cookie
+proxy
+firewall
+load balancer
+timeout
+retry
+rate limit
+throttling
+
+cache
+TTL
+migration
+schema
+index
+query
+join
+transaction
+rollback
+deadlock
+replication
+sharding
+partitioning
+
+# Selected UI terms (often left in English)
+responsive
+breakpoint
+tooltip
+modal
+dropdown
+drag & drop
+toast
+snackbar
+
+# Programming concepts (often OK in IT docs; risky elsewhere)
+Class
+Namespace
+Method
+Property
+Interface
+Enum
+Struct
+AST
+REPL
+GC
+async
+await

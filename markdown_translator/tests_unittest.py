@@ -7,6 +7,17 @@ class _EchoTranslator:
         return "PL(" + text + ")"
 
 
+class _ReplaceTranslator:
+    def __init__(self, replacements: dict[str, str]) -> None:
+        self._replacements = replacements
+
+    def translate(self, text: str) -> str:
+        out = text
+        for a, b in self._replacements.items():
+            out = out.replace(a, b)
+        return out
+
+
 class MarkdownToPolishTranslatorTests(unittest.TestCase):
     def test_preserves_fenced_code_blocks(self):
         from markdown_translator.translator import MarkdownToPolishTranslator
@@ -41,6 +52,15 @@ class MarkdownToPolishTranslatorTests(unittest.TestCase):
         out = tr.translate_markdown(md)
         self.assertIn("\n\n", out)
         self.assertIn("## ", out)
+
+    def test_never_translate_terms_loaded_from_files(self):
+        from markdown_translator.translator import MarkdownToPolishTranslator
+
+        tr = MarkdownToPolishTranslator(translator=_ReplaceTranslator({"JSON": "JASON"}))
+        md = "Use JSON for config.\n"
+        out = tr.translate_markdown(md)
+        self.assertIn("JSON", out)
+        self.assertNotIn("JASON", out)
 
     def test_prefix_template_keeps_prefix_and_translates_remainder(self):
         from markdown_translator.translator import MarkdownToPolishTranslator
