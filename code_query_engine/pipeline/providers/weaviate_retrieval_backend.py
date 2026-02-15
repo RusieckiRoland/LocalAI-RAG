@@ -5,11 +5,13 @@ import json
 import logging
 import os
 import re
+import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from code_query_engine.pipeline.providers.ports import IRetrievalBackend
 from code_query_engine.pipeline.providers.retrieval_backend_contract import SearchHit, SearchRequest, SearchResponse
+from code_query_engine.weaviate_query_logger import log_weaviate_query
 
 py_logger = logging.getLogger(__name__)
 
@@ -107,6 +109,10 @@ class WeaviateRetrievalBackend(IRetrievalBackend):
             repository=request.repository,            
             retrieval_filters=rf,
         )
+        filters_debug = self._build_where_filter_debug(
+            repository=request.repository,
+            retrieval_filters=rf,
+        )
         if os.getenv("WEAVIATE_FILTER_DEBUG", "").strip():
             try:
                 py_logger.info(
@@ -142,38 +148,124 @@ class WeaviateRetrievalBackend(IRetrievalBackend):
         # We deliberately keep this "fail-fast" if client API differs.
         # If your weaviate-client differs, we adjust against your installed version.
         if search_type in ("bm25", "keyword"):
+            operator = None
+            if getattr(request, "bm25_operator", None):
+                try:
+                    from weaviate.collections.classes.grpc import BM25OperatorFactory
+                except Exception as e:
+                    raise RuntimeError(
+                        "WeaviateRetrievalBackend: explicit bm25_operator requested, "
+                        "but BM25OperatorFactory is unavailable"
+                    ) from e
+
+                mo = str(getattr(request, "bm25_operator") or "").strip().lower()
+                if mo == "and":
+                    operator = BM25OperatorFactory.and_()
+                elif mo == "or":
+                    operator = BM25OperatorFactory.or_(minimum_match=1)
+                else:
+                    raise ValueError(
+                        f"WeaviateRetrievalBackend: unsupported bm25_operator={mo!r}. "
+                        "Allowed: 'and'|'or'."
+                    )
+
+            # We use explicit query_properties for stable keyword search.
+            query_props = [
+                self._text_prop,
+                "repo_relative_path",
+                "source_file",
+                "project_name",
+                "class_name",
+                "member_name",
+                "symbol_type",
+                "signature",
+                "sql_kind",
+                "sql_schema",
+                "sql_name",
+            ]
             res = self._query_bm25(
                 collection=collection,
                 query=q,
                 top_k=top_k,
                 where_filter=where_filter,
+                where_filter_debug=filters_debug,
                 return_properties=return_props,
+                query_properties=query_props,
+                operator=operator,
+                retrieval_filters=rf,
+                repository=request.repository,
+                snapshot_id=snapshot_id,
             )
         elif search_type in ("semantic", "near_text"):
             qvec = self._encode_query(q)
-            res = collection.query.near_vector(
-                near_vector=qvec,
-                limit=top_k,
-                filters=where_filter,
-                return_properties=return_props,
-            )
+            t0 = time.time()
+            try:
+                res = collection.query.near_vector(
+                    near_vector=qvec,
+                    limit=top_k,
+                    filters=where_filter,
+                    return_properties=return_props,
+                )
+            except Exception as e:
+                log_weaviate_query(
+                    op="near_vector",
+                    request={
+                        "collection": self._node_collection,
+                        "tenant": snapshot_id,
+                        "query": q,
+                        "vector_len": len(qvec),
+                        "limit": top_k,
+                        "repository": request.repository,
+                        "retrieval_filters": dict(rf),
+                        "filters": where_filter,
+                        "filters_debug": filters_debug,
+                        "return_properties": list(return_props),
+                    },
+                    error=f"{type(e).__name__}: {e}",
+                    duration_ms=int((time.time() - t0) * 1000),
+                )
+                raise
+            else:
+                log_weaviate_query(
+                    op="near_vector",
+                    request={
+                        "collection": self._node_collection,
+                        "tenant": snapshot_id,
+                        "query": q,
+                        "vector_len": len(qvec),
+                        "limit": top_k,
+                        "repository": request.repository,
+                        "retrieval_filters": dict(rf),
+                        "filters": where_filter,
+                        "filters_debug": filters_debug,
+                        "return_properties": list(return_props),
+                    },
+                    response=_weaviate_resp_summary(res),
+                    duration_ms=int((time.time() - t0) * 1000),
+                )
         elif search_type in ("hybrid",):
-            qvec = self._encode_query(q)
             alpha = float((request.retrieval_filters or {}).get("hybrid_alpha") or 0.7)
-            res = collection.query.hybrid(
+            res = self._query_hybrid(
+                collection=collection,
                 query=q,
-                vector=qvec,
-                alpha=alpha,
-                limit=top_k,
-                filters=where_filter,
+                top_k=top_k,
+                where_filter=where_filter,
+                where_filter_debug=filters_debug,
                 return_properties=return_props,
+                retrieval_filters=rf,
+                repository=request.repository,
+                snapshot_id=snapshot_id,
+                alpha=alpha,
+                op="hybrid",
             )
         else:
             raise ValueError(f"WeaviateRetrievalBackend: unknown search_type={search_type!r}")
 
         hits: List[SearchHit] = []
         rank = 1
-        for obj in getattr(res, "objects", []) or []:
+        objs = list(getattr(res, "objects", []) or [])
+
+        for obj in objs:
             props = getattr(obj, "properties", {}) or {}
             if post_filter_labels and not _labels_subset_match(
                 props.get(self._classification_prop),
@@ -202,15 +294,122 @@ class WeaviateRetrievalBackend(IRetrievalBackend):
         query: str,
         top_k: int,
         where_filter: Any,
+        where_filter_debug: Optional[Dict[str, Any]] = None,
         return_properties: Optional[List[str]] = None,
+        query_properties: Optional[List[str]] = None,
+        operator: Optional[Any] = None,
+        retrieval_filters: Optional[Dict[str, Any]] = None,
+        repository: Optional[str] = None,
+        snapshot_id: Optional[str] = None,
     ) -> Any:
         props = return_properties or [self._id_prop]
-        return collection.query.bm25(
-            query=query,
-            limit=top_k,
-            filters=where_filter,
-            return_properties=props,
-        )
+        t0 = time.time()
+        try:
+            res = collection.query.bm25(
+                query=query,
+                query_properties=query_properties,
+                operator=operator,
+                limit=top_k,
+                filters=where_filter,
+                return_properties=props,
+            )
+        except Exception as e:
+            log_weaviate_query(
+                op="bm25",
+                request={
+                    "collection": self._node_collection,
+                    "tenant": snapshot_id or getattr(collection, "tenant", None) or None,
+                    "query": query,
+                    "limit": int(top_k),
+                    "repository": repository,
+                    "retrieval_filters": dict(retrieval_filters or {}),
+                    "filters": where_filter,
+                    "filters_debug": where_filter_debug,
+                    "query_properties": list(query_properties) if query_properties is not None else None,
+                    "operator": repr(operator) if operator is not None else None,
+                    "return_properties": list(props),
+                },
+                error=f"{type(e).__name__}: {e}",
+                duration_ms=int((time.time() - t0) * 1000),
+            )
+            raise
+        else:
+            log_weaviate_query(
+                op="bm25",
+                request={
+                    "collection": self._node_collection,
+                    "tenant": snapshot_id or getattr(collection, "tenant", None) or None,
+                    "query": query,
+                    "limit": int(top_k),
+                    "repository": repository,
+                    "retrieval_filters": dict(retrieval_filters or {}),
+                    "filters": where_filter,
+                    "filters_debug": where_filter_debug,
+                    "query_properties": list(query_properties) if query_properties is not None else None,
+                    "operator": repr(operator) if operator is not None else None,
+                    "return_properties": list(props),
+                },
+                response=_weaviate_resp_summary(res),
+                duration_ms=int((time.time() - t0) * 1000),
+            )
+            return res
+
+    def _query_hybrid(
+        self,
+        *,
+        collection: Any,
+        query: str,
+        top_k: int,
+        where_filter: Any,
+        where_filter_debug: Optional[Dict[str, Any]] = None,
+        return_properties: Optional[List[str]] = None,
+        retrieval_filters: Optional[Dict[str, Any]] = None,
+        repository: Optional[str] = None,
+        snapshot_id: Optional[str] = None,
+        alpha: float = 0.7,
+        op: str = "hybrid",
+    ) -> Any:
+        props = return_properties or [self._id_prop]
+        qvec = self._encode_query(query)
+        t0 = time.time()
+        req = {
+            "collection": self._node_collection,
+            "tenant": snapshot_id or getattr(collection, "tenant", None) or None,
+            "query": query,
+            "vector_len": len(qvec),
+            "alpha": float(alpha),
+            "limit": int(top_k),
+            "repository": repository,
+            "retrieval_filters": dict(retrieval_filters or {}),
+            "filters": where_filter,
+            "filters_debug": where_filter_debug,
+            "return_properties": list(props),
+        }
+        try:
+            res = collection.query.hybrid(
+                query=query,
+                vector=qvec,
+                alpha=float(alpha),
+                limit=top_k,
+                filters=where_filter,
+                return_properties=props,
+            )
+        except Exception as e:
+            log_weaviate_query(
+                op=op,
+                request=req,
+                error=f"{type(e).__name__}: {e}",
+                duration_ms=int((time.time() - t0) * 1000),
+            )
+            raise
+        else:
+            log_weaviate_query(
+                op=op,
+                request=req,
+                response=_weaviate_resp_summary(res),
+                duration_ms=int((time.time() - t0) * 1000),
+            )
+            return res
 
     def _get_query_embedder(self) -> Any:
         if self._query_embedder is not None:
@@ -248,40 +447,127 @@ class WeaviateRetrievalBackend(IRetrievalBackend):
         """
         Fetch full texts by node ids. Returns dict[node_id] = text.
         """
+        nodes = self.fetch_nodes(
+            node_ids=node_ids,
+            repository=repository,
+            snapshot_id=snapshot_id,
+            retrieval_filters=retrieval_filters,
+        )
+        out: Dict[str, str] = {}
+        for nid, props in (nodes or {}).items():
+            if not nid:
+                continue
+            if not isinstance(props, dict):
+                continue
+            out[str(nid)] = str(props.get("text") or "")
+        return out
+
+    def fetch_nodes(
+        self,
+        *,
+        node_ids: List[str],
+        repository: str,
+        snapshot_id: str,
+        retrieval_filters: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Dict[str, Any]]:
+        """
+        Fetch node texts plus useful metadata by node ids.
+        Returns dict[node_id] = { "text": ..., "repo_relative_path": ..., ... }.
+        """
         if not node_ids:
             return {}
-        
+
         rf = retrieval_filters or {}
         rf.pop("snapshot_id", None)
 
-        collection = self._client.collections.get(self._node_collection).with_tenant(snapshot_id)  # Ensure we read from the correct snapshot in multi-tenant setup
-        
+        collection = self._client.collections.get(self._node_collection).with_tenant(snapshot_id)
 
-        # We fetch objects and map by canonical_id (id_property).
-        # This assumes canonical_id is stored as a property (not UUID).
         where_filter = self._build_in_filter(self._id_prop, node_ids)
 
         scope_filter = self._build_where_filter(
-            repository=repository,           
+            repository=repository,
             retrieval_filters=rf,
         )
 
         if scope_filter is not None:
             where_filter = where_filter & scope_filter
 
-        res = collection.query.fetch_objects(
-            limit=len(node_ids),
-            filters=where_filter,
-            return_properties=[self._id_prop, self._text_prop],
-        )
+        return_props = [
+            self._id_prop,
+            self._text_prop,
+            "repo_relative_path",
+            "source_file",
+            "project_name",
+            "class_name",
+            "member_name",
+            "symbol_type",
+            "signature",
+            "data_type",
+            "file_type",
+            "domain",
+            "sql_kind",
+            "sql_schema",
+            "sql_name",
+        ]
 
-        out: Dict[str, str] = {}
+        t0 = time.time()
+        try:
+            res = collection.query.fetch_objects(
+                limit=len(node_ids),
+                filters=where_filter,
+                return_properties=return_props,
+            )
+        except Exception as e:
+            log_weaviate_query(
+                op="fetch_objects",
+                request={
+                    "collection": self._node_collection,
+                    "tenant": snapshot_id,
+                    "limit": int(len(node_ids)),
+                    "filters": repr(where_filter),
+                    "return_properties": list(return_props),
+                },
+                error=f"{type(e).__name__}: {e}",
+                duration_ms=int((time.time() - t0) * 1000),
+            )
+            raise
+        else:
+            log_weaviate_query(
+                op="fetch_objects",
+                request={
+                    "collection": self._node_collection,
+                    "tenant": snapshot_id,
+                    "limit": int(len(node_ids)),
+                    "filters": repr(where_filter),
+                    "return_properties": list(return_props),
+                },
+                response=_weaviate_resp_summary(res),
+                duration_ms=int((time.time() - t0) * 1000),
+            )
+
+        out: Dict[str, Dict[str, Any]] = {}
         for obj in getattr(res, "objects", []) or []:
             props = getattr(obj, "properties", {}) or {}
             node_id = (props.get(self._id_prop) or "").strip()
-            text = str(props.get(self._text_prop) or "")
-            if node_id:
-                out[node_id] = text
+            if not node_id:
+                continue
+            # Normalize to stable keys expected downstream.
+            out[node_id] = {
+                "text": str(props.get(self._text_prop) or ""),
+                "repo_relative_path": str(props.get("repo_relative_path") or ""),
+                "source_file": str(props.get("source_file") or ""),
+                "project_name": str(props.get("project_name") or ""),
+                "class_name": str(props.get("class_name") or ""),
+                "member_name": str(props.get("member_name") or ""),
+                "symbol_type": str(props.get("symbol_type") or ""),
+                "signature": str(props.get("signature") or ""),
+                "data_type": str(props.get("data_type") or ""),
+                "file_type": str(props.get("file_type") or ""),
+                "domain": str(props.get("domain") or ""),
+                "sql_kind": str(props.get("sql_kind") or ""),
+                "sql_schema": str(props.get("sql_schema") or ""),
+                "sql_name": str(props.get("sql_name") or ""),
+            }
 
         return out
 
@@ -344,7 +630,120 @@ class WeaviateRetrievalBackend(IRetrievalBackend):
             f_source = Filter.by_property(self._source_system_prop).equal(source_system_id)
             f = f_source if f is None else f & f_source
 
+        # Optional narrowing filters (non-security, but stable and useful).
+        # These come from the pipeline/router and MUST NOT override security filters.
+        data_type = rf.get("data_type")
+        if data_type is not None:
+            dt = str(data_type or "").strip()
+            if dt:
+                f_dt = Filter.by_property("data_type").equal(dt)
+                f = f_dt if f is None else f & f_dt
+
         return f
+
+    def _build_where_filter_debug(
+        self,
+        *,
+        repository: Optional[str],
+        retrieval_filters: Optional[Dict[str, Any]],
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Deterministic, JSON-friendly representation of the where-filter we build.
+
+        This is for logging only (to reproduce queries outside the app).
+        """
+        rf = retrieval_filters or {}
+        sec = self._security_cfg
+
+        def clause(prop: str, op: str, value: Any) -> Dict[str, Any]:
+            return {"prop": prop, "op": op, "value": value}
+
+        def all_of(items: List[Dict[str, Any]]) -> Dict[str, Any]:
+            return {"all_of": items}
+
+        def any_of(items: List[Dict[str, Any]]) -> Dict[str, Any]:
+            return {"any_of": items}
+
+        out: List[Dict[str, Any]] = []
+
+        repo = (repository or "").strip()
+        if repo:
+            out.append(clause(self._repo_prop, "equal", repo))
+
+        if rf.get("snapshot_ids_any") is not None:
+            out.append({"error": "snapshot_ids_any_not_supported_with_multi_tenancy"})
+
+        acl_any = rf.get("acl_tags_any") or rf.get("permission_tags_any") or rf.get("permission_tags_all")
+        if sec.get("acl_enabled", True) and isinstance(acl_any, list) and acl_any:
+            clean_any = [str(t).strip() for t in acl_any if str(t).strip()]
+            if clean_any:
+                out.append(
+                    any_of(
+                        [
+                            clause(self._perm_prop, "contains_any", clean_any),
+                            clause(self._perm_prop, "is_none", True),
+                        ]
+                    )
+                )
+
+        if sec.get("enabled"):
+            kind = sec.get("kind") or ""
+            if kind in ("labels_universe_subset", "classification_labels"):
+                labels = rf.get("classification_labels_all")
+                if isinstance(labels, list) and labels:
+                    clean_labels = [str(t).strip() for t in labels if str(t).strip()]
+                    if clean_labels:
+                        allow_unlabeled = bool(sec.get("allow_unlabeled", True))
+                        if allow_unlabeled:
+                            out.append(
+                                any_of(
+                                    [
+                                        clause(self._classification_prop, "contains_any", clean_labels),
+                                        clause(self._classification_prop, "is_none", True),
+                                    ]
+                                )
+                            )
+                        else:
+                            out.append(clause(self._classification_prop, "contains_any", clean_labels))
+            elif kind == "clearance_level":
+                user_level = _normalize_int(rf.get("user_level"))
+                if user_level is None:
+                    user_level = _normalize_int(rf.get("clearance_level"))
+                if user_level is None:
+                    user_level = _normalize_int(rf.get("doc_level_max"))
+                if user_level is not None:
+                    allow_missing = bool(sec.get("allow_missing_doc_level", True))
+                    if allow_missing:
+                        out.append(
+                            any_of(
+                                [
+                                    clause(self._doc_level_prop, "less_or_equal", int(user_level)),
+                                    clause(self._doc_level_prop, "is_none", True),
+                                ]
+                            )
+                        )
+                    else:
+                        out.append(clause(self._doc_level_prop, "less_or_equal", int(user_level)))
+                else:
+                    out.append({"warning": "clearance_level_enabled_but_user_level_missing"})
+
+        owner_id = str(rf.get("owner_id") or "").strip()
+        if owner_id:
+            out.append(clause(self._owner_prop, "equal", owner_id))
+
+        source_system_id = str(rf.get("source_system_id") or "").strip()
+        if source_system_id:
+            out.append(clause(self._source_system_prop, "equal", source_system_id))
+
+        data_type = rf.get("data_type")
+        if data_type is not None:
+            dt = str(data_type or "").strip()
+            if dt:
+                out.append(clause("data_type", "equal", dt))
+
+        if not out:
+            return None
+        return all_of(out)
 
     def _apply_labels_security_filter(self, Filter: Any, f: Any, rf: Dict[str, Any], sec: Dict[str, Any]) -> Any:
         labels = rf.get("classification_labels_all")
@@ -408,6 +807,26 @@ class WeaviateRetrievalBackend(IRetrievalBackend):
             raise ValueError("WeaviateRetrievalBackend: empty id list for IN filter")
 
         return Filter.by_property(prop).contains_any(cleaned)
+
+
+def _weaviate_resp_summary(res: Any) -> Dict[str, Any]:
+    """
+    Keep response preview small and stable for query logging.
+    """
+    try:
+        objs = list(getattr(res, "objects", []) or [])
+    except Exception:
+        objs = []
+    out: Dict[str, Any] = {"objects_count": len(objs)}
+    if objs:
+        try:
+            props = getattr(objs[0], "properties", None) or {}
+            if isinstance(props, dict):
+                # Only keys, to avoid dumping full texts.
+                out["first_object_keys"] = sorted([str(k) for k in props.keys()])[:50]
+        except Exception:
+            pass
+    return out
 
 
 def _normalize_label_list(value: Optional[List[str]]) -> List[str]:

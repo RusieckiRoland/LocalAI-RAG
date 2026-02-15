@@ -158,6 +158,10 @@ python -m tools.weaviate.snapshot_sets --env delete --id fakeSnapSet --repo fake
 - Your shell does not have `WEAVIATE_API_KEY` exported
 - Fix: put it into `.env` and run CLI with `--env`
 
+### `Deadline Exceeded` on BM25 with gRPC
+- Weaviate `1.32.2` can hang on BM25 `AND` over gRPC.
+- Fix: upgrade Weaviate (e.g., `1.32.17+`) and/or fall back to `OR`/no operator when `AND` yields empty results.
+
 ### Too much httpx noise in output
 - If your CLI has `--verbose`, keep it OFF by default.
 - If not: set `HTTPX_LOG_LEVEL=WARNING` or configure logging in the CLI to silence `httpx` unless verbose is enabled.

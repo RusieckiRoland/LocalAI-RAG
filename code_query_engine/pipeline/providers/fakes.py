@@ -175,10 +175,12 @@ class FakeRetrievalBackend(IRetrievalBackend):
         hits_by_query: Optional[Dict[str, List[str]]] = None,
         default_hits: Optional[List[str]] = None,
         texts_by_id: Optional[Dict[str, str]] = None,
+        meta_by_id: Optional[Dict[str, Dict[str, Any]]] = None,
     ) -> None:
         self._hits_by_query = {k: list(v) for k, v in (hits_by_query or {}).items()}
         self._default_hits = list(default_hits or [])
         self._texts_by_id = dict(texts_by_id or {})
+        self._meta_by_id = {k: dict(v) for k, v in (meta_by_id or {}).items()}
 
     def search(self, req: SearchRequest) -> SearchResponse:
         q = str(req.query or "")
@@ -204,4 +206,22 @@ class FakeRetrievalBackend(IRetrievalBackend):
         out: Dict[str, str] = {}
         for nid in node_ids:
             out[nid] = str(self._texts_by_id.get(nid, ""))
+        return out
+
+    def fetch_nodes(
+        self,
+        *,
+        node_ids: List[str],
+        repository: str,
+        snapshot_id: Optional[str],
+        retrieval_filters: Dict[str, Any],
+    ) -> Dict[str, Dict[str, Any]]:
+        _ = repository
+        _ = snapshot_id
+        _ = retrieval_filters
+        out: Dict[str, Dict[str, Any]] = {}
+        for nid in node_ids:
+            node: Dict[str, Any] = {"text": str(self._texts_by_id.get(nid, ""))}
+            node.update(dict(self._meta_by_id.get(nid, {}) or {}))
+            out[nid] = node
         return out

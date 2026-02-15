@@ -60,6 +60,7 @@ volumes:
 Notes:
 - Keep the Weaviate image tag pinned (avoid `latest`).
 - Ensure the running container version matches the compose file.
+ - If you are on Weaviate `1.32.2`, BM25 `AND` via gRPC can time out (`Deadline Exceeded`). Upgrading to `1.32.17` or newer resolves the timeout. After upgrade, `AND` can still be very strict and may yield `0` hits; fall back to `OR`/none if needed.
 
 Start:
 
@@ -489,5 +490,4 @@ python tools/weaviate/snapshot_sets.py --env add \
 ```bash
 python tools/weaviate/snapshot_sets.py --env delete --id nopCommerce_4-60_4-90
 ```
-
 

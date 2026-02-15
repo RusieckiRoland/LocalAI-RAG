@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import logging
+import time
 from dataclasses import dataclass
 from typing import Dict, List, Optional
 
 from weaviate.classes.query import Filter
+from code_query_engine.weaviate_query_logger import log_weaviate_query
 
 
 LOG = logging.getLogger(__name__)
@@ -57,19 +59,79 @@ class SnapshotRegistry:
         if repository:
             filters = Filter.all_of([filters, Filter.by_property("repo").equal(repository.strip())])
 
-        res = coll.query.fetch_objects(
-            filters=filters,
-            limit=1,
-            # NOTE: allowed_head_shas is informational only; the real IDs are allowed_snapshot_ids.
-            return_properties=["snapshot_set_id", "repo", "allowed_snapshot_ids", "allowed_head_shas", "allowed_refs"],
-        )
-        if not res.objects and repository:
-            # Fallback: snapshot_set_id is globally unique; do not hard-fail on repo mismatch.
+        t0 = time.time()
+        try:
             res = coll.query.fetch_objects(
-                filters=base,
+                filters=filters,
                 limit=1,
+                # NOTE: allowed_head_shas is informational only; the real IDs are allowed_snapshot_ids.
                 return_properties=["snapshot_set_id", "repo", "allowed_snapshot_ids", "allowed_head_shas", "allowed_refs"],
             )
+        except Exception as e:
+            log_weaviate_query(
+                op="snapshot_set_fetch_objects",
+                request={
+                    "collection": self.snapshot_set_collection,
+                    "limit": 1,
+                    "filters": filters,
+                    "filters_debug": {"snapshot_set_id": sid, "repo": (repository.strip() if repository else None)},
+                    "return_properties": ["snapshot_set_id", "repo", "allowed_snapshot_ids", "allowed_head_shas", "allowed_refs"],
+                    "repository_hint": repository,
+                },
+                error=f"{type(e).__name__}: {e}",
+                duration_ms=int((time.time() - t0) * 1000),
+            )
+            raise
+        else:
+            log_weaviate_query(
+                op="snapshot_set_fetch_objects",
+                request={
+                    "collection": self.snapshot_set_collection,
+                    "limit": 1,
+                    "filters": filters,
+                    "filters_debug": {"snapshot_set_id": sid, "repo": (repository.strip() if repository else None)},
+                    "return_properties": ["snapshot_set_id", "repo", "allowed_snapshot_ids", "allowed_head_shas", "allowed_refs"],
+                    "repository_hint": repository,
+                },
+                response=_weaviate_resp_summary(res),
+                duration_ms=int((time.time() - t0) * 1000),
+            )
+        if not res.objects and repository:
+            # Fallback: snapshot_set_id is globally unique; do not hard-fail on repo mismatch.
+            t1 = time.time()
+            try:
+                res = coll.query.fetch_objects(
+                    filters=base,
+                    limit=1,
+                    return_properties=["snapshot_set_id", "repo", "allowed_snapshot_ids", "allowed_head_shas", "allowed_refs"],
+                )
+            except Exception as e:
+                log_weaviate_query(
+                    op="snapshot_set_fetch_objects_fallback",
+                    request={
+                        "collection": self.snapshot_set_collection,
+                        "limit": 1,
+                        "filters": base,
+                        "filters_debug": {"snapshot_set_id": sid, "repo": None, "fallback": True},
+                        "return_properties": ["snapshot_set_id", "repo", "allowed_snapshot_ids", "allowed_head_shas", "allowed_refs"],
+                    },
+                    error=f"{type(e).__name__}: {e}",
+                    duration_ms=int((time.time() - t1) * 1000),
+                )
+                raise
+            else:
+                log_weaviate_query(
+                    op="snapshot_set_fetch_objects_fallback",
+                    request={
+                        "collection": self.snapshot_set_collection,
+                        "limit": 1,
+                        "filters": base,
+                        "filters_debug": {"snapshot_set_id": sid, "repo": None, "fallback": True},
+                        "return_properties": ["snapshot_set_id", "repo", "allowed_snapshot_ids", "allowed_head_shas", "allowed_refs"],
+                    },
+                    response=_weaviate_resp_summary(res),
+                    duration_ms=int((time.time() - t1) * 1000),
+                )
         if not res.objects:
             return None
         return res.objects[0].properties or {}
@@ -113,6 +175,7 @@ class SnapshotRegistry:
                     Filter.by_property("snapshot_id").equal(snapshot_id),
                 ]
             )
+            t0 = time.time()
             res = coll.query.fetch_objects(
                 filters=filters,
                 limit=5,
@@ -127,7 +190,36 @@ class SnapshotRegistry:
                     "started_utc",
                 ],
             )
+            log_weaviate_query(
+                op="import_run_fetch_objects",
+                request={
+                    "collection": self.import_collection,
+                    "limit": 5,
+                    "filters": repr(filters),
+                    "return_properties": [
+                        "snapshot_id",
+                        "head_sha",
+                        "friendly_name",
+                        "tag",
+                        "ref_name",
+                        "branch",
+                        "finished_utc",
+                        "started_utc",
+                    ],
+                },
+                response=_weaviate_resp_summary(res),
+                duration_ms=int((time.time() - t0) * 1000),
+            )
         except Exception:
+            log_weaviate_query(
+                op="import_run_fetch_objects",
+                request={
+                    "collection": self.import_collection,
+                    "limit": 5,
+                    "filters": repr(Filter.all_of([Filter.by_property("repo").equal(repo), Filter.by_property("snapshot_id").equal(snapshot_id)])),
+                },
+                error="Exception (see server logs)",
+            )
             LOG.exception("soft-failure: failed to resolve snapshot label for %s", snapshot_id)
             return snapshot_id
 
@@ -155,3 +247,19 @@ class SnapshotRegistry:
             seen.add(item)
             out.append(item)
         return out
+
+
+def _weaviate_resp_summary(res: object) -> Dict[str, object]:
+    try:
+        objs = list(getattr(res, "objects", []) or [])
+    except Exception:
+        objs = []
+    out: Dict[str, object] = {"objects_count": len(objs)}
+    if objs:
+        try:
+            props = getattr(objs[0], "properties", None) or {}
+            if isinstance(props, dict):
+                out["first_object_keys"] = sorted([str(k) for k in props.keys()])[:50]
+        except Exception:
+            pass
+    return out

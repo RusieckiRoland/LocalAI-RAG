@@ -334,9 +334,12 @@ class FetchNodeTextsAction(PipelineActionBase):
         if backend is None:
             raise ValueError("fetch_node_texts: runtime.retrieval_backend is required by retrieval_contract.")
 
+        fetch_nodes_fn = getattr(backend, "fetch_nodes", None)
         fetch_texts_fn = getattr(backend, "fetch_texts", None)
-        if not callable(fetch_texts_fn):
-            raise ValueError("fetch_node_texts: runtime.retrieval_backend.fetch_texts(...) is required by retrieval_contract.")
+        if not callable(fetch_nodes_fn) and not callable(fetch_texts_fn):
+            raise ValueError(
+                "fetch_node_texts: retrieval_backend must provide fetch_texts(...) or fetch_nodes(...)."
+            )
 
         settings = getattr(runtime, "pipeline_settings", None) or {}
 
@@ -416,7 +419,31 @@ class FetchNodeTextsAction(PipelineActionBase):
         depth_map, parent_map = _build_depth_and_parent(seed_nodes=retrieval_seed_nodes, edges=edges)
 
         # ---- Strategy defines which IDs are considered and in what order ----
-        prioritization_mode = _resolve_prioritization_mode(raw)
+        # Allow dynamic override via inbox (message-based dispatcher).
+        prioritization_mode_override: Optional[str] = None
+        for msg in list(getattr(state, "inbox_last_consumed", None) or []):
+            try:
+                payload = (msg or {}).get("payload") or {}
+                if not isinstance(payload, dict):
+                    continue
+                v = payload.get("prioritization_mode", payload.get("policy"))
+                if v is None:
+                    continue
+                s = str(v or "").strip().lower()
+                if s:
+                    prioritization_mode_override = s
+            except Exception:
+                continue
+
+        if prioritization_mode_override is not None:
+            if prioritization_mode_override not in _ALLOWED_PRIORITIZATION_MODES:
+                raise ValueError(
+                    f"fetch_node_texts: invalid prioritization_mode='{prioritization_mode_override}' from inbox. "
+                    f"Allowed: {sorted(_ALLOWED_PRIORITIZATION_MODES)}"
+                )
+            prioritization_mode = prioritization_mode_override
+        else:
+            prioritization_mode = _resolve_prioritization_mode(raw)
 
         ordered_ids = _build_strategy_order_ids(
             mode=prioritization_mode,
@@ -429,15 +456,37 @@ class FetchNodeTextsAction(PipelineActionBase):
         candidates_unique = _dedupe_preserve_order(list(ordered_ids))
 
         # ---- Materialize texts via backend interface ----
-        id_to_text = fetch_texts_fn(
-            node_ids=list(candidates_unique),
-            repository=repository,
-            snapshot_id=snapshot_id,
-            retrieval_filters=retrieval_filters,
-        ) or {}
-
-        if not isinstance(id_to_text, dict):
-            raise ValueError("fetch_node_texts: retrieval_backend.fetch_texts must return Dict[str, str] (contract).")
+        id_to_node: Dict[str, Dict[str, Any]] = {}
+        # Optional legacy shape from older backends (text-only). Kept for debug parity.
+        id_to_text: Dict[str, str] = {}
+        if callable(fetch_nodes_fn):
+            raw_nodes = fetch_nodes_fn(
+                node_ids=list(candidates_unique),
+                repository=repository,
+                snapshot_id=snapshot_id,
+                retrieval_filters=retrieval_filters,
+            ) or {}
+            if not isinstance(raw_nodes, dict):
+                raise ValueError("fetch_node_texts: retrieval_backend.fetch_nodes must return Dict[str, Dict] (contract).")
+            for k, v in raw_nodes.items():
+                if not isinstance(k, str) or not k.strip():
+                    continue
+                if not isinstance(v, dict):
+                    continue
+                id_to_node[k.strip()] = dict(v)
+        else:
+            id_to_text = fetch_texts_fn(  # type: ignore[misc]
+                node_ids=list(candidates_unique),
+                repository=repository,
+                snapshot_id=snapshot_id,
+                retrieval_filters=retrieval_filters,
+            ) or {}
+            if not isinstance(id_to_text, dict):
+                raise ValueError("fetch_node_texts: retrieval_backend.fetch_texts must return Dict[str, str] (contract).")
+            for k, v in id_to_text.items():
+                if not isinstance(k, str) or not k.strip():
+                    continue
+                id_to_node[k.strip()] = {"text": str(v or "")}
 
         seed_set = set(retrieval_seed_nodes)
 
@@ -467,10 +516,10 @@ class FetchNodeTextsAction(PipelineActionBase):
         decision_preview_limit = 80
 
         for node_id in ordered_ids:
-            raw_text = id_to_text.get(node_id, None)
+            node_props = id_to_node.get(node_id, None)
 
             # Backend returned NONE -> missing
-            if raw_text is None:
+            if node_props is None:
                 missing_texts += 1
                 if first_missing_text_id is None:
                     first_missing_text_id = str(node_id)
@@ -486,7 +535,7 @@ class FetchNodeTextsAction(PipelineActionBase):
                     )
                 continue
 
-            text = str(raw_text)
+            text = str((node_props or {}).get("text") or "")
 
             # Backend returned empty string -> empty
             if text == "":
@@ -537,15 +586,32 @@ class FetchNodeTextsAction(PipelineActionBase):
                     continue
 
             # include (even if empty -> you want to see it; the log will mark it)
-            out.append(
-                {
-                    "id": node_id,
-                    "text": text,
-                    "is_seed": node_id in seed_set,
-                    "depth": int(depth_map.get(node_id, 1)),
-                    "parent_id": parent_map.get(node_id, None),
-                }
-            )
+            item: Dict[str, Any] = {"id": node_id, "text": text}
+            # Preserve useful metadata if backend provided it (for path attribution and debugging).
+            for k in (
+                "repo_relative_path",
+                "source_file",
+                "project_name",
+                "class_name",
+                "member_name",
+                "symbol_type",
+                "signature",
+                "data_type",
+                "file_type",
+                "domain",
+                "sql_kind",
+                "sql_schema",
+                "sql_name",
+            ):
+                v = (node_props or {}).get(k, None)
+                if v is None:
+                    continue
+                item[k] = v
+
+            item["is_seed"] = node_id in seed_set
+            item["depth"] = int(depth_map.get(node_id, 1))
+            item["parent_id"] = parent_map.get(node_id, None)
+            out.append(item)
 
             if first_included_id is None:
                 first_included_id = str(node_id)
@@ -577,6 +643,7 @@ class FetchNodeTextsAction(PipelineActionBase):
             {
                 "reason": "ok",
                 "prioritization_mode": prioritization_mode,
+                "prioritization_mode_source": ("inbox" if prioritization_mode_override is not None else "yaml"),
                 "seed_count": len(retrieval_seed_nodes),
                 "graph_expanded_count": len(graph_expanded_nodes),
                 "node_texts_count": len(out),
@@ -589,6 +656,7 @@ class FetchNodeTextsAction(PipelineActionBase):
         state.graph_debug = debug
 
         # ---- Extra dev-only materialization diagnostics (bounded) ----
+        returned_texts_count = len(id_to_text) if id_to_text else len(id_to_node)
         setattr(
             state,
             "_fetch_node_texts_debug",
@@ -597,7 +665,8 @@ class FetchNodeTextsAction(PipelineActionBase):
                 "backend_fetch": {
                     "requested_ids_count": len(candidates_unique),
                     "requested_ids_preview": candidates_unique[:80],
-                    "returned_texts_count": len(id_to_text.keys()),
+                    "returned_nodes_count": len(id_to_node.keys()),
+                    "returned_texts_count": returned_texts_count,
                     "missing_texts_count": missing_texts,
                     "first_missing_text_id": first_missing_text_id,
                     "missing_text_ids_preview": missing_text_ids_preview,

@@ -6,6 +6,12 @@
       "match": "prefix",
       "en": ">⚠️  Search-limit note:",
       "pl": ">⚠️  Osiągnięto limit cyklów wyszukiwania.\n\n"
+    },
+    {
+      "id": "direct_answer_note_quote",
+      "match": "prefix",
+      "en": ">ℹ️  Direct-answer note: This question was classified as general knowledge; no repository search was performed.",
+      "pl": ">ℹ️  Odpowiedź bezpośrednia: To pytanie zostało sklasyfikowane jako wiedza ogólna; nie wykonano wyszukiwania w repozytorium.\n\n"
     }
   ],
   "never_translate_terms": [],

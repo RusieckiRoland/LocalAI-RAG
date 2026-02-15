@@ -11,7 +11,7 @@ YAMLpipeline:
     native_chat: true
 
     # Loop guard
-    max_turn_loops: 2
+    max_turn_loops: 6
 
     # Token budgets
     max_context_tokens: 5000
@@ -59,16 +59,25 @@ YAMLpipeline:
         question:
           source: user_question_en
           template: "### User:\n{}\n\n"
-      next: handle_router_decision
+      next: dispatch_router_directives
 
+
+    - id: dispatch_router_directives
+      action: inbox_dispatcher
+      directives_key: "dispatch"
+      rules:
+        fetch_node_texts:
+          topic: "config"
+          allow_keys: ["prioritization_mode", "policy"]
+          rename:
+            policy: "prioritization_mode"
+      next: handle_router_decision
 
     - id: handle_router_decision
       action: json_decision_router
       routes:
-        direct:
-          next: call_model_direct_answer
-        retrieve:
-          next: search_auto
+        direct: call_model_direct_answer
+        retrieve: search_auto
       on_other: call_model_direct_answer
 
     - id: search_auto
@@ -143,22 +152,25 @@ YAMLpipeline:
         user_question:
           source: user_question_en
           template: "### User:\n{}\n\n"
-        last_query:
-          source: retrieval_query
-          template: "<<<LAST QUERY  : {}\n"
-        previous_queries:
-          source: retrieval_queries_asked
-          template: "<<<PREVIOUS QUERIES:\n{}\n"
-      next: handle_sufficiency_decision
+      next: dispatch_sufficiency_directives
 
+
+    - id: dispatch_sufficiency_directives
+      action: inbox_dispatcher
+      directives_key: "dispatch"
+      rules:
+        fetch_node_texts:
+          topic: "config"
+          allow_keys: ["prioritization_mode", "policy"]
+          rename:
+            policy: "prioritization_mode"
+      next: handle_sufficiency_decision
 
     - id: handle_sufficiency_decision
       action: json_decision_router
       routes:
-        sufficient:
-          next: call_model_sure_answer
-        retrieve:
-          next: guard_repeat_query
+        sufficient: call_model_sure_answer
+        retrieve: guard_repeat_query
       on_other: call_model_answer_not_sure
 
     - id: guard_repeat_query

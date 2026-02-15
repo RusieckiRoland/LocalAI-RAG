@@ -4,7 +4,6 @@ This document explains how to use the **`search_nodes`** action in a YAML pipeli
 
 It is **fully consistent with `retrieval_contract.md`**:
 - **fail-fast** (invalid config → runtime error)
-- **no fallbacks**
 - **deterministic** behavior (stable, ranked seed ordering)
 
 ---
@@ -81,6 +80,18 @@ rerank: none | keyword_rerank | codebert_rerank
 - structured **filters** (e.g. `data_type`, tags, scoped constraints)
 
 This is useful when a router/model emits a “JSON-ish” payload.
+
+### Supported payload metadata (JSON-ish)
+When using `JsonishQueryParser`, the model can include optional *top-level* metadata keys:
+- `search_type` / `mode`: `semantic | bm25 | hybrid | semantic_rerank`
+- `top_k`: integer (used only if `allow_top_k_from_payload: true`)
+- `rrf_k`: integer (used only if `allow_rrf_k_from_payload: true` and resolved search is `hybrid`)
+- `match_operator`: `and | or` (applied only when resolved search is `bm25`)
+
+Notes:
+- These metadata keys are **not** passed to the retrieval backend as filters.
+- `bm25_operator` is used **only** when `match_operator` is explicitly present (`and|or`).
+- If payload contains an invalid or missing `match_operator`, the action keeps `bm25_operator = null`.
 
 ### How it works in this action
 1) `state.last_model_response` is parsed (if configured)
@@ -195,6 +206,10 @@ Runtime error if:
     {"id":"<node_id>", "score":0.72, "rank":2}
   ]
   ```
+
+- `state.last_search_bm25_operator: str | null`  
+  Records effective operator when `search_type=bm25`
+  (only explicit payload value).
 
 ---
 

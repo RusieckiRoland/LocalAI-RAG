@@ -12,8 +12,12 @@ from .base_query_parser import BaseQueryParser, QueryParseResult
 _RE_TRAILING_COMMA = re.compile(r",\s*([}\]])")
 _RE_UNQUOTED_KEY = re.compile(r"(?P<prefix>[{,]\s*)(?P<key>[A-Za-z_][A-Za-z0-9_\-]*)\s*:")
 _RE_EQUAL_ASSIGN = re.compile(r"(?P<key>[A-Za-z_][A-Za-z0-9_\-]*)\s*=\s*")
+_RE_QUERY_SEARCH_TYPE = re.compile(
+    r"(?i)\b(?:search_type|mode)\s*[:=]\s*(?P<st>semantic_rerank|semantic|bm25|hybrid)\b"
+)
 
 _ALLOWED_SEARCH_TYPES = {"semantic", "bm25", "hybrid", "semantic_rerank"}
+_ALLOWED_MATCH_OPERATORS = {"and", "or"}
 
 
 def _strip_code_fences(s: str) -> str:
@@ -102,6 +106,17 @@ class JsonishQueryParser(BaseQueryParser):
         if rrf_k is not None:
             meta_filters["__rrf_k"] = rrf_k
 
+        mo_val = obj.get("match_operator", None)
+        if isinstance(mo_val, str):
+            mo = mo_val.strip().lower()
+            if mo:
+                if mo not in _ALLOWED_MATCH_OPERATORS:
+                    warnings.append(f"unknown match_operator '{mo}'; ignoring.")
+                else:
+                    meta_filters["__match_operator"] = mo
+        elif mo_val is not None:
+            warnings.append(f"match_operator was not a string (got {type(mo_val).__name__}); ignoring.")
+
         query_val = obj.get("query")
         if isinstance(query_val, str):
             query = query_val.strip()
@@ -109,6 +124,22 @@ class JsonishQueryParser(BaseQueryParser):
             if query_val is not None:
                 warnings.append(f"'query' was not a string (got {type(query_val).__name__}); using raw payload as query.")
             query = raw.strip()
+
+        # Defensive: if the model mistakenly encodes metadata inside query (e.g. "search_type:bm25"),
+        # extract it into reserved meta keys and remove from the query string.
+        m = _RE_QUERY_SEARCH_TYPE.search(query or "")
+        if m:
+            st = (m.group("st") or "").strip().lower()
+            if st:
+                if st not in _ALLOWED_SEARCH_TYPES:
+                    warnings.append(f"unknown search_type/mode '{st}' found inside query; ignoring.")
+                else:
+                    if "__search_type" not in meta_filters:
+                        meta_filters["__search_type"] = st
+                    # Strip only the matched metadata fragment (keep the rest of the query intact).
+                    query = (query[: m.start()] + " " + query[m.end() :]).strip()
+                    query = re.sub(r"\s{2,}", " ", query)
+                    warnings.append("extracted search_type/mode from query into JSON meta")
 
         filters_obj = obj.get("filters", {})
         filters, w2 = _coerce_dict(filters_obj)

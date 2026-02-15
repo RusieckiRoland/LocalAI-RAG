@@ -56,6 +56,18 @@ class IRetrievalBackend(Protocol):
     ) -> Dict[str, str]:
         ...
 
+    # Optional richer fetch interface (backward compatible with fetch_texts()).
+    # When implemented, it should return per-node metadata in addition to text.
+    def fetch_nodes(
+        self,
+        *,
+        node_ids: List[str],
+        repository: str,
+        snapshot_id: Optional[str],
+        retrieval_filters: Dict[str, Any],
+    ) -> Dict[str, Dict[str, Any]]:
+        ...
+
 
 class IMarkdownTranslatorEnPl(Protocol):
     def translate_markdown(self, markdown_en: str) -> str:

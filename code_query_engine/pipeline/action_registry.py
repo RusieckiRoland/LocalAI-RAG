@@ -45,6 +45,7 @@ def build_default_action_registry() -> ActionRegistry:
     from .actions.manage_context_budget import ManageContextBudgetAction
     from .actions.repeat_query_guard import RepeatQueryGuardAction
     from .actions.json_decision_router import JsonDecisionRouterAction
+    from .actions.inbox_dispatcher import InboxDispatcherAction
 
     r = ActionRegistry()
 
@@ -63,5 +64,9 @@ def build_default_action_registry() -> ActionRegistry:
     r.register("manage_context_budget", ManageContextBudgetAction())
     r.register("repeat_query_guard", RepeatQueryGuardAction())
     r.register("json_decision_router", JsonDecisionRouterAction())
+    # Preferred generic name:
+    r.register("inbox_dispatcher", InboxDispatcherAction())
+    # Backward-compatible alias (older pipelines may still reference this):
+    r.register("json_inbox_dispatcher", InboxDispatcherAction())
 
     return r

@@ -168,3 +168,25 @@ def test_run_end_inbox_empty(monkeypatch: pytest.MonkeyPatch):
     assert run_end, "RUN_END trace event missing"
     assert run_end[-1]["inbox_remaining_count"] == 0
 
+
+def test_run_end_inbox_fail_fast(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("RAG_PIPELINE_INBOX_FAIL_FAST", "1")
+
+    reg = ActionRegistry()
+    reg.register("producer", _ProducerAction())
+    reg.register("noop", _NoopAction())
+
+    pipe = PipelineDef(
+        name="inbox",
+        settings={"entry_step_id": "producer"},
+        steps=[
+            StepDef(id="producer", action="producer", raw={"next": "noop"}),
+            StepDef(id="noop", action="noop", raw={"end": True}),
+        ],
+    )
+
+    state = _state()
+    rt = _DummyRuntime()
+
+    with pytest.raises(RuntimeError, match="PIPELINE_INBOX_NOT_EMPTY"):
+        PipelineEngine(registry=reg).run(pipe, state, rt)

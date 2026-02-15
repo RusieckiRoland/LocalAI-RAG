@@ -39,6 +39,12 @@ class PipelineState:
     retrieval_queries_asked: List[str] = field(default_factory=list)
     retrieval_queries_asked_norm: Set[str] = field(default_factory=set)
 
+    # Last resolved search execution (for traceability / prompt hygiene).
+    last_search_query: Optional[str] = None
+    last_search_type: Optional[str] = None
+    last_search_filters: Dict[str, Any] = field(default_factory=dict)
+    last_search_bm25_operator: Optional[str] = None
+
     # Materialized node texts 
     node_texts: List[Dict[str, Any]] = field(default_factory=list)
 

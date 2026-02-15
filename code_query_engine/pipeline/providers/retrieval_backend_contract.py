@@ -6,6 +6,7 @@ from typing import Any, Dict, List, Literal, Optional
 
 
 SearchType = Literal["semantic", "bm25", "hybrid"]
+Bm25MatchOperator = Literal["and", "or"]
 
 
 @dataclass(frozen=True)
@@ -20,6 +21,9 @@ class SearchRequest:
 
     # Hybrid-only tuning (YAML: step.raw.rrf_k). Default behavior must be deterministic.
     rrf_k: Optional[int] = None
+
+    # BM25-only tuning: how query tokens are matched (AND/OR semantics).
+    bm25_operator: Optional[Bm25MatchOperator] = None
 
 
 @dataclass(frozen=True)

@@ -4,11 +4,13 @@ import json
 import logging
 import os
 import threading
+import time
 from collections import defaultdict, deque
 from typing import Any, DefaultDict, Dict, Iterable, List, Optional, Tuple
 from pathlib import Path
 
 from .ports import IGraphProvider
+from code_query_engine.weaviate_query_logger import log_weaviate_query
 
 py_logger = logging.getLogger(__name__)
 
@@ -273,11 +275,52 @@ class WeaviateGraphProvider(IGraphProvider):
             filters = filters & clearance_filter
 
         coll = self._client.collections.get(self._node_collection).with_tenant(tenant_snapshot_id)
-        res = coll.query.fetch_objects(
-            filters=filters,
-            limit=len(ids),
-            return_properties=[self._id_prop],
-        )
+        t0 = time.time()
+        try:
+            res = coll.query.fetch_objects(
+                filters=filters,
+                limit=len(ids),
+                return_properties=[self._id_prop],
+            )
+        except Exception as e:
+            log_weaviate_query(
+                op="graph_fetch_objects_acl",
+                request={
+                    "collection": self._node_collection,
+                    "tenant": tenant_snapshot_id,
+                    "limit": int(len(ids)),
+                    "filters": filters,
+                    "filters_parts": {
+                        "id_count": int(len(ids)),
+                        "acl_tags_any": list(tags or []),
+                        "classification_labels_all": list(labels or []),
+                        "clearance_level": rf.get("user_level") or rf.get("clearance_level") or rf.get("doc_level_max"),
+                    },
+                    "return_properties": [self._id_prop],
+                },
+                error=f"{type(e).__name__}: {e}",
+                duration_ms=int((time.time() - t0) * 1000),
+            )
+            raise
+        else:
+            log_weaviate_query(
+                op="graph_fetch_objects_acl",
+                request={
+                    "collection": self._node_collection,
+                    "tenant": tenant_snapshot_id,
+                    "limit": int(len(ids)),
+                    "filters": filters,
+                    "filters_parts": {
+                        "id_count": int(len(ids)),
+                        "acl_tags_any": list(tags or []),
+                        "classification_labels_all": list(labels or []),
+                        "clearance_level": rf.get("user_level") or rf.get("clearance_level") or rf.get("doc_level_max"),
+                    },
+                    "return_properties": [self._id_prop],
+                },
+                response=_weaviate_resp_summary(res),
+                duration_ms=int((time.time() - t0) * 1000),
+            )
 
         allowed_set = set()
         for obj in res.objects or []:
@@ -328,43 +371,84 @@ class WeaviateGraphProvider(IGraphProvider):
     def _load_edges(self, *, repo: str, snapshot_id: str) -> Dict[str, List[Tuple[str, str]]]:
         coll = self._client.collections.get(self._edge_collection).with_tenant(snapshot_id)
         adj: DefaultDict[str, List[Tuple[str, str]]] = defaultdict(list)
+        t0 = time.time()
+        iter_count = 0
 
         # NOTE:
         # - iterator() typically does not support server-side filters in v4 client.
         # - We filter locally to keep semantics similar to the previous implementation.
         # - If snapshot_id is truly the tenant partition key, object-level snapshot_id filtering is redundant.
-        for obj in coll.iterator(
-            cache_size=self._page_size,
-            return_properties=[
-                self._repo_prop,
-                self._snapshot_id_prop,
-                self._edge_from_prop,
-                self._edge_to_prop,
-                self._edge_type_prop,
-            ],
-        ):
-            props = obj.properties or {}
+        try:
+            it = coll.iterator(
+                cache_size=self._page_size,
+                return_properties=[
+                    self._repo_prop,
+                    self._snapshot_id_prop,
+                    self._edge_from_prop,
+                    self._edge_to_prop,
+                    self._edge_type_prop,
+                ],
+            )
+            for obj in it:
+                iter_count += 1
+                props = obj.properties or {}
 
-            # Local repo filter (keeps behavior if tenant contains multiple repos)
-            obj_repo = str(props.get(self._repo_prop) or "").strip()
-            if obj_repo != repo:
-                continue
+                # Local repo filter (keeps behavior if tenant contains multiple repos)
+                obj_repo = str(props.get(self._repo_prop) or "").strip()
+                if obj_repo != repo:
+                    continue
 
-            # Optional local snapshot_id filter (only if the property exists and is set)
-            obj_snapshot = str(props.get(self._snapshot_id_prop) or "").strip()
-            if obj_snapshot and obj_snapshot != snapshot_id:
-                continue
+                # Optional local snapshot_id filter (only if the property exists and is set)
+                obj_snapshot = str(props.get(self._snapshot_id_prop) or "").strip()
+                if obj_snapshot and obj_snapshot != snapshot_id:
+                    continue
 
-            frm = str(props.get(self._edge_from_prop) or "").strip()
-            to = str(props.get(self._edge_to_prop) or "").strip()
-            rel = str(props.get(self._edge_type_prop) or "edge").strip() or "edge"
-            if not frm or not to:
-                continue
+                frm = str(props.get(self._edge_from_prop) or "").strip()
+                to = str(props.get(self._edge_to_prop) or "").strip()
+                rel = str(props.get(self._edge_type_prop) or "edge").strip() or "edge"
+                if not frm or not to:
+                    continue
 
-            adj[frm].append((rel, to))
+                adj[frm].append((rel, to))
+        except Exception as e:
+            log_weaviate_query(
+                op="edge_iterator",
+                request={
+                    "collection": self._edge_collection,
+                    "tenant": snapshot_id,
+                    "cache_size": int(self._page_size),
+                    "return_properties": [
+                        self._repo_prop,
+                        self._snapshot_id_prop,
+                        self._edge_from_prop,
+                        self._edge_to_prop,
+                        self._edge_type_prop,
+                    ],
+                },
+                error=f"{type(e).__name__}: {e}",
+                duration_ms=int((time.time() - t0) * 1000),
+            )
+            raise
+        else:
+            log_weaviate_query(
+                op="edge_iterator",
+                request={
+                    "collection": self._edge_collection,
+                    "tenant": snapshot_id,
+                    "cache_size": int(self._page_size),
+                    "return_properties": [
+                        self._repo_prop,
+                        self._snapshot_id_prop,
+                        self._edge_from_prop,
+                        self._edge_to_prop,
+                        self._edge_type_prop,
+                    ],
+                },
+                response={"iterated": iter_count, "adj_keys": len(adj)},
+                duration_ms=int((time.time() - t0) * 1000),
+            )
 
         return dict(adj)
-
 
     def _build_id_filter(self, ids: List[str]) -> Any:
         try:
@@ -457,6 +541,22 @@ class WeaviateGraphProvider(IGraphProvider):
             f_none = Filter.by_property(self._doc_level_prop).is_none(True)
             return Filter.any_of([f_level, f_none])
         return f_level
+
+
+def _weaviate_resp_summary(res: Any) -> Dict[str, Any]:
+    try:
+        objs = list(getattr(res, "objects", []) or [])
+    except Exception:
+        objs = []
+    out: Dict[str, Any] = {"objects_count": len(objs)}
+    if objs:
+        try:
+            props = getattr(objs[0], "properties", None) or {}
+            if isinstance(props, dict):
+                out["first_object_keys"] = sorted([str(k) for k in props.keys()])[:50]
+        except Exception:
+            pass
+    return out
 
 
 def _load_classification_universe_from_config() -> List[str]:

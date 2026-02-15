@@ -31,6 +31,8 @@ class PipelineValidator:
         "manage_context_budget",
         "repeat_query_guard",
         "json_decision_router",
+        "inbox_dispatcher",
+        "json_inbox_dispatcher",
     }
 
     def validate(self, pipeline: Any) -> List[str]:

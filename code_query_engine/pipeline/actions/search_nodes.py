@@ -16,10 +16,10 @@ py_logger = logging.getLogger(__name__)
 _ALLOWED_SEARCH_TYPES = {"semantic", "bm25", "hybrid"}
 _ALLOWED_DATA_TYPES = {"regular_code", "db_code"}
 _ALLOWED_SNAPSHOT_SOURCES = {"primary", "secondary"}
+_ALLOWED_BM25_OPERATORS = {"and", "or"}
 
 # "codebert_rerank" is for future use (contract allows it, execution can be backend-side later)
 _ALLOWED_RERANK_MODES = {"none", "keyword_rerank", "codebert_rerank"}
-
 
 def _normalize_str_list(v: Any) -> List[str]:
     if v is None:
@@ -39,6 +39,10 @@ def _cleanup_retrieval_artifacts(state: PipelineState) -> None:
     """
     Contract-level cleanup to avoid cross-request state leakage.
     Reset retrieval/graph/text artifacts at the very beginning of search_nodes.
+    IMPORTANT:
+    - Do NOT clear context_blocks here.
+    - context_blocks lifecycle is managed by manage_context_budget (within a run)
+      and by creating a fresh PipelineState per new user turn.
     """
     state.retrieval_seed_nodes = []
     state.retrieval_hits = []
@@ -47,7 +51,6 @@ def _cleanup_retrieval_artifacts(state: PipelineState) -> None:
     state.graph_edges = []
     state.graph_debug = {}
     state.graph_node_texts = []
-    state.context_blocks = []
 
     # Defensive: some older actions/tests may have this attribute dynamically
     if hasattr(state, "node_texts"):
@@ -265,6 +268,26 @@ def _opt_int(v: Any) -> Optional[int]:
     return int(s)
 
 
+def _resolve_bm25_operator(
+    *,
+    search_type: str,
+    payload_match_operator: str,
+    parser_warnings: List[str],
+    step_raw: Dict[str, Any],
+    query: str,
+) -> Optional[str]:
+    _ = parser_warnings
+    _ = step_raw
+    _ = query
+    if search_type != "bm25":
+        return None
+
+    if payload_match_operator in _ALLOWED_BM25_OPERATORS:
+        return payload_match_operator
+
+    return None
+
+
 def _hit_id(hit: Any) -> str:
     """
     Support both hit objects (contract style) and dict hits (adapter style).
@@ -438,15 +461,18 @@ class SearchNodesAction(PipelineActionBase):
             raise ValueError(f"search_nodes: invalid search_type='{search_type_cfg}'. Allowed: {allowed_cfg}")
 
         payload = (state.last_model_response or "").strip()
-        parsed_query, parsed_filters, _warnings = ("", {}, [])
+        parsed_query, parsed_filters, parse_warnings = ("", {}, [])
         if payload:
-            parsed_query, parsed_filters, _warnings = _parse_payload_if_configured(raw, payload)
+            parsed_query, parsed_filters, parse_warnings = _parse_payload_if_configured(raw, payload)
 
         parsed_filters = dict(parsed_filters or {})
         # Reserved parser-provided retrieval meta (not filters passed to backend)
         payload_search_type = str(parsed_filters.pop("__search_type", "") or "").strip().lower()
         payload_top_k = parsed_filters.pop("__top_k", None)
         payload_rrf_k = parsed_filters.pop("__rrf_k", None)
+        payload_match_operator = str(parsed_filters.pop("__match_operator", "") or "").strip().lower()
+        if payload_match_operator and payload_match_operator not in _ALLOWED_BM25_OPERATORS:
+            payload_match_operator = ""
 
         # Resolve effective search_type if configured as auto.
         search_type = search_type_cfg
@@ -464,10 +490,12 @@ class SearchNodesAction(PipelineActionBase):
                     search_type = lp
                 elif lp == "semantic_rerank":
                     search_type = "semantic"
-
-            # 3) fallback default (deterministic)
+            # 3) strict no-fallback behavior: the mode must be explicit.
             if search_type == "auto":
-                search_type = str(raw.get("default_search_type") or "hybrid").strip().lower() or "hybrid"
+                raise ValueError(
+                    "search_nodes: search_type='auto' requires explicit search_type "
+                    "in payload (or explicit prefix decision)."
+                )
 
         if search_type not in _ALLOWED_SEARCH_TYPES:
             raise ValueError(f"search_nodes: resolved invalid search_type='{search_type}'. Allowed: {sorted(_ALLOWED_SEARCH_TYPES)}")
@@ -483,6 +511,16 @@ class SearchNodesAction(PipelineActionBase):
         # Persist the effective query in state for downstream prompts (e.g., "do not repeat last query").
         state.retrieval_query = query
         state.retrieval_mode = search_type
+        state.last_search_query = query
+        state.last_search_type = search_type
+        bm25_operator = _resolve_bm25_operator(
+            search_type=search_type,
+            payload_match_operator=payload_match_operator,
+            parser_warnings=parse_warnings,
+            step_raw=raw,
+            query=query,
+        )
+        state.last_search_bm25_operator = bm25_operator
 
         # Record retrieval queries for this run (dedupe by normalized form).
         qn = _norm_query_for_history(query)
@@ -534,6 +572,8 @@ class SearchNodesAction(PipelineActionBase):
         filters = _normalize_and_validate_filters(filters)
         # Keep effective retrieval scope for downstream actions (e.g. fetch_node_texts).
         state.retrieval_filters = dict(filters)
+        # Debug/traceability: remember what search actually used (including sacred filters).
+        state.last_search_filters = dict(filters)
 
         backend = runtime.get_retrieval_backend()
 
@@ -577,6 +617,7 @@ class SearchNodesAction(PipelineActionBase):
                 if (search_type == "hybrid" and raw.get("allow_rrf_k_from_payload", False) and (v := _opt_int(payload_rrf_k)) is not None)
                 else None
             ),
+            bm25_operator=bm25_operator,
         )
 
         resp = backend.search(req)
