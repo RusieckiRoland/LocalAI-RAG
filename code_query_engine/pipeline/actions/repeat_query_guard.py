@@ -26,6 +26,26 @@ def _resolve_parser(parser_name: str) -> BaseQueryParser:
     raise ValueError(f"repeat_query_guard: Unknown query_parser '{name}'. Supported: JsonishQueryParser / jsonish_v1")
 
 
+def _next_mode_constraint(last_search_type: Optional[str]) -> str:
+    st = str(last_search_type or "").strip().lower()
+    if st == "hybrid":
+        return (
+            'Do NOT use search_type="hybrid" in the next retrieve decision. '
+            'Use search_type="semantic".'
+        )
+    if st == "semantic":
+        return (
+            'Do NOT use search_type="semantic" in the next retrieve decision. '
+            'Use search_type="hybrid".'
+        )
+    if st == "bm25":
+        return (
+            'Do NOT use search_type="bm25" in the next retrieve decision. '
+            'Use search_type="semantic".'
+        )
+    return ""
+
+
 def _parse_payload(step_raw: Dict[str, Any], payload: str) -> Tuple[str, List[str]]:
     parser_name = str(step_raw.get("query_parser") or "").strip()
     if not parser_name:
@@ -60,6 +80,7 @@ class RepeatQueryGuardAction(PipelineActionBase):
         return {
             "payload_len": len((state.last_model_response or "") or ""),
             "asked_count": len(getattr(state, "retrieval_queries_asked", []) or []),
+            "last_search_type": getattr(state, "last_search_type", None),
             "on_ok": raw.get("on_ok"),
             "on_repeat": raw.get("on_repeat"),
         }
@@ -87,7 +108,9 @@ class RepeatQueryGuardAction(PipelineActionBase):
         payload = (state.last_model_response or "").strip()
         query, _warnings = _parse_payload(raw, payload)
         qn = _norm(query)
+        repeat_constraint = _next_mode_constraint(getattr(state, "last_search_type", None))
         if not qn:
+            state.sufficiency_search_mode_constraint = repeat_constraint
             return on_repeat
 
         norm_set = getattr(state, "retrieval_queries_asked_norm", None)
@@ -96,7 +119,8 @@ class RepeatQueryGuardAction(PipelineActionBase):
             state.retrieval_queries_asked_norm = norm_set
 
         if qn in norm_set:
+            state.sufficiency_search_mode_constraint = repeat_constraint
             return on_repeat
 
+        state.sufficiency_search_mode_constraint = ""
         return on_ok
-

@@ -269,3 +269,54 @@ def test_misconfig_raises_when_incoming_alone_cannot_fit(monkeypatch: pytest.Mon
     with pytest.raises(RuntimeError) as ex:
         ManageContextBudgetAction().execute(step, state, rt)
     assert "PIPELINE_BUDGET_MISCONFIG" in str(ex.value)
+
+
+def test_divide_new_content_marks_only_fresh_blocks(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(
+        "code_query_engine.pipeline.actions.manage_context_budget.classify_text",
+        lambda _t: type("R", (), {"kind": CodeKind.SQL})(),
+    )
+
+    rt = _rt(max_context_tokens=300)
+    state = _state(
+        node_texts=[{"node_id": "n1", "text": "select 1"}],
+        context_blocks=["<<<New content\nOLD BLOCK"],
+    )
+    step = _step(
+        {
+            "divide_new_content": "<<<New content",
+            "on_ok": "ok",
+            "on_over": "over",
+        }
+    )
+
+    nxt = ManageContextBudgetAction().execute(step, state, rt)
+    assert nxt == "ok"
+    assert state.node_texts == []
+    assert len(state.context_blocks) == 2
+    assert state.context_blocks[0] == "OLD BLOCK"
+    assert state.context_blocks[1].startswith("<<<New content\n--- NODE ---")
+
+
+def test_divide_new_content_old_marker_removed_without_new_append(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(
+        "code_query_engine.pipeline.actions.manage_context_budget.classify_text",
+        lambda _t: type("R", (), {"kind": CodeKind.SQL})(),
+    )
+
+    rt = _rt(max_context_tokens=300)
+    state = _state(
+        node_texts=[],
+        context_blocks=["<<<New content\nOLD BLOCK"],
+    )
+    step = _step(
+        {
+            "divide_new_content": "<<<New content",
+            "on_ok": "ok",
+            "on_over": "over",
+        }
+    )
+
+    nxt = ManageContextBudgetAction().execute(step, state, rt)
+    assert nxt == "ok"
+    assert state.context_blocks == ["OLD BLOCK"]

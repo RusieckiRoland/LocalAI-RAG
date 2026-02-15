@@ -44,6 +44,7 @@ class PipelineState:
     last_search_type: Optional[str] = None
     last_search_filters: Dict[str, Any] = field(default_factory=dict)
     last_search_bm25_operator: Optional[str] = None
+    sufficiency_search_mode_constraint: str = ""
 
     # Materialized node texts 
     node_texts: List[Dict[str, Any]] = field(default_factory=list)

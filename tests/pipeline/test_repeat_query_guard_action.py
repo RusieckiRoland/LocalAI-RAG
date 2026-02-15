@@ -83,6 +83,51 @@ def test_repeat_query_guard_routes_on_repeat_for_empty_or_duplicate() -> None:
     assert RepeatQueryGuardAction().execute(step, state_dup, _runtime()) == "loop"
 
 
+def test_repeat_query_guard_sets_search_mode_constraint_on_repeat() -> None:
+    step = StepDef(
+        id="guard",
+        action="repeat_query_guard",
+        raw={
+            "id": "guard",
+            "action": "repeat_query_guard",
+            "query_parser": "jsonish_v1",
+            "on_ok": "search",
+            "on_repeat": "loop",
+        },
+    )
+
+    state_dup = _state_with_payload({"query": "Class Foo"})
+    state_dup.last_search_type = "hybrid"
+    state_dup.retrieval_queries_asked_norm = {"class foo"}
+    assert RepeatQueryGuardAction().execute(step, state_dup, _runtime()) == "loop"
+    assert state_dup.sufficiency_search_mode_constraint == (
+        'Do NOT use search_type="hybrid" in the next retrieve decision. '
+        'Use search_type="semantic".'
+    )
+
+
+def test_repeat_query_guard_clears_search_mode_constraint_on_new_query() -> None:
+    step = StepDef(
+        id="guard",
+        action="repeat_query_guard",
+        raw={
+            "id": "guard",
+            "action": "repeat_query_guard",
+            "query_parser": "jsonish_v1",
+            "on_ok": "search",
+            "on_repeat": "loop",
+        },
+    )
+
+    state = _state_with_payload({"query": "class Foo"})
+    state.sufficiency_search_mode_constraint = "stale"
+    state.retrieval_queries_asked_norm = {"class bar"}
+
+    nxt = RepeatQueryGuardAction().execute(step, state, _runtime())
+    assert nxt == "search"
+    assert state.sufficiency_search_mode_constraint == ""
+
+
 def test_repeat_query_guard_no_parser_treats_payload_as_query() -> None:
     step = StepDef(
         id="guard",

@@ -228,6 +228,22 @@ Additionally, base action tracing may include inbox consume/enqueue summaries.
   on_over: call_summarize_context
 ```
 
+### Optional: mark newly appended batches
+
+You can inject a visible divider **only when a new retrieval batch is appended**
+to `state.context_blocks`:
+
+```yaml
+divide_new_content: "<<<New content"
+```
+
+Behavior:
+- the divider is inserted **once per appended batch** (right before the newly
+  appended formatted nodes),
+- it is **not** added when the action routes to `on_over`,
+- it does **not** persist as a permanent prefix across turns (it becomes part of
+  the previous context on the next turn).
+
 ---
 
 ## Example: demand + threshold + always

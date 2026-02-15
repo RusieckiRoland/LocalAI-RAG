@@ -14,7 +14,7 @@ YAMLpipeline:
     max_turn_loops: 6
 
     # Token budgets
-    max_context_tokens: 5000
+    max_context_tokens: 6000
     max_history_tokens: 800
 
     # Rolling summary policy
@@ -96,12 +96,13 @@ YAMLpipeline:
 
     - id: fetch_node_texts
       action: fetch_node_texts
-      max_context_tokens: 4096
+      max_context_tokens: 6000
       top_n_from_settings: "node_text_fetch_top_n"
       next: manage_budget
 
     - id: manage_budget
       action: manage_context_budget
+      divide_new_content: "<<<New content"
       on_ok: suff_loop_guard
       on_over: budget_loop_guard
 
@@ -143,9 +144,20 @@ YAMLpipeline:
     - id: call_model_sufficiency
       action: call_model
       prompt_key: "rejewski/sufficiency_router_v1"
-      max_output_tokens: 256
+      max_output_tokens: 650
+      temperature: 0.2
+      top_p: 0.6
       use_history: true
       user_parts:
+        search_mode_constraint:
+          source: sufficiency_search_mode_constraint
+          template: "### Search Mode Constraint:\n{}\n\n"
+        last_query:
+          source: last_search_query
+          template: "<<<LAST QUERY  : {}\n"
+        previous_queries:
+          source: retrieval_queries_asked
+          template: "<<<PREVIOUS QUERIES:\n{}\n\n"
         context:
           source: composed_context_for_prompt
           template: "### Context:\n{}\n\n"

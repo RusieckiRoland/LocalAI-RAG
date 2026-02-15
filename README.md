@@ -32,6 +32,15 @@ Think of it as **pipeline composition by configuration**, not by code — just l
      ↑                          Each block is a configurable action in the YAML pipeline
 ```
 
+### Pipeline reliability additions
+
+- **Context divider for new retrieval batches:** `manage_context_budget` can insert a one-line marker
+  (e.g., `<<<New content`) each time a new batch is appended to `state.context_blocks`. This makes
+  “latest evidence” clearly visible to downstream prompts.
+- **Sufficiency anti-repeat guard in prompt:** the `sufficiency_router_v1` prompt now includes
+  `<<<LAST QUERY>` and `<<<PREVIOUS QUERIES>` injected from pipeline state, and explicitly forbids
+  repeating or paraphrasing earlier retrieval queries.
+
 More details, diagrams, and examples are available here:
 
 → **`docs/`** – full documentation of pipelines, actions, and configuration

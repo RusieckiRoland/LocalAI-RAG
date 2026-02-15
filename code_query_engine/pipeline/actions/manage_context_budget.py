@@ -44,6 +44,39 @@ def _context_text_from_blocks(blocks: List[str]) -> str:
     return "\n\n".join([str(x) for x in (blocks or []) if str(x or "").strip()]).strip()
 
 
+def _resolve_divide_new_content(step_raw: Dict[str, Any]) -> str:
+    if "divide_new_content" not in (step_raw or {}):
+        return ""
+    raw = (step_raw or {}).get("divide_new_content")
+    if raw is None:
+        return ""
+    val = str(raw).strip()
+    return val
+
+
+def _strip_divider_prefix(block: str, divider: str) -> str:
+    txt = str(block or "")
+    if not divider:
+        return txt
+    if not txt.startswith(divider):
+        return txt
+    rest = txt[len(divider) :]
+    if rest.startswith("\r\n"):
+        rest = rest[2:]
+    elif rest.startswith("\n"):
+        rest = rest[1:]
+    return rest
+
+
+def _with_divider(block: str, divider: str) -> str:
+    txt = str(block or "")
+    if not divider:
+        return txt
+    if txt.startswith(divider):
+        return txt
+    return f"{divider}\n{txt}"
+
+
 def _payload_summary(payload: Optional[Dict[str, Any]], *, max_len: int = 240) -> str:
     if payload is None:
         return ""
@@ -131,6 +164,7 @@ class ManageContextBudgetAction(PipelineActionBase):
             "max_context_tokens": (runtime.pipeline_settings or {}).get("max_context_tokens"),
             "incoming_node_texts": len(getattr(state, "node_texts", []) or []),
             "context_blocks": len(getattr(state, "context_blocks", []) or []),
+            "divide_new_content": raw.get("divide_new_content"),
             "on_ok": raw.get("on_ok"),
             "on_over": raw.get("on_over"),
         }
@@ -150,6 +184,7 @@ class ManageContextBudgetAction(PipelineActionBase):
             "error": error,
             "incoming_node_texts_after": len(getattr(state, "node_texts", []) or []),
             "context_blocks_after": len(getattr(state, "context_blocks", []) or []),
+            "divide_new_content": raw.get("divide_new_content"),
             "on_ok": raw.get("on_ok"),
             "on_over": raw.get("on_over"),
         }
@@ -173,9 +208,18 @@ class ManageContextBudgetAction(PipelineActionBase):
         if max_context_tokens_i <= 0:
             raise ValueError("manage_context_budget: settings.max_context_tokens must be > 0")
 
+        divide_new_content = _resolve_divide_new_content(raw)
         rules = _parse_rules(raw)
         incoming = list(getattr(state, "node_texts", []) or [])
         context_blocks = list(getattr(state, "context_blocks", []) or [])
+        if divide_new_content:
+            # Marker is only for freshly appended blocks; strip it from already existing context.
+            context_blocks = [
+                _strip_divider_prefix(str(x), divide_new_content)
+                for x in context_blocks
+                if str(x or "").strip()
+            ]
+            state.context_blocks = list(context_blocks)
         current_context_text = _context_text_from_blocks(context_blocks)
 
         demand_topics = self._demand_topics_for_step(state, step_id=step.id)
@@ -215,7 +259,8 @@ class ManageContextBudgetAction(PipelineActionBase):
             )
 
             # Evaluate budget with raw candidate (before compaction).
-            candidate_ctx_raw = self._join_context(current_context_text, to_append, raw_formatted)
+            raw_with_divider = _with_divider(raw_formatted, divide_new_content)
+            candidate_ctx_raw = self._join_context(current_context_text, to_append, raw_with_divider)
             tokens_raw = _token_count(getattr(runtime, "token_counter", None), candidate_ctx_raw)
 
             compacted = False
@@ -254,7 +299,8 @@ class ManageContextBudgetAction(PipelineActionBase):
                     text=compact_text,
                 )
 
-            candidate_ctx_final = self._join_context(current_context_text, to_append, candidate_text)
+            candidate_with_divider = _with_divider(candidate_text, divide_new_content)
+            candidate_ctx_final = self._join_context(current_context_text, to_append, candidate_with_divider)
             tokens_final = _token_count(getattr(runtime, "token_counter", None), candidate_ctx_final)
 
             debug_nodes.append(
@@ -275,12 +321,15 @@ class ManageContextBudgetAction(PipelineActionBase):
                 # Misconfiguration guard: if incoming retrieval context alone cannot fit, this will never succeed.
                 incoming_only_text = "\n\n".join(
                     [
-                        self.format_text(
-                            node_id=str((n or {}).get("node_id") or (n or {}).get("id") or "").strip(),
-                            path=str((n or {}).get("path") or (n or {}).get("repo_relative_path") or (n or {}).get("source_file") or "").strip(),
-                            language=_normalize_language(classify_text(str((n or {}).get("text") or "")).kind),
-                            compact=False,
-                            text=str((n or {}).get("text") or ""),
+                        _with_divider(
+                            self.format_text(
+                                node_id=str((n or {}).get("node_id") or (n or {}).get("id") or "").strip(),
+                                path=str((n or {}).get("path") or (n or {}).get("repo_relative_path") or (n or {}).get("source_file") or "").strip(),
+                                language=_normalize_language(classify_text(str((n or {}).get("text") or "")).kind),
+                                compact=False,
+                                text=str((n or {}).get("text") or ""),
+                            ),
+                            divide_new_content,
                         )
                         for n in (incoming or [])
                         if isinstance(n, dict)
@@ -305,7 +354,7 @@ class ManageContextBudgetAction(PipelineActionBase):
                 )
                 return on_over
 
-            to_append.append(candidate_text)
+            to_append.append(candidate_with_divider)
 
         # Success: append all prepared blocks and consume incoming retrieval buffer.
         if to_append:
@@ -439,4 +488,3 @@ class ManageContextBudgetAction(PipelineActionBase):
                 events.append(evt)
         except Exception:
             LOG.exception("soft-failure: failed to append MANAGE_CONTEXT_BUDGET trace event")
-
