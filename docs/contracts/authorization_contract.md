@@ -233,29 +233,28 @@ Example (current):
   "groups": {
     "anonymous": {
       "allowed_pipelines": [
-        "marian_rejewski_code_analysis_base"
+        "ada"
       ],
-      "allowed_commands": [
-        "showDiagram"
-      ],
+      "allowed_commands": [],
       "acl_tags_any": [],
       "classification_labels_all": []
     },
     "authenticated": {
       "allowed_pipelines": [
-        "marian_rejewski_code_analysis_base",
-        "ada_uml_base",
-        "branch_compare_base"
+        "rejewski",
+        "ada",
+        "shannon"
       ],
       "allowed_commands": [
         "showDiagram",
-        "saveDiagram"
+        "saveDiagram",
+        "ea_export"
       ],
       "acl_tags_any": [
         "security",
         "finance"
       ],
-      "classification_labels_all": ["public", "internal", "secret", "restricted"]
+      "classification_labels_all": ["public", "internal", "restricted", "critical"]
     },
     "clearance:public": {
       "user_level": 0,

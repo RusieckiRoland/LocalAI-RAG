@@ -179,22 +179,64 @@ class Model:
         Try GPU first, then fall back to CPU if GPU init fails.
         """
         try:
-            return Llama(
+            llm = Llama(
                 model_path=model_path,
                 n_ctx=int(n_ctx),
                 n_threads=8,
                 n_gpu_layers=-1,
                 verbose=False,
             )
+            self._log_gpu_status(llm, requested_layers=-1)
+            return llm
         except Exception as gpu_err:
-            logger.warning(f"GPU init failed, falling back to CPU. Error: {gpu_err}")
-            return Llama(
+            logger.error(self._red(f"GPU init failed, falling back to CPU. Error: {gpu_err}"))
+            llm = Llama(
                 model_path=model_path,
                 n_ctx=int(n_ctx),
                 n_threads=8,
                 n_gpu_layers=0,
                 verbose=False,
             )
+            self._log_gpu_status(llm, requested_layers=0)
+            return llm
+
+    def _log_gpu_status(self, llm: Llama, *, requested_layers: int) -> None:
+        """
+        Best-effort logging of GPU/CPU offload status.
+        Logs red warning when running on CPU or partial offload is detected.
+        """
+        try:
+            actual_layers = (
+                getattr(llm, "n_gpu_layers", None)
+                or getattr(llm, "_n_gpu_layers", None)
+                or getattr(getattr(llm, "model", None), "n_gpu_layers", None)
+            )
+            total_layers = (
+                getattr(llm, "n_layers", None)
+                or getattr(getattr(llm, "model", None), "n_layers", None)
+            )
+            if isinstance(actual_layers, int) and actual_layers == 0:
+                logger.error(self._red("LLM running on CPU (n_gpu_layers=0)."))
+                return
+            if isinstance(actual_layers, int) and isinstance(total_layers, int):
+                if 0 < actual_layers < total_layers:
+                    logger.warning(self._red(
+                        f"LLM partial GPU offload: n_gpu_layers={actual_layers}/{total_layers}."
+                    ))
+                    return
+            # Fallback info log if we cannot resolve actual layers
+            logger.info(
+                "LLM init: requested n_gpu_layers=%s, detected n_gpu_layers=%s, total_layers=%s",
+                requested_layers,
+                actual_layers,
+                total_layers,
+            )
+        except Exception as e:
+            logger.warning("LLM GPU status detection failed: %s", e)
+
+    @staticmethod
+    def _red(msg: str) -> str:
+        return f"\x1b[31m{msg}\x1b[0m"
 
     def _looks_like_hallucination(self, text: str) -> bool:
         t = (text or "").strip().lower()

@@ -231,6 +231,10 @@ class DynamicPipelineRunner:
 
         if overrides:
             # Common ad-hoc request fields used by UI (best-effort).
+            if "pipeline_run_id" in overrides:
+                rid = str(overrides.get("pipeline_run_id") or "").strip()
+                if rid:
+                    setattr(state, "pipeline_run_id", rid)
             if "branch_b" in overrides:
                 setattr(state, "branch_b", overrides.get("branch_b"))
             if "snapshot_id" in overrides and not snapshot_id:
@@ -277,6 +281,11 @@ class DynamicPipelineRunner:
             token_counter=self.token_counter,
             add_plant_link=add_plant_link,
         )
+        if overrides and bool(overrides.get("trace_enabled")):
+            try:
+                setattr(runtime, "pipeline_trace_enabled", True)
+            except Exception:
+                pass
 
         self._engine.run(pipeline, state, runtime)
 
@@ -284,5 +293,6 @@ class DynamicPipelineRunner:
         query_type = state.query_type or state.retrieval_mode or None
         steps_used = state.steps_used
         model_input_en = state.model_input_en_or_fallback()
+        pipeline_run_id = getattr(state, "pipeline_run_id", None)
 
-        return final_answer, query_type, steps_used, model_input_en
+        return final_answer, query_type, steps_used, model_input_en, pipeline_run_id

@@ -31,6 +31,11 @@ from server.auth.policies_provider import default_json_provider
 from server.app_config import AppConfigService, default_templates_store
 from server.pipelines import PipelineAccessService, PipelineSnapshotStore
 from server.snapshots import SnapshotRegistry
+from code_query_engine.work_callback import (
+    get_work_callback_broker,
+    register_work_callback_routes,
+    resolve_callback_policy,
+)
 
 
 py_logger = logging.getLogger(__name__)
@@ -571,6 +576,13 @@ def _require_prod_bearer(auth_header: str):
     return None
 
 
+register_work_callback_routes(
+    app,
+    dev_enabled_fn=_dev_endpoints_enabled,
+    require_prod_bearer_fn=_require_prod_bearer,
+)
+
+
 @app.route("/health", methods=["GET"])
 def health():
     # Keep backward-compatible keys for existing tests/UI:
@@ -648,6 +660,16 @@ def _valid_session_id(value: Optional[str]) -> str:
     return v
 
 
+def _valid_trace_run_id(value: Optional[str]) -> str:
+    v = (value or "").strip()
+    if not v:
+        return ""
+    v = v[: (MAX_FIELD_LEN * 4)]
+    if not re.match(r"^[a-zA-Z0-9_\-\.]+$", v):
+        return ""
+    return v
+
+
 def _valid_user_id(value: Optional[str]) -> Optional[str]:
     v = (value or "").strip()
     if not v:
@@ -690,12 +712,15 @@ def _normalize_runner_result(result: Any) -> Dict[str, Any]:
         query_type = result[1] if len(result) > 1 else None
         steps_used = result[2] if len(result) > 2 else None
         model_input_en = result[3] if len(result) > 3 else ""
-        return {
+        out = {
             "results": final_answer,
             "query_type": query_type,
             "steps_used": steps_used,
             "translated": model_input_en,
         }
+        if len(result) > 4 and result[4]:
+            out["pipeline_run_id"] = result[4]
+        return out
     return {"results": "", "translated": ""}
 
 
@@ -822,6 +847,10 @@ def _handle_query_request(*, require_bearer_auth: bool):
         return jsonify({"ok": False, "error": "missing 'consultant'"}), 400
 
     translate_chat = _get_bool_field(payload, "translateChat", False)
+    enable_trace = _get_bool_field(payload, "enableTrace", _get_bool_field(payload, "enable_trace", False))
+    client_trace_run_id = _valid_trace_run_id(
+        _get_str_field(payload, "pipeline_run_id", _get_str_field(payload, "run_id", ""))
+    )
 
     # NEW contract: "branches": [] | ["A"] | ["A","B"]
     # Backward-compat: accept legacy branchA/branchB/branch.
@@ -865,6 +894,10 @@ def _handle_query_request(*, require_bearer_auth: bool):
         except Exception:
             py_logger.exception("soft-failure: failed to resolve pipelineName from templates; consultant_id=%s", consultant_id)
             pipeline_name = ""
+
+    pipeline_settings = dict(_pipeline_settings_by_name.get(pipeline_name) or {})
+    callback_policy = resolve_callback_policy(runtime_cfg=_runtime_cfg, pipeline_settings=pipeline_settings)
+    effective_trace_enabled = bool(enable_trace and callback_policy.enabled)
 
     repository = _get_str_field(payload, "repository", str(_runtime_cfg.get("repo_name") or ""))
     snapshot_id = _get_str_field(payload, "snapshot_id", _get_str_field(payload, "snapshotId", ""))
@@ -921,7 +954,18 @@ def _handle_query_request(*, require_bearer_auth: bool):
     )
     user_id = _valid_user_id(access_ctx.user_id)
 
+    trace_run_id = client_trace_run_id
+    if effective_trace_enabled and not trace_run_id:
+        trace_run_id = f"{int(datetime.now(timezone.utc).timestamp() * 1000)}_{uuid.uuid4().hex[:12]}"
+    if trace_run_id:
+        broker = get_work_callback_broker()
+        broker.configure_run(trace_run_id, policy=callback_policy)
+
     overrides: Dict[str, Any] = {}
+    if effective_trace_enabled:
+        overrides["trace_enabled"] = True
+        if trace_run_id:
+            overrides["pipeline_run_id"] = trace_run_id
     if branch_b:
         overrides["branch_b"] = branch_b
     retrieval_filters_override: Dict[str, Any] = {}
@@ -984,10 +1028,15 @@ def _handle_query_request(*, require_bearer_auth: bool):
         return jsonify({"ok": False, "error": str(e)}), 500
 
     out = _normalize_runner_result(runner_result)
+    if not effective_trace_enabled:
+        out.pop("pipeline_run_id", None)
+    elif trace_run_id and not out.get("pipeline_run_id"):
+        out["pipeline_run_id"] = trace_run_id
 
     out["ok"] = True
     out["session_id"] = session_id
     out["consultant"] = consultant_id
+    out["trace_enabled"] = bool(effective_trace_enabled)
     if pipeline_name:
         out["pipelineName"] = pipeline_name
     if repository:

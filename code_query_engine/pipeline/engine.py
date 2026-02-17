@@ -164,6 +164,14 @@ class PipelineEngine:
         result: Optional[PipelineResult] = None
 
         try:
+            from code_query_engine.work_callback.broker import get_work_callback_broker
+
+            trace_broker = get_work_callback_broker()
+            run_id = getattr(state, "pipeline_run_id", None)
+            if run_id:
+                trace_broker.ensure_run(str(run_id))
+            trace_idx = len(getattr(state, "pipeline_trace_events", []) or [])
+
             while current_step_id:
                 step: StepDef = steps_by_id.get(current_step_id)  # type: ignore[assignment]
                 if step is None:
@@ -181,6 +189,18 @@ class PipelineEngine:
                 except TypeError:
                     next_step_id = action.execute(step=step, state=state, runtime=runtime)  # type: ignore[attr-defined]
 
+                if trace_events_enabled:
+                    rid = getattr(state, "pipeline_run_id", None)
+                    if rid:
+                        try:
+                            events = list(getattr(state, "pipeline_trace_events", []) or [])
+                            new_events = events[trace_idx:]
+                            trace_idx = len(events)
+                            for ev in new_events:
+                                trace_broker.emit(str(rid), ev)
+                        except Exception:
+                            pass
+
                 # stop if this step is terminal
                 if bool(step.end):
                     break
@@ -196,6 +216,14 @@ class PipelineEngine:
                     continue
 
                 break
+
+            if trace_events_enabled:
+                rid = getattr(state, "pipeline_run_id", None)
+                if rid:
+                    try:
+                        trace_broker.close(str(rid), reason="done")
+                    except Exception:
+                        pass
 
             # Policy: fail-fast if inbox is not empty at run end (recommended for tests).
             fail_fast = (os.getenv("RAG_PIPELINE_INBOX_FAIL_FAST") or "").strip().lower() in ("1", "true", "yes", "on")

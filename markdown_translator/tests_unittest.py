@@ -75,6 +75,14 @@ class MarkdownToPolishTranslatorTests(unittest.TestCase):
         self.assertTrue(out.startswith(prefix_pl))
         self.assertIn("PL(Hello world)", out)
 
+    def test_protects_backslash_paths_without_drive_letter(self):
+        from markdown_translator.translator import MarkdownToPolishTranslator
+
+        tr = MarkdownToPolishTranslator(translator=_EchoTranslator())
+        md = "Class is in Nop.Core\\Domain\\Catalog\\Category.cs\n"
+        out = tr.translate_markdown(md)
+        self.assertIn("Nop.Core\\Domain\\Catalog\\Category.cs", out)
+
 
 if __name__ == "__main__":
     unittest.main()

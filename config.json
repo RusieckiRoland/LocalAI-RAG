@@ -52,6 +52,10 @@
   },
   "vector_indexes_root": "repositories/nopCommerce/indexes",
   "repo_name": "nopCommerce",
+  "callback": "allowed",
+  "callback_content": [
+    "all"
+  ],
   "permissions": {
     "security_enabled": false,
     "acl_enabled": false,

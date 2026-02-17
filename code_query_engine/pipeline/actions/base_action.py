@@ -127,6 +127,9 @@ class PipelineActionBase(ABC):
                     "error": error,
                     "state_after": self._jsonable_state(state),
                 }
+                labels = self._callback_labels(step)
+                if labels:
+                    event["callback"] = labels
                 self._append_trace_event(state, event)
             # Ensure per-step temporary buffers don't leak across steps.
             try:
@@ -178,6 +181,9 @@ class PipelineActionBase(ABC):
                 "consumer_step_id": step.id,
                 **self._consume_summary(step.id, consumed),
             }
+            labels = self._callback_labels(step)
+            if labels:
+                evt["callback"] = labels
             self._append_trace_event(state, evt)
         except Exception:
             pass
@@ -272,6 +278,19 @@ class PipelineActionBase(ABC):
         if len(s) > max_len:
             return s[: max_len - 3] + "..."
         return s
+
+    def _callback_labels(self, step: StepDef) -> Dict[str, str]:
+        raw = getattr(step, "raw", None)
+        if not isinstance(raw, dict):
+            return {}
+        caption = str(raw.get("callback_caption") or "").strip()
+        caption_translated = str(raw.get("callback_caption_translated") or "").strip()
+        out: Dict[str, str] = {}
+        if caption:
+            out["caption"] = caption
+        if caption_translated:
+            out["caption_translated"] = caption_translated
+        return out
 
     def _jsonable_state(self, state: PipelineState) -> Dict[str, Any]:
         # PipelineState is a dataclass in this repo; keep fallback safe anyway.

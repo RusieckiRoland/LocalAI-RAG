@@ -17,6 +17,7 @@ _MD_LINK_RE = re.compile(r"(!?\[)([^\]]+?)(\]\()([^\)]+?)(\))")
 _CODEISH_TOKEN_RE = re.compile(
     r"(?x)"
     r"("
+    r"[A-Za-z0-9_.]+(?:\\\\[A-Za-z0-9_.]+)+"  # backslash-separated path without drive letter
     r"[A-Za-z_][A-Za-z0-9_]*\([^\)]*\)"          # call(...)
     r"|[A-Za-z_][A-Za-z0-9_]*::[A-Za-z0-9_:]+"   # ns::type
     r"|[A-Za-z_][A-Za-z0-9_]*\.[A-Za-z0-9_.]+"   # dotted

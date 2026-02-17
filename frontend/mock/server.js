@@ -62,6 +62,16 @@ function getSessionId(req) {
   return crypto.randomUUID();
 }
 
+function runIdFromPayload(payload) {
+  const enabled = !!(payload && (payload.enableTrace || payload.enable_trace));
+  if (!enabled) return null;
+  const provided = safeStr(payload && (payload.pipeline_run_id || payload.run_id)).trim();
+  if (provided) return provided;
+  const ts = Date.now();
+  const rand = crypto.randomUUID().slice(0, 8);
+  return `${ts}_mock_${rand}`;
+}
+
 function safeStr(v) {
   return (v == null) ? "" : String(v);
 }
@@ -880,6 +890,44 @@ const server = http.createServer(async (req, res) => {
     return sendJson(res, 200, buildAppConfig());
   }
 
+  if (req.method === "GET" && pathname === "/pipeline/stream") {
+    const runId = (parsed.query && parsed.query.run_id) ? String(parsed.query.run_id) : "";
+    res.writeHead(200, {
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache",
+      "Connection": "keep-alive",
+      "Access-Control-Allow-Origin": "*"
+    });
+
+    const events = [
+      { type: "step", summary: "Retrieval", action_id: "search_nodes", details: { search_type: "semantic", top_k: 8, hits: 8 } },
+      { type: "step", summary: "Context materialization", action_id: "fetch_node_texts", details: { node_texts_count: 8 },
+        docs: [
+          { id: "doc:alpha", depth: 0, text_len: 420, preview: "Przykladowy fragment dokumentu alpha..." },
+          { id: "doc:beta", depth: 1, text_len: 300, preview: "Przykladowy fragment dokumentu beta..." }
+        ]
+      },
+      { type: "step", summary: "Model call", action_id: "call_model", details: { prompt: "answer_v1", max_output_tokens: 1200 } }
+    ];
+
+    let idx = 0;
+    const timer = setInterval(() => {
+      if (idx < events.length) {
+        res.write("data: " + JSON.stringify(events[idx]) + "\n\n");
+        idx += 1;
+        return;
+      }
+      res.write("data: " + JSON.stringify({ type: "done", reason: "mock" }) + "\n\n");
+      clearInterval(timer);
+      res.end();
+    }, 700);
+
+    req.on("close", () => {
+      clearInterval(timer);
+    });
+    return;
+  }
+
   // POST /query is the main endpoint used by the UI.
   // POST /search is kept as an alias for older HTML versions.
   if (req.method === "POST" && (pathname === "/query" || pathname === "/search")) {
@@ -919,7 +967,8 @@ const server = http.createServer(async (req, res) => {
 
     return sendJson(res, 200, {
       session_id: sessionId,
-      results: md
+      results: md,
+      pipeline_run_id: runIdFromPayload(payload)
     });
   }
 
