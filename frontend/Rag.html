@@ -835,6 +835,10 @@
       font-weight: 800;
       color: #111827;
       line-height: 1.2;
+      flex: 1 1 auto;
+      min-width: 0;
+      overflow-wrap: anywhere;
+      word-break: break-word;
     }
     .trace-doc-modal-close {
       border: 1px solid #d1d5db;
@@ -1508,7 +1512,11 @@
     if (!doc) return;
     const t = getTexts(getCurrentLang());
     const title = String(doc.id || t.traceDocTitle || "Document");
-    const markdown = String(doc.markdown || doc.preview || "");
+    const raw = String(doc.markdown || doc.preview || "");
+    let markdown = raw;
+    if (markdown && !markdown.includes("```")) {
+      markdown = `\`\`\`\n${markdown}\n\`\`\``;
+    }
     if (traceDocModalTitle) traceDocModalTitle.textContent = title;
     if (traceDocModalBody) {
       traceDocModalBody.innerHTML = marked.parse(markdown || " ");
@@ -2192,7 +2200,7 @@
       button.addEventListener("click", e => {
         e.preventDefault();
         const code = pre.querySelector("code")?.textContent || "";
-        navigator.clipboard.writeText(code).then(() => {
+        const markCopied = () => {
           const t2 = getTexts(getCurrentLang());
           button.textContent = t2.copied;
           button.classList.add("copied");
@@ -2201,7 +2209,30 @@
             button.textContent = t3.copy;
             button.classList.remove("copied");
           }, 2000);
-        });
+        };
+
+        const fallbackCopy = () => {
+          const ta = document.createElement("textarea");
+          ta.value = code;
+          ta.style.position = "fixed";
+          ta.style.top = "-1000px";
+          ta.style.left = "-1000px";
+          document.body.appendChild(ta);
+          ta.focus();
+          ta.select();
+          try {
+            const ok = document.execCommand("copy");
+            if (ok) markCopied();
+          } catch (err) {
+          }
+          document.body.removeChild(ta);
+        };
+
+        if (navigator.clipboard && window.isSecureContext) {
+          navigator.clipboard.writeText(code).then(markCopied).catch(fallbackCopy);
+        } else {
+          fallbackCopy();
+        }
       });
 
       pre.appendChild(button);
