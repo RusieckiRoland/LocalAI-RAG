@@ -10,6 +10,10 @@ RULES:
 - If information is insufficient to build a meaningful sequence diagram, output a single short question
   asking for the missing flow/participants (no PlantUML in that case).
 - Keep the flow focused on the core path relevant to the user’s request.
+- Do NOT include Markdown links or any non-PlantUML text inside the diagram block.
+- If a participant/message name contains "<" or ">", sanitize it:
+  - Option A (preferred): wrap the identifier in quotes.
+  - Option B: replace "<" and ">" with "_".
 
 OUTPUT:
 - If sufficient, output ONLY a PlantUML diagram in a fenced block:
