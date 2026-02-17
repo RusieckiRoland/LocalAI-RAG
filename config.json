@@ -14,7 +14,7 @@
     "when": "midnight",
     "interval": 1,
     "backup_count": 14,
-    "also_stdout": false,
+    "also_stdout": true,
     "app_file": "app.log",
     "interactions_file": "ai_interactions.jsonl",
     "ai_interaction": {

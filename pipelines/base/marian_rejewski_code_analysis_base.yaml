@@ -93,6 +93,14 @@ YAMLpipeline:
       top_k: 12
       query_parser: JsonishQueryParser
       next: expand_dependency_tree
+    
+    - id: search_hyde
+      search_type: semantic
+      action: search_nodes
+      callback_caption: "HyDE retrieval"
+      callback_caption_translated: "Wyszukiwanie HyDE"
+      top_k: 12
+      next: expand_dependency_tree
 
     - id: expand_dependency_tree
       action: expand_dependency_tree
@@ -197,16 +205,16 @@ YAMLpipeline:
       action: repeat_query_guard
       query_parser: JsonishQueryParser
       on_ok: search_auto
-      on_repeat: call_model_bm25_fallback
+      on_repeat: HyDE_model_fallback
 
-    - id: call_model_bm25_fallback
+    - id: HyDE_model_fallback
       action: call_model
-      callback_caption: "Generating BM25 fallback query"
-      callback_caption_translated: "Generowanie zapytania fallback BM25"
-      prompt_key: "rejewski/bm25_fallback"
-      max_output_tokens: 180
-      temperature: 0.1
-      top_p: 0.5
+      callback_caption: "Generating HyDE draft"
+      callback_caption_translated: "Generowanie szkicu HyDE"
+      prompt_key: "rejewski/hyde_fallback"
+      max_output_tokens: 300
+      temperature: 0.2
+      top_p: 0.7
       use_history: true
       user_parts:
         context:
@@ -215,7 +223,7 @@ YAMLpipeline:
         user_question:
           source: user_question_en
           template: "### User:\n{}\n\n"
-      next: search_auto
+      next: search_hyde
 
     - id: call_model_sure_answer
       action: call_model

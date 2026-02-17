@@ -737,16 +737,22 @@
       display: flex;
       align-items: center;
       gap: 0.4rem;
+      overflow-wrap: anywhere;
+      word-break: break-word;
     }
     .trace-item .trace-item-meta {
       font-size: 0.8rem;
       color: #6b7280;
       margin-bottom: 0.35rem;
+      overflow-wrap: anywhere;
+      word-break: break-word;
     }
     .trace-item .trace-item-body {
       font-size: 0.9rem;
       color: #111827;
       white-space: pre-wrap;
+      overflow-wrap: anywhere;
+      word-break: break-word;
     }
     .trace-docs {
       margin-top: 0.5rem;
@@ -767,6 +773,7 @@
       border-top: 1px dashed #e5e7eb;
       font-size: 0.85rem;
       color: #374151;
+      max-width: 100%;
     }
     .trace-doc-open {
       margin-top: 0.35rem;
@@ -794,6 +801,9 @@
       background: #f3f4f6;
       border-radius: 0.5rem;
       padding: 0.35rem 0.45rem;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+      word-break: break-word;
     }
     #trace-backdrop {
       display: none;
