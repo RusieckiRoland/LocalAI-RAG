@@ -33,9 +33,11 @@ from server.pipelines import PipelineAccessService, PipelineSnapshotStore
 from server.snapshots import SnapshotRegistry
 from code_query_engine.work_callback import (
     get_work_callback_broker,
+    register_cancel_routes,
     register_work_callback_routes,
     resolve_callback_policy,
 )
+from code_query_engine.pipeline.cancellation import PipelineCancelled
 
 
 py_logger = logging.getLogger(__name__)
@@ -581,6 +583,11 @@ register_work_callback_routes(
     dev_enabled_fn=_dev_endpoints_enabled,
     require_prod_bearer_fn=_require_prod_bearer,
 )
+register_cancel_routes(
+    app,
+    dev_enabled_fn=_dev_endpoints_enabled,
+    require_prod_bearer_fn=_require_prod_bearer,
+)
 
 
 @app.route("/health", methods=["GET"])
@@ -1023,6 +1030,9 @@ def _handle_query_request(*, require_bearer_auth: bool):
             overrides=overrides or None,
             mock_redis=_history_backend,
         )
+    except PipelineCancelled as e:
+        py_logger.info("Pipeline cancelled: run_id=%s reason=%s", e.run_id, e.reason)
+        return jsonify({"ok": False, "cancelled": True, "error": "cancelled", "pipeline_run_id": e.run_id}), 200
     except Exception as e:
         py_logger.exception("Unhandled exception in /query")
         return jsonify({"ok": False, "error": str(e)}), 500

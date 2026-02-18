@@ -44,7 +44,6 @@ def test_content_flags_pipeline_can_only_restrict() -> None:
         runtime_cfg={"callback_content": [CONTENT_ALL]},
         pipeline_settings={"callback_content": [CONTENT_DOCUMENTS_FORBIDDEN]},
     )
-    assert policy.require_caption is False
     assert policy.include_documents is False
 
 
@@ -53,5 +52,5 @@ def test_content_flags_global_restrictions_stay_enforced() -> None:
         runtime_cfg={"callback_content": ["captioned", CONTENT_DOCUMENTS_FORBIDDEN]},
         pipeline_settings={"callback_content": [CONTENT_ALL]},
     )
-    assert policy.require_caption is True
+    # captioned is ignored (removed); documents_forbidden still applies
     assert policy.include_documents is False

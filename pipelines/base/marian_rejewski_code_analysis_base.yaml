@@ -44,8 +44,7 @@ YAMLpipeline:
 
     # Callback visibility policy for this pipeline (global config has higher priority)
     callback: allowed
-    callback_content:
-      - captioned
+    stages_visibility: explicit
       
 
   steps:
@@ -88,6 +87,7 @@ YAMLpipeline:
     - id: search_auto
       search_type: auto
       action: search_nodes
+      stages_visible: true
       callback_caption: "Searching sources"
       callback_caption_translated: "Wyszukiwanie źródeł"
       top_k: 12
@@ -97,6 +97,7 @@ YAMLpipeline:
     - id: search_hyde
       search_type: semantic
       action: search_nodes
+      stages_visible: true
       callback_caption: "HyDE retrieval"
       callback_caption_translated: "Wyszukiwanie HyDE"
       top_k: 12
@@ -104,6 +105,7 @@ YAMLpipeline:
 
     - id: expand_dependency_tree
       action: expand_dependency_tree
+      stages_visible: true
       callback_caption: "Expanding dependencies"
       callback_caption_translated: "Rozszerzanie zależności"
       max_depth_from_settings: "graph_max_depth"
@@ -113,6 +115,7 @@ YAMLpipeline:
 
     - id: fetch_node_texts
       action: fetch_node_texts
+      stages_visible: true
       callback_caption: "Materializing context"
       callback_caption_translated: "Budowanie kontekstu"
       max_context_tokens: 6000
@@ -121,6 +124,7 @@ YAMLpipeline:
 
     - id: manage_budget
       action: manage_context_budget
+      stages_visible: true
       callback_caption: "Applying context budget"
       callback_caption_translated: "Stosowanie budżetu kontekstu"      
       on_ok: suff_loop_guard
@@ -163,6 +167,7 @@ YAMLpipeline:
 
     - id: call_model_sufficiency
       action: call_model
+      stages_visible: true
       callback_caption: "Assessing sufficiency"
       callback_caption_translated: "Ocena wystarczalności"
       prompt_key: "rejewski/sufficiency_router_v1"
@@ -209,6 +214,7 @@ YAMLpipeline:
 
     - id: HyDE_model_fallback
       action: call_model
+      stages_visible: true
       callback_caption: "Generating HyDE draft"
       callback_caption_translated: "Generowanie szkicu HyDE"
       prompt_key: "rejewski/hyde_fallback"
@@ -227,6 +233,7 @@ YAMLpipeline:
 
     - id: call_model_sure_answer
       action: call_model
+      stages_visible: true
       callback_caption: "Generating grounded answer"
       callback_caption_translated: "Generowanie odpowiedzi z kontekstu"
       prompt_key: "rejewski/sure_answer_v1"
@@ -242,6 +249,7 @@ YAMLpipeline:
 
     - id: call_model_direct_answer
       action: call_model
+      stages_visible: true
       callback_caption: "Generating direct answer"
       callback_caption_translated: "Generowanie odpowiedzi bez retrieval"
       prompt_key: "rejewski/direct_answer_v1"
@@ -257,6 +265,7 @@ YAMLpipeline:
 
     - id: call_model_answer_not_sure
       action: call_model
+      stages_visible: true
       callback_caption: "Preparing fallback answer"
       callback_caption_translated: "Przygotowanie odpowiedzi fallback"
       prompt_key: "rejewski/answer_not_sure"

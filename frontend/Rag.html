@@ -368,6 +368,29 @@
       border-top-color: #2563eb;
       animation: querySpin 0.8s linear infinite;
     }
+    .send-btn.is-cancel {
+      background: #2563eb;
+      border-color: #1d4ed8;
+      color: #ffffff;
+    }
+    .send-btn.is-cancel:hover {
+      background: #1d4ed8;
+    }
+    .send-btn .send-label {
+      display: inline-block;
+    }
+    .send-btn .send-stop {
+      display: none;
+      width: 0.9rem;
+      height: 0.9rem;
+      background: currentColor;
+      border-radius: 0.2rem;
+      margin-left: 0.4rem;
+      vertical-align: middle;
+    }
+    .send-btn.is-cancel .send-stop {
+      display: inline-block;
+    }
     @keyframes querySpin {
       from { transform: rotate(0deg); }
       to { transform: rotate(360deg); }
@@ -986,7 +1009,10 @@
 
           <div class="send-wrap">
             <div class="query-progress" id="queryProgress"></div>
-            <button type="submit" class="send-btn" id="sendBtn">Wyślij</button>
+            <button type="submit" class="send-btn" id="sendBtn">
+              <span class="send-label">Wyślij</span>
+              <span class="send-stop" aria-hidden="true"></span>
+            </button>
           </div>
         </div>
       </div>
@@ -1025,6 +1051,7 @@
   const APP_MODE = (URL_MODE === "prod") ? "prod" : "dev";
   const APP_CONFIG_PATH = IS_FILE_MODE ? "/app-config" : `/app-config/${APP_MODE}`;
   const SEARCH_PATH = IS_FILE_MODE ? "/search" : `/search/${APP_MODE}`;
+  const CANCEL_PATH = IS_FILE_MODE ? "/pipeline/cancel" : `/pipeline/cancel/${APP_MODE}`;
   const DEFAULT_APP_CONFIG = {
     defaultConsultantId: "rejewski",
     snapshotPolicy: "single",
@@ -1165,6 +1192,8 @@
   const TRACE_FILTER_MAX_TOKEN_CHARS = 1200;
   let traceDocSeq = 0;
   const traceDocsByKey = {};
+  let activeAbortController = null;
+  let requestInFlight = false;
 
   function hasConsultants(cfg) {
     return !!(cfg && Array.isArray(cfg.consultants) && cfg.consultants.length > 0);
@@ -1227,6 +1256,7 @@
         traceStatusConnected: "Połączono. Odbieram etapy...",
         traceStatusRunning: (count) => `W trakcie... (${count})`,
         traceStatusDone: "Zakończono.",
+        traceStatusCancelled: "Przerwano.",
         traceStatusRetry: "Połączenie przerwane, ponawiam...",
         traceStatusNoRunId: "Brak trace_id w odpowiedzi backendu.",
         traceStatusErrorStart: "Błąd podczas uruchamiania trace.",
@@ -1238,7 +1268,7 @@
         queryProgressText: "Zapytanie w toku",
         consultantLocked: "Nie można zmienić konsultanta w trakcie odpowiedzi."
 	    },
-	    en: {
+    en: {
       send: "Send",
       wait: "Please wait...",
       error: "An error occurred while processing the request.",
@@ -1271,6 +1301,7 @@
         traceStatusConnected: "Connected. Receiving stages...",
         traceStatusRunning: (count) => `In progress... (${count})`,
         traceStatusDone: "Completed.",
+        traceStatusCancelled: "Cancelled.",
         traceStatusRetry: "Connection interrupted, retrying...",
         traceStatusNoRunId: "No trace_id in backend response.",
         traceStatusErrorStart: "Trace startup failed.",
@@ -1340,6 +1371,9 @@
         return;
       case "done":
         setTraceStatus(t.traceStatusDone);
+        return;
+      case "cancelled":
+        setTraceStatus(t.traceStatusCancelled);
         return;
       case "retry":
         setTraceStatus(t.traceStatusRetry);
@@ -1495,41 +1529,18 @@
     const items = traceList.querySelectorAll(".trace-item");
     let total = 0;
     let matches = 0;
-    let bestScore = -1;
-    let bestItem = null;
     for (const item of items) {
       total += 1;
       const haystack = String(item.__traceFilterText || item.dataset.filterText || "").toLowerCase();
-      if (!traceFilterQuery) {
-        item.classList.remove("is-search-match", "is-search-dim");
-        continue;
-      }
-
-      const score = scoreTraceSearch(haystack, traceFilterQuery);
-      if (score >= 0) {
-        item.classList.add("is-search-match");
-        item.classList.remove("is-search-dim");
-        matches += 1;
-        if (score > bestScore) {
-          bestScore = score;
-          bestItem = item;
-        }
-      } else {
-        item.classList.add("is-search-dim");
-        item.classList.remove("is-search-match");
-      }
+      const match = !traceFilterQuery || haystack.includes(traceFilterQuery);
+      item.style.display = match ? "" : "none";
+      item.classList.toggle("is-search-match", !!traceFilterQuery && match);
+      if (match && traceFilterQuery) matches += 1;
     }
 
     if (traceFilterEmpty) {
       const showEmpty = Boolean(traceFilterQuery) && total > 0 && matches === 0;
       traceFilterEmpty.style.display = showEmpty ? "block" : "none";
-    }
-
-    if (!traceFilterQuery) {
-      traceLastSearchTarget = null;
-    } else if (bestItem && bestItem !== traceLastSearchTarget) {
-      traceLastSearchTarget = bestItem;
-      bestItem.scrollIntoView({ block: "nearest", behavior: "smooth" });
     }
   }
 
@@ -1543,6 +1554,48 @@
     closeTraceDocModal();
     traceEventCount = 0;
     setTraceStatusByKey("waiting");
+  }
+
+  function setRequestInFlight(isActive) {
+    requestInFlight = isActive;
+    const t = getTexts(getCurrentLang());
+    const label = submitButton ? submitButton.querySelector(".send-label") : null;
+    if (label) label.textContent = isActive ? t.wait : t.send;
+    submitButton.classList.toggle("is-cancel", !!isActive);
+    setQueryProgress(isActive);
+  }
+
+  async function sendCancelRequest(runId) {
+    if (!runId) return;
+    const authHeaders = {};
+    if (fakeAuthEnabled) {
+      authHeaders["Authorization"] = `Bearer dev-user:${DEV_AUTH_USER_ID}`;
+    }
+    try {
+      await fetch(`${API_BASE}${CANCEL_PATH}`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...authHeaders,
+          ...(sessionId ? { "X-Session-ID": sessionId } : {})
+        },
+        body: JSON.stringify({ pipeline_run_id: runId })
+      });
+    } catch (e) {
+      // Best-effort cancel. Ignore failures.
+    }
+  }
+
+  function cancelActiveRequest() {
+    if (!requestInFlight) return;
+    sendCancelRequest(currentTraceRunId);
+    if (activeAbortController) {
+      try { activeAbortController.abort(); } catch (e) {}
+    }
+    stopTraceStream({ hidePanel: false });
+    setTraceAvailable(true);
+    setTraceOpen(false);
+    setTraceStatusByKey("cancelled");
   }
 
   function stopTraceStream(opts = {}) {
@@ -2080,6 +2133,10 @@
     submitButton.disabled = false;
     submitButton.title = "";
 
+    if (requestInFlight) {
+      return;
+    }
+
     if (mode !== "compare") return;
 
     // Compare mode: must have 2 different snapshots.
@@ -2243,7 +2300,11 @@
   function applyLang(lang) {
     const t = getTexts(lang);
 
-    if (submitButton) submitButton.innerText = t.send;
+    if (submitButton) {
+      const label = submitButton.querySelector(".send-label");
+      if (label) label.textContent = requestInFlight ? t.wait : t.send;
+      submitButton.classList.toggle("is-cancel", !!requestInFlight);
+    }
     if (queryInput) queryInput.placeholder = t.placeholder;
     if (newChatBtn) newChatBtn.textContent = t.newChat;
     if (traceTitle) traceTitle.textContent = t.traceTitle;
@@ -2429,6 +2490,10 @@
 
   async function handleSubmit(e) {
     e.preventDefault();
+    if (requestInFlight) {
+      cancelActiveRequest();
+      return;
+    }
     const lang = getCurrentLang();
     const t = getTexts(lang);
 
@@ -2438,8 +2503,7 @@
       return;
     }
 
-    submitButton.disabled = true;
-    submitButton.innerText = t.wait;
+    setRequestInFlight(true);
 
     const c = consultantsById[selectedConsultant];
     const mode = (c && (c.snapshotPickerMode || c.branchPickerMode)) ? (c.snapshotPickerMode || c.branchPickerMode) : "single";
@@ -2487,6 +2551,7 @@
         authHeaders["Authorization"] = `Bearer dev-user:${DEV_AUTH_USER_ID}`;
       }
 
+      activeAbortController = new AbortController();
       const res = await fetch(`${API_BASE}${SEARCH_PATH}`, {
         method: "POST",
         headers: {
@@ -2494,7 +2559,8 @@
           ...authHeaders,
           ...(sessionId ? { "X-Session-ID": sessionId } : {})
         },
-        body: JSON.stringify(body)
+        body: JSON.stringify(body),
+        signal: activeAbortController.signal
       });
 
       if (!res.ok) throw new Error(`POST ${SEARCH_PATH} failed: ${res.status}`);
@@ -2539,6 +2605,13 @@
       addCopyButtons();
       scrollToLatestResponse();
     } catch (error) {
+      if (error && error.name === "AbortError") {
+        stopTraceStream({ hidePanel: false });
+        setTraceAvailable(true);
+        setTraceOpen(false);
+        setTraceStatusByKey("cancelled");
+        return;
+      }
       console.error("submit:", error);
       alert(t.error);
       stopTraceStream({ hidePanel: false });
@@ -2546,9 +2619,8 @@
       setTraceOpen(false);
       setTraceStatusByKey("start_error");
     } finally {
-      setQueryProgress(false);
-      submitButton.disabled = false;
-      submitButton.innerText = t.send;
+      activeAbortController = null;
+      setRequestInFlight(false);
       updateFormPosition();
       localStorage.setItem("lang", lang);
       updateSendButtonState();

@@ -2,7 +2,13 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional, Tuple
 
-from .policy import CallbackPolicy, DEFAULT_CALLBACK_POLICY
+from .policy import (
+    CallbackPolicy,
+    DEFAULT_CALLBACK_POLICY,
+    STAGES_VISIBILITY_ALLOWED,
+    STAGES_VISIBILITY_EXPLICIT,
+    STAGES_VISIBILITY_FORBIDDEN,
+)
 
 
 _DOC_PREVIEW_CHARS = 280
@@ -20,13 +26,12 @@ def summarize_trace_event_for_ui(
     effective_policy = policy or DEFAULT_CALLBACK_POLICY
     if not effective_policy.enabled:
         return None
+    if not _is_stage_visible(event, effective_policy):
+        return None
 
     callback_meta = event.get("callback") if isinstance(event.get("callback"), dict) else {}
     caption = _clean_str(callback_meta.get("caption"))
     caption_translated = _clean_str(callback_meta.get("caption_translated"))
-    has_caption = bool(caption or caption_translated)
-    if effective_policy.require_caption and not has_caption:
-        return None
 
     run_id = event.get("run_id")
     ts = event.get("ts_utc")
@@ -165,6 +170,24 @@ def _summarize_step_event(
     return summary, summary, {}, []
 
 
+def _is_stage_visible(event: Dict[str, Any], policy: CallbackPolicy) -> bool:
+    mode = str(policy.stage_visibility_mode or STAGES_VISIBILITY_ALLOWED)
+    if mode == STAGES_VISIBILITY_FORBIDDEN:
+        return False
+    if mode == STAGES_VISIBILITY_ALLOWED:
+        return True
+    if mode != STAGES_VISIBILITY_EXPLICIT:
+        return True
+
+    flag = None
+    step = event.get("step") if isinstance(event.get("step"), dict) else {}
+    if "stages_visible" in step:
+        flag = step.get("stages_visible")
+    elif "stages_visible" in event:
+        flag = event.get("stages_visible")
+    return bool(flag is True)
+
+
 def _extract_docs(node_texts: Any) -> List[Dict[str, Any]]:
     out: List[Dict[str, Any]] = []
     if not isinstance(node_texts, list):
@@ -214,4 +237,3 @@ def _truncate(text: str, limit: int) -> str:
     if len(text) <= limit:
         return text
     return text[: max(0, limit - 3)] + "..."
-

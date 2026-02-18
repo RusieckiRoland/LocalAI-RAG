@@ -117,6 +117,7 @@ class PipelineActionBase(ABC):
                         "action": step.action,
                         "next_default": step.next,
                         "next_resolved": resolved_next,
+                        "stages_visible": self._stages_visible_flag(step),
                     },
                     "action": {
                         "class": self.__class__.__name__,
@@ -179,6 +180,7 @@ class PipelineActionBase(ABC):
                 "session_id": getattr(state, "session_id", None),
                 "pipeline_name": getattr(state, "pipeline_name", None),
                 "consumer_step_id": step.id,
+                "stages_visible": self._stages_visible_flag(step),
                 **self._consume_summary(step.id, consumed),
             }
             labels = self._callback_labels(step)
@@ -212,6 +214,15 @@ class PipelineActionBase(ABC):
             lst = []
             setattr(state, "pipeline_trace_events", lst)
         lst.append(event)
+
+    def _stages_visible_flag(self, step: StepDef) -> Optional[bool]:
+        try:
+            raw = getattr(step, "raw", {}) or {}
+            if "stages_visible" not in raw:
+                return None
+            return bool(raw.get("stages_visible"))
+        except Exception:
+            return None
 
     def _safe_call_log_in(self, step: StepDef, state: PipelineState, runtime: PipelineRuntime) -> Dict[str, Any]:
         try:

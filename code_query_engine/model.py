@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, Optional
+from typing import Any, Optional, Callable
 
 from llama_cpp import Llama
+from code_query_engine.pipeline.cancellation import PipelineCancelled
 
 
 logger = logging.getLogger(__name__)
@@ -46,6 +47,7 @@ class Model:
         repeat_penalty: float = 1.2,
         top_k: int = 40,
         top_p: Optional[float] = None,
+        cancel_check: Optional[Callable[[], None]] = None,
     ) -> str:
         if max_tokens is None:
             max_tokens = self.default_max_tokens
@@ -67,14 +69,35 @@ class Model:
             if top_p is not None:
                 call_kwargs["top_p"] = top_p  # llama-cpp-python supports top_p
 
-            res = self.llm(**call_kwargs)
-            output = (res.get("choices") or [{}])[0].get("text", "").strip()
+            output = ""
+            if cancel_check is not None:
+                cancel_check()
+                call_kwargs["stream"] = True
+                try:
+                    parts: list[str] = []
+                    for chunk in self.llm(**call_kwargs):
+                        cancel_check()
+                        text = ""
+                        if isinstance(chunk, dict):
+                            choice = (chunk.get("choices") or [{}])[0] if chunk else {}
+                            text = choice.get("text") or ""
+                        parts.append(str(text))
+                    output = "".join(parts).strip()
+                except TypeError:
+                    call_kwargs.pop("stream", None)
+                    res = self.llm(**call_kwargs)
+                    output = (res.get("choices") or [{}])[0].get("text", "").strip()
+            else:
+                res = self.llm(**call_kwargs)
+                output = (res.get("choices") or [{}])[0].get("text", "").strip()
 
             if self._looks_like_hallucination(output):
                 raise RuntimeError("Detected hallucination or recursive loop in LLM response.")
 
             return output
 
+        except PipelineCancelled:
+            raise
         except Exception as e:
             logger.error(f"Model error: {e}")
             return "[MODEL_ERROR]"
@@ -90,6 +113,7 @@ class Model:
         repeat_penalty: float = 1.2,
         top_k: int = 40,
         top_p: Optional[float] = None,
+        cancel_check: Optional[Callable[[], None]] = None,
     ) -> str:
         """
         Chat mode:
@@ -126,20 +150,46 @@ class Model:
             if top_p is not None:
                 call_kwargs["top_p"] = top_p
 
-            res = self.llm.create_chat_completion(**call_kwargs)
-
-            output = (
-                (res.get("choices") or [{}])[0]
-                .get("message", {})
-                .get("content", "")
-                .strip()
-            )
+            output = ""
+            if cancel_check is not None:
+                cancel_check()
+                call_kwargs["stream"] = True
+                try:
+                    parts: list[str] = []
+                    for chunk in self.llm.create_chat_completion(**call_kwargs):
+                        cancel_check()
+                        text = ""
+                        if isinstance(chunk, dict):
+                            choice = (chunk.get("choices") or [{}])[0] if chunk else {}
+                            delta = choice.get("delta") or {}
+                            text = delta.get("content") or ""
+                        parts.append(str(text))
+                    output = "".join(parts).strip()
+                except TypeError:
+                    call_kwargs.pop("stream", None)
+                    res = self.llm.create_chat_completion(**call_kwargs)
+                    output = (
+                        (res.get("choices") or [{}])[0]
+                        .get("message", {})
+                        .get("content", "")
+                        .strip()
+                    )
+            else:
+                res = self.llm.create_chat_completion(**call_kwargs)
+                output = (
+                    (res.get("choices") or [{}])[0]
+                    .get("message", {})
+                    .get("content", "")
+                    .strip()
+                )
 
             if self._looks_like_hallucination(output):
                 raise RuntimeError("Detected hallucination or recursive loop in LLM response.")
 
             return output
 
+        except PipelineCancelled:
+            raise
         except Exception as e:
             logger.error(f"Model chat error: {e}")
             return "[MODEL_ERROR]"

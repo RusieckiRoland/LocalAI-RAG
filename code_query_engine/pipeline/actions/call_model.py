@@ -10,6 +10,7 @@ from code_query_engine.chat_types import Dialog
 from ..definitions import StepDef
 from ..engine import PipelineRuntime
 from ..state import PipelineState
+from ..cancellation import make_cancel_check
 from .base_action import PipelineActionBase
 
 from prompt_builder.factory import get_prompt_builder_by_prompt_format
@@ -165,6 +166,7 @@ class CallModelAction(PipelineActionBase):
             )
 
             out = self.ask_manual_prompt_llm(
+                state=state,
                 model=model,
                 rendered_prompt=rendered_prompt,
                 model_kwargs=model_kwargs,
@@ -301,11 +303,13 @@ class CallModelAction(PipelineActionBase):
         messages.append({"role": "user", "content": user_part})
         setattr(state, _TRACE_RENDERED_CHAT_MESSAGES_ATTR, messages)
 
+        cancel_check = make_cancel_check(state)
         return str(
             ask_chat(
                 prompt=user_part,
                 history=hist_dialog,
                 system_prompt=system_prompt,
+                cancel_check=cancel_check,
                 **model_kwargs,
             )
             or ""
@@ -315,6 +319,7 @@ class CallModelAction(PipelineActionBase):
     def ask_manual_prompt_llm(
         self,
         *,
+        state: PipelineState,
         model: Any,
         rendered_prompt: str,
         model_kwargs: Dict[str, Any],
@@ -323,10 +328,12 @@ class CallModelAction(PipelineActionBase):
         if not callable(ask):
             raise ValueError("call_model: model.ask(...) is required")
 
+        cancel_check = make_cancel_check(state)
         return str(
             ask(
                 prompt=rendered_prompt,
                 system_prompt=None,
+                cancel_check=cancel_check,
                 **model_kwargs,
             )
             or ""

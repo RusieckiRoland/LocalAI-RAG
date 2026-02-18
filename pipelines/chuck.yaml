@@ -7,6 +7,7 @@ YAMLpipeline:
     snapshot_set_id: ""
     max_history_tokens: 800
     native_chat: true
+    stages_visibility: explicit
 
   steps:
     - id: maybe_translate_in
@@ -19,6 +20,7 @@ YAMLpipeline:
 
     - id: call_model_direct_answer
       action: call_model
+      stages_visible: true
       callback_caption: "Generating direct answer"
       callback_caption_translated: "Generowanie odpowiedzi bez retrieval"
       prompt_key: "chuck/direct_answer_v1"

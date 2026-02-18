@@ -5,6 +5,7 @@ This document specifies the backend↔frontend contract for:
 - dynamic loading of “consultants” (UI cards),
 - consultant → pipeline mapping,
 - UI visibility control for snapshot selection,
+- trace panel stream + cancel behavior,
 - a shared contract for Python backend and a JS mock server.
 
 It is framework-agnostic so a team can build the UI in Angular (or any other framework) without reading backend code.
@@ -227,6 +228,7 @@ Notes:
 - In compare mode, require two different versions before enabling “Send”.
 - One chat must not mix different `snapshot_set_id` values.
   - If the user switches to a consultant with a different `snapshotSetId` and the conversation already used a non-empty set, show a confirmation and start a new chat if accepted.
+- Trace filter highlight is visual-only; it does not change the contract or request payloads.
 
 Endpoint selection:
 - development: `POST /search/dev`
@@ -238,6 +240,64 @@ When development endpoints are disabled (`developement=false` or `APP_DEVELOPMEN
 Minimum response fields:
 - `results` — markdown string; frontend renders it as markdown
 - `session_id` — may be returned on every response or only once; frontend should update session id if present
+
+Optional fields:
+- `pipeline_run_id` — identifier used to attach trace stream and to cancel the request.
+- `cancelled: true` — when the backend acknowledges cancellation; `results` may be empty.
+
+If the backend returns `cancelled: true`, frontend should:
+- keep the last user question in the conversation,
+- show a "Cancelled" status in trace panel.
+
+---
+
+## Trace stream + cancel contract
+
+### Trace stream endpoint
+Frontend opens a Server-Sent Events stream:
+- development: `GET /pipeline/stream/dev?run_id=<pipeline_run_id>`
+- production: `GET /pipeline/stream/prod?run_id=<pipeline_run_id>`
+
+Stream emits:
+- `type: "step"` events (see UI trace panel)
+- `type: "done"` when the run finishes
+- `type: "done", reason: "cancelled"` when the run is cancelled
+
+### Stage visibility policy (config + pipeline)
+Stage visibility is controlled server-side and affects which events are sent to the UI.
+
+Global (`config.json`):
+- `stages_visibility: "allowed" | "forbidden" | "explicit" | "pipeline_driven"`
+
+Pipeline (`pipeline.settings` in YAML):
+- `stages_visibility: "allowed" | "forbidden" | "explicit"`
+
+Precedence:
+- Global config wins, unless `stages_visibility: "pipeline_driven"`.
+- In `explicit` mode, a step must declare `stages_visible: true` to be emitted.
+
+Note:
+- `captioned` filtering was removed. There is no caption-based filtering anymore.
+
+### Cancel endpoint
+Frontend can cancel an in-flight query:
+- development: `POST /pipeline/cancel/dev`
+- production: `POST /pipeline/cancel/prod`
+
+Payload:
+```json
+{ "pipeline_run_id": "<id>" }
+```
+
+Backend should:
+- mark the run as cancelled,
+- close the trace stream with `reason: "cancelled"`,
+- return `{ ok: true, cancelled: true }`.
+
+Frontend behavior:
+- the single "Send" button toggles to cancel state during an in-flight request,
+- clicking it sends the cancel request and aborts the client fetch,
+- trace panel should show a "Cancelled" status.
 
 ---
 
@@ -255,6 +315,7 @@ Minimal flow:
 
 ## JS mock server
 The mock server should expose `/app-config/dev` and `/search/dev` as canonical development endpoints.
+It should also expose `/pipeline/stream/dev` and `/pipeline/cancel/dev` to keep UI behavior consistent.
 Goal: allow testing UI without Python, then switch to Python backend without UI changes.
 
 ---

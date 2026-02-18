@@ -7,6 +7,7 @@ YAMLpipeline:
     snapshot_set_id: ""
     max_history_tokens: 800
     native_chat: true
+    stages_visibility: explicit
 
   steps:
     - id: maybe_translate_in
@@ -19,6 +20,7 @@ YAMLpipeline:
 
     - id: call_model_diagram_router
       action: call_model
+      stages_visible: true
       prompt_key: "ada/diagram_router_v1"
       use_history: true
       user_parts:
@@ -52,6 +54,7 @@ YAMLpipeline:
 
     - id: call_model_class_diagram
       action: call_model
+      stages_visible: true
       prompt_key: "ada/class_diagram_v1"
       use_history: true
       user_parts:
@@ -68,6 +71,7 @@ YAMLpipeline:
 
     - id: call_model_sequence_diagram
       action: call_model
+      stages_visible: true
       prompt_key: "ada/sequence_diagram_v1"
       use_history: true
       user_parts:
@@ -84,6 +88,7 @@ YAMLpipeline:
 
     - id: call_model_use_case_diagram
       action: call_model
+      stages_visible: true
       prompt_key: "ada/use_case_diagram_v1"
       use_history: true
       user_parts:

@@ -23,6 +23,11 @@ from .providers.ports import (
     IRetrievalBackend,
 )
 from code_query_engine.conversation_history.ports import IConversationHistoryService
+from code_query_engine.pipeline.cancellation import (
+    PipelineCancelled,
+    append_cancel_event,
+    get_pipeline_cancel_registry,
+)
 
 py_logger = logging.getLogger(__name__)
 
@@ -163,6 +168,40 @@ class PipelineEngine:
         final_answer: str = ""
         result: Optional[PipelineResult] = None
 
+        cancel_registry = get_pipeline_cancel_registry()
+        trace_broker = None
+
+        def _check_cancelled() -> None:
+            rid = getattr(state, "pipeline_run_id", None)
+            if not rid:
+                return
+            if not cancel_registry.is_cancelled(str(rid)):
+                return
+            reason = cancel_registry.get_reason(str(rid)) or "cancelled"
+            append_cancel_event(state, run_id=str(rid), reason=reason)
+            if trace_broker is not None:
+                try:
+                    trace_broker.emit(
+                        str(rid),
+                        {
+                            "event_type": "CANCELLED",
+                            "ts_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                            "t_ms": int(time.time() * 1000),
+                            "run_id": str(rid),
+                            "step": {"id": "cancelled"},
+                            "action": {"action_id": "cancelled"},
+                            "callback": {
+                                "caption": "Cancelled",
+                                "caption_translated": "Przerwano",
+                            },
+                            "out": {"reason": reason},
+                        },
+                    )
+                    trace_broker.close(str(rid), reason="cancelled")
+                except Exception:
+                    pass
+            raise PipelineCancelled(str(rid), reason)
+
         try:
             from code_query_engine.work_callback.broker import get_work_callback_broker
 
@@ -173,6 +212,7 @@ class PipelineEngine:
             trace_idx = len(getattr(state, "pipeline_trace_events", []) or [])
 
             while current_step_id:
+                _check_cancelled()
                 step: StepDef = steps_by_id.get(current_step_id)  # type: ignore[assignment]
                 if step is None:
                     raise KeyError(f"Unknown step id: '{current_step_id}'")
@@ -188,6 +228,8 @@ class PipelineEngine:
                     next_step_id = action.execute(step, state, runtime)  # type: ignore[attr-defined]
                 except TypeError:
                     next_step_id = action.execute(step=step, state=state, runtime=runtime)  # type: ignore[attr-defined]
+
+                _check_cancelled()
 
                 if trace_events_enabled:
                     rid = getattr(state, "pipeline_run_id", None)
@@ -267,6 +309,12 @@ class PipelineEngine:
             raise
 
         finally:
+            try:
+                rid = getattr(state, "pipeline_run_id", None)
+                if rid:
+                    cancel_registry.clear(str(rid))
+            except Exception:
+                pass
             # Always emit RUN_END trace event when tracing is enabled (even on errors).
             if trace_events_enabled:
                 inbox_remaining = list(getattr(state, "inbox", []) or [])

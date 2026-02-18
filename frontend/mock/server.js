@@ -960,6 +960,18 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  if (req.method === "POST" && basePath === "/pipeline/cancel") {
+    let payload = {};
+    try {
+      const raw = await readBody(req);
+      payload = raw ? JSON.parse(raw) : {};
+    } catch (e) {
+      payload = {};
+    }
+    const runId = String(payload.pipeline_run_id || payload.run_id || "").trim();
+    return sendJson(res, 200, { ok: true, cancelled: true, run_id: runId });
+  }
+
   // POST /query is the main endpoint used by the UI.
   // POST /search is kept as an alias for older HTML versions.
   if (req.method === "POST" && (basePath === "/query" || basePath === "/search")) {
@@ -1023,6 +1035,6 @@ server.on("error", (err) => {
 server.listen(PORT, "0.0.0.0", () => {
   console.log("Mock server running: http://localhost:" + PORT);
   console.log("Open UI:             http://localhost:" + PORT + "/page.html");
-  console.log("Endpoints:           GET /app-config (/dev), POST /query (/dev), POST /search (/dev)");
+  console.log("Endpoints:           GET /app-config (/dev), POST /query (/dev), POST /search (/dev), POST /pipeline/cancel (/dev)");
   console.log("PlantUML server:     " + PLANTUML_SERVER);
 });
