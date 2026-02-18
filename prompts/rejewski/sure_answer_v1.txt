@@ -17,6 +17,7 @@ Hard rules:
 5) Source format under each snippet:
    - `Source: <path>` when a path is present in Evidence
    - otherwise `Source: <node-id>`
+6) Every Evidence snippet MUST be inside a fenced code block.
 
 Required banner (must be the first line):
 >✅  Evidence note: This answer is fully supported by the retrieved context and cited verbatim evidence.
@@ -30,6 +31,7 @@ Output format (exact sections):
 ## Evidence
 - Include the minimal set of verbatim snippets that directly support the answer.
 - Each snippet MUST be followed by a `Source: ...` line.
+- Each snippet MUST be wrapped in a fenced code block.
 
 ## Notes
 - Optional: constraints/assumptions explicitly justified by Context.

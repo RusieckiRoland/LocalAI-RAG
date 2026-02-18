@@ -891,15 +891,84 @@
       flex-direction: column;
       box-shadow: 0 12px 30px rgba(0,0,0,0.2);
       overflow: hidden;
+      position: relative;
     }
     .trace-doc-modal-header {
-      display: flex;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
       align-items: center;
-      justify-content: space-between;
       gap: 0.6rem;
       padding: 0.8rem 1rem;
       border-bottom: 1px solid #e5e7eb;
       background: #f8fafc;
+      position: relative;
+      min-height: 64px;
+    }
+    .trace-doc-modal-count {
+      position: absolute;
+      top: 0.65rem;
+      right: 3.1rem;
+      transform: none;
+      font-size: 0.78rem;
+      color: #6b7280;
+      min-width: 4.2rem;
+      text-align: center;
+      font-variant-numeric: tabular-nums;
+      background: rgba(255, 255, 255, 0.9);
+      border: 1px solid #e5e7eb;
+      border-radius: 999px;
+      padding: 0.15rem 0.6rem;
+      box-shadow: 0 4px 10px rgba(15, 23, 42, 0.12);
+      pointer-events: none;
+    }
+    .trace-doc-modal-nav {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+    }
+    .trace-doc-nav-btn {
+      border: 1px solid rgba(15, 23, 42, 0.15);
+      background: rgba(255, 255, 255, 0.92);
+      color: #0f172a;
+      border-radius: 999px;
+      width: 38px;
+      height: 38px;
+      cursor: pointer;
+      box-shadow: 0 6px 18px rgba(15, 23, 42, 0.16);
+      pointer-events: auto;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .trace-doc-nav-btn:hover {
+      background: #ffffff;
+      box-shadow: 0 8px 22px rgba(15, 23, 42, 0.2);
+    }
+    .trace-doc-nav-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      box-shadow: none;
+    }
+    .trace-doc-nav-btn.is-hidden {
+      visibility: hidden;
+      pointer-events: none;
+    }
+    .trace-doc-nav-btn .icon {
+      width: 20px;
+      height: 20px;
+      display: block;
+    }
+    .trace-doc-nav-btn.prev {
+      position: absolute;
+      left: 0.6rem;
+      top: calc(50% + 24px);
+      transform: translateY(-50%);
+    }
+    .trace-doc-nav-btn.next {
+      position: absolute;
+      right: 0.6rem;
+      top: calc(50% + 24px);
+      transform: translateY(-50%);
     }
     .trace-doc-modal-title {
       font-weight: 800;
@@ -907,8 +976,9 @@
       line-height: 1.2;
       flex: 1 1 auto;
       min-width: 0;
-      overflow-wrap: anywhere;
-      word-break: break-word;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }
     .trace-doc-modal-close {
       border: 1px solid #d1d5db;
@@ -923,7 +993,7 @@
       cursor: pointer;
     }
     .trace-doc-modal-body {
-      padding: 1rem;
+      padding: 1rem 3rem;
       overflow: auto;
       color: #111827;
       background: #ffffff;
@@ -1033,7 +1103,20 @@
     <div class="trace-doc-modal">
       <div class="trace-doc-modal-header">
         <div class="trace-doc-modal-title" id="traceDocModalTitle"></div>
+        <div class="trace-doc-modal-count" id="traceDocModalCount"></div>
         <button type="button" class="trace-doc-modal-close" id="traceDocModalClose" aria-label="Zamknij">×</button>
+      </div>
+      <div class="trace-doc-modal-nav" aria-hidden="false">
+        <button type="button" class="trace-doc-nav-btn prev" id="traceDocPrev" aria-label="Poprzedni dokument">
+          <svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M15.41 7.41 14 6l-6 6 6 6 1.41-1.41L10.83 12z"></path>
+          </svg>
+        </button>
+        <button type="button" class="trace-doc-nav-btn next" id="traceDocNext" aria-label="Następny dokument">
+          <svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="m8.59 16.59 1.41 1.41 6-6-6-6-1.41 1.41L13.17 12z"></path>
+          </svg>
+        </button>
       </div>
       <div class="trace-doc-modal-body markdown-content" id="traceDocModalBody"></div>
     </div>
@@ -1174,6 +1257,9 @@
   const traceDocModalBackdrop = document.getElementById("traceDocModalBackdrop");
   const traceDocModalTitle = document.getElementById("traceDocModalTitle");
   const traceDocModalBody = document.getElementById("traceDocModalBody");
+  const traceDocModalCount = document.getElementById("traceDocModalCount");
+  const traceDocPrevBtn = document.getElementById("traceDocPrev");
+  const traceDocNextBtn = document.getElementById("traceDocNext");
   const traceDocModalClose = document.getElementById("traceDocModalClose");
 
   // If name is longer than this, we shorten it in CLOSED state.
@@ -1192,6 +1278,10 @@
   const TRACE_FILTER_MAX_TOKEN_CHARS = 1200;
   let traceDocSeq = 0;
   const traceDocsByKey = {};
+  let traceDocBatchSeq = 0;
+  const traceDocBatches = {};
+  let traceDocModalKeys = [];
+  let traceDocModalIndex = -1;
   let activeAbortController = null;
   let requestInFlight = false;
 
@@ -1265,6 +1355,9 @@
         traceDocs: (count) => `Dokumenty (${count})`,
         traceOpenDoc: "Otwórz dokument",
         traceDocTitle: "Dokument",
+        traceDocPrev: "Poprzedni dokument",
+        traceDocNext: "Następny dokument",
+        traceDocCount: (idx, total) => `${idx}/${total}`,
         queryProgressText: "Zapytanie w toku",
         consultantLocked: "Nie można zmienić konsultanta w trakcie odpowiedzi."
 	    },
@@ -1310,6 +1403,9 @@
         traceDocs: (count) => `Documents (${count})`,
       traceOpenDoc: "Open document",
       traceDocTitle: "Document",
+      traceDocPrev: "Previous document",
+      traceDocNext: "Next document",
+      traceDocCount: (idx, total) => `${idx}/${total}`,
         queryProgressText: "Query in progress",
         consultantLocked: "You cannot change the consultant while a reply is in progress."
 	    }
@@ -1551,6 +1647,10 @@
     if (traceFilterEmpty) traceFilterEmpty.style.display = "none";
     for (const key of Object.keys(traceDocsByKey)) delete traceDocsByKey[key];
     traceDocSeq = 0;
+    traceDocBatchSeq = 0;
+    for (const key of Object.keys(traceDocBatches)) delete traceDocBatches[key];
+    traceDocModalKeys = [];
+    traceDocModalIndex = -1;
     closeTraceDocModal();
     traceEventCount = 0;
     setTraceStatusByKey("waiting");
@@ -1643,6 +1743,9 @@
       setTraceOpen(false);
       return;
     }
+    if (evt.type === "consume" || evt.event_type === "CONSUME") {
+      return;
+    }
     traceEventCount += 1;
     setTraceStatusByKey("running", traceEventCount);
     appendTraceItem(evt);
@@ -1678,7 +1781,20 @@
       inserted.querySelectorAll(".trace-doc-open").forEach((btn) => {
         btn.addEventListener("click", () => {
           const key = btn.getAttribute("data-doc-key") || "";
-          openTraceDocModalByKey(key);
+          if (!key) return;
+          const docsWrap = btn.closest(".trace-docs");
+          let keys = null;
+          if (docsWrap) {
+            const batch = docsWrap.getAttribute("data-doc-batch") || "";
+            if (batch && Array.isArray(traceDocBatches[batch])) {
+              keys = traceDocBatches[batch];
+            } else {
+              keys = Array.from(docsWrap.querySelectorAll(".trace-doc-open"))
+                .map((node) => node.getAttribute("data-doc-key"))
+                .filter(Boolean);
+            }
+          }
+          openTraceDocModalByKey(key, keys);
         });
       });
     }
@@ -1702,9 +1818,13 @@
   function formatTraceDocs(docs) {
     if (!Array.isArray(docs) || docs.length === 0) return "";
     const t = getTexts(getCurrentLang());
-    const items = docs.slice(0, 20).map((doc) => {
+    const allKeys = docs.map((doc) => registerTraceDoc(doc));
+    traceDocBatchSeq += 1;
+    const batchKey = `b_${traceDocBatchSeq}`;
+    traceDocBatches[batchKey] = allKeys;
+    const items = docs.slice(0, 20).map((doc, idx) => {
       const title = escapeHtml(doc.id || "doc");
-      const docKey = registerTraceDoc(doc);
+      const docKey = allKeys[idx];
       const meta = [];
       if (doc.depth !== undefined && doc.depth !== null) meta.push(`depth: ${doc.depth}`);
       if (doc.text_len !== undefined && doc.text_len !== null) meta.push(`len: ${doc.text_len}`);
@@ -1715,7 +1835,7 @@
     }).join("");
 
     return `
-      <details class="trace-docs">
+      <details class="trace-docs" data-doc-batch="${escapeHtml(batchKey)}">
         <summary>${escapeHtml(t.traceDocs(docs.length))}</summary>
         ${items}
       </details>
@@ -1729,11 +1849,47 @@
     return key;
   }
 
-  function openTraceDocModalByKey(key) {
+  function updateTraceDocNav() {
+    const t = getTexts(getCurrentLang());
+    const total = traceDocModalKeys.length;
+    const index = traceDocModalIndex;
+    const hasMany = total > 1;
+    if (traceDocModalCount) {
+      traceDocModalCount.textContent = hasMany ? t.traceDocCount(index + 1, total) : "";
+      traceDocModalCount.style.display = hasMany ? "inline-flex" : "none";
+    }
+    if (traceDocPrevBtn) {
+      traceDocPrevBtn.disabled = !hasMany || index <= 0;
+      traceDocPrevBtn.setAttribute("aria-label", t.traceDocPrev);
+      traceDocPrevBtn.classList.toggle("is-hidden", !hasMany);
+    }
+    if (traceDocNextBtn) {
+      traceDocNextBtn.disabled = !hasMany || index >= total - 1;
+      traceDocNextBtn.setAttribute("aria-label", t.traceDocNext);
+      traceDocNextBtn.classList.toggle("is-hidden", !hasMany);
+    }
+  }
+
+  function getTraceDocTitle(doc) {
+    const t = getTexts(getCurrentLang());
+    if (!doc || typeof doc !== "object") return t.traceDocTitle || "Document";
+    const path = doc.path || doc.file_path || doc.filePath || doc.relative_path || doc.source_path || doc.sourcePath;
+    if (path) return String(path);
+    return String(doc.id || t.traceDocTitle || "Document");
+  }
+
+  function openTraceDocModalByKey(key, keys = null) {
     const doc = traceDocsByKey[key];
     if (!doc) return;
+    if (Array.isArray(keys) && keys.length) {
+      traceDocModalKeys = keys;
+      traceDocModalIndex = Math.max(0, keys.indexOf(key));
+    } else {
+      traceDocModalKeys = [key];
+      traceDocModalIndex = 0;
+    }
     const t = getTexts(getCurrentLang());
-    const title = String(doc.id || t.traceDocTitle || "Document");
+    const title = getTraceDocTitle(doc);
     const raw = String(doc.markdown || doc.preview || "");
     let markdown = raw;
     if (markdown && !markdown.includes("```")) {
@@ -1745,11 +1901,14 @@
       addCopyButtons();
     }
     if (traceDocModalBackdrop) traceDocModalBackdrop.style.display = "flex";
+    updateTraceDocNav();
   }
 
   function closeTraceDocModal() {
     if (traceDocModalBackdrop) traceDocModalBackdrop.style.display = "none";
     if (traceDocModalBody) traceDocModalBody.innerHTML = "";
+    traceDocModalKeys = [];
+    traceDocModalIndex = -1;
   }
 
   function getCurrentLang() {
@@ -2320,6 +2479,7 @@
     if (queryProgress && queryProgress.classList.contains("active")) {
       queryProgress.textContent = t.queryProgressText;
     }
+    updateTraceDocNav();
 
     localStorage.setItem("lang", lang);
     if (langSelect && langSelect.value !== lang) langSelect.value = lang;
@@ -2740,6 +2900,20 @@
         if (evt.target === traceDocModalBackdrop) closeTraceDocModal();
       });
     }
+    if (traceDocPrevBtn) {
+      traceDocPrevBtn.addEventListener("click", () => {
+        if (traceDocModalIndex <= 0) return;
+        const key = traceDocModalKeys[traceDocModalIndex - 1];
+        if (key) openTraceDocModalByKey(key, traceDocModalKeys);
+      });
+    }
+    if (traceDocNextBtn) {
+      traceDocNextBtn.addEventListener("click", () => {
+        if (traceDocModalIndex < 0 || traceDocModalIndex >= traceDocModalKeys.length - 1) return;
+        const key = traceDocModalKeys[traceDocModalIndex + 1];
+        if (key) openTraceDocModalByKey(key, traceDocModalKeys);
+      });
+    }
     if (traceFilterInput) {
       traceFilterInput.addEventListener("input", (evt) => {
         traceFilterQuery = normalizeTraceFilterQuery(evt.target.value);
@@ -2754,11 +2928,23 @@
       }
     });
     document.addEventListener("keydown", (e) => {
-      if (e.key !== "Escape") return;
       if (traceDocModalBackdrop && traceDocModalBackdrop.style.display !== "none") {
-        closeTraceDocModal();
-        return;
+        if (e.key === "Escape") {
+          closeTraceDocModal();
+          return;
+        }
+        if (e.key === "ArrowLeft" && traceDocModalIndex > 0) {
+          const key = traceDocModalKeys[traceDocModalIndex - 1];
+          if (key) openTraceDocModalByKey(key, traceDocModalKeys);
+          return;
+        }
+        if (e.key === "ArrowRight" && traceDocModalIndex >= 0 && traceDocModalIndex < traceDocModalKeys.length - 1) {
+          const key = traceDocModalKeys[traceDocModalIndex + 1];
+          if (key) openTraceDocModalByKey(key, traceDocModalKeys);
+          return;
+        }
       }
+      if (e.key !== "Escape") return;
       if (document.body.classList.contains("trace-open")) {
         setTraceOpen(false);
       }

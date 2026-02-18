@@ -53,6 +53,7 @@
   "vector_indexes_root": "repositories/nopCommerce/indexes",
   "repo_name": "nopCommerce",
   "callback": "allowed",
+  "stages_visibility": "pipeline_driven",
   "callback_content": [
     "all"
   ],

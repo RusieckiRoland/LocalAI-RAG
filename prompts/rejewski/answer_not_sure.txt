@@ -21,7 +21,7 @@ Your job:
 2. The FIRST LINE MUST be a Search-limit note in this exact form:
    >⚠️  Search-limit note: <one sentence about incomplete/insufficient evidence and partial confidence>
 3. Do NOT invent file names, symbols, or sources.
-4. Evidence snippets must be verbatim copy-paste and must include a real Source.
+4. Evidence snippets must be verbatim copy-paste, must be wrapped in a fenced code block, and must include a real Source.
 5. If a snippet has no real Source identifier (path or id), you MUST NOT cite it as Evidence.
 6. Any non-evidence reasoning or generated code MUST be labeled as:
    "Inference (non-evidence)".
@@ -39,6 +39,7 @@ You MUST output exactly this structure:
 
 3) `## Evidence` section:
    - Include ONLY snippets that have a real Source.
+   - Each snippet MUST be inside a fenced code block.
    - If there are no snippets with a real Source, write exactly:
      "No attributable evidence was provided."
 
