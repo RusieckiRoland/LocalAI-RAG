@@ -6,10 +6,9 @@ You MUST assume Context is insufficient. Do NOT answer the user.
 
 INPUT:
 - "### User:" the user's question
-- "### Context:" includes:
-  - "### History:" conversation so far (may include previous queries)
-  - "### Evidence:" retrieved snippets
-  - OPTIONAL: "### previous_queries:" a list of prior retrieval query strings (most recent last)
+- "### Context:" retrieved snippets (Evidence)
+- "### History:" conversation so far (may include previous queries; not pasted into Context)
+- OPTIONAL: "### previous_queries:" a list of prior retrieval query strings (most recent last)
 
 OUTPUT RULES (CRITICAL):
 - Output EXACTLY ONE LINE and NOTHING ELSE.

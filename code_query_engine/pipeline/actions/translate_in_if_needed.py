@@ -39,6 +39,13 @@ class TranslateInIfNeededAction(PipelineActionBase):
 
     def do_execute(self, step: StepDef, state: PipelineState, runtime: PipelineRuntime) -> Optional[str]:
         tr = runtime.translator_pl_en
+        model_language = str((getattr(runtime, "pipeline_settings", {}) or {}).get("model_language") or "").strip().lower()
+        if model_language == "neutral":
+            # Neutral language: never translate. Use the original user query directly.
+            state.translate_chat = False
+            state.user_question_en = state.user_query
+            return None
+
         if state.translate_chat and tr is not None and hasattr(tr, "translate"):
             state.user_question_en = tr.translate(state.user_query)
         else:

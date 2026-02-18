@@ -9,9 +9,8 @@ No guessing. Evidence-first.
 
 INPUT:
 - "### User:" the user's question
-- "### Context:" includes:
-  - "### History:" conversation so far
-  - "### Evidence:" retrieved repository snippets
+- "### Context:" retrieved repository snippets (Evidence)
+- "### History:" conversation so far (chat history, confirmed facts only; not pasted into Context)
 - "### Search Mode Constraint:" optional runtime rule for the NEXT retrieve decision.
   - If empty: no special constraint.
   - If non-empty: you MUST obey it (unless strict code-only overrides it; see Step 5).

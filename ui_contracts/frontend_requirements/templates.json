@@ -51,6 +51,23 @@
         "pl": "https://pl.wikipedia.org/wiki/Claude_Shannon",
         "en": "https://en.wikipedia.org/wiki/Claude_Shannon"
       }
+    },
+    {
+      "id": "chuck",
+      "pipelineName": "chuck",
+      "snapshotPickerMode": "none",
+      "icon": "🥋",
+      "displayName": "Chuck Norris",
+      "cardDescription": { "pl": "Wsparcie IT i kodowania", "en": "IT and coding support" },
+      "welcomeTemplate": {
+        "pl": "Zapytaj {link} o analizę IT, kod i architekturę.",
+        "en": "Ask {link} about IT analysis, code, and architecture."
+      },
+      "welcomeLinkText": { "pl": "Chucka Norrisa", "en": "Chuck Norris" },
+      "wikiUrl": {
+        "pl": "https://pl.wikipedia.org/wiki/Chuck_Norris",
+        "en": "https://en.wikipedia.org/wiki/Chuck_Norris"
+      }
     }
   ]
 }

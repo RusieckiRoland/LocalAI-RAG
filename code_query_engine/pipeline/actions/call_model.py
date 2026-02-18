@@ -353,7 +353,14 @@ class CallModelAction(PipelineActionBase):
         #     source: user_question_en
         #     template: "### User:\n{}\n\n"
         user_parts_cfg = raw.get("user_parts")
+        native_chat = opt_bool(get_override(raw=raw, settings=runtime.pipeline_settings, key="native_chat")) or False
         if not isinstance(user_parts_cfg, dict) or not user_parts_cfg:
+            if native_chat:
+                # Native chat: allow empty user_parts and fallback to user_question_en or user_query.
+                user_part_fallback = str(getattr(state, "user_question_en", None) or getattr(state, "user_query", "") or "")
+                user_part = user_part_fallback.strip()
+                history: Dialog = list(getattr(state, "history_dialog", None) or []) if bool(raw.get("use_history", False)) else []
+                return system_prompt, user_part, history
             raise ValueError("call_model: user_parts must be a non-empty dict")
 
         # History source is fixed: state.history_dialog (Dialog).

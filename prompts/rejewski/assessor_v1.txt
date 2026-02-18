@@ -5,10 +5,9 @@ You do NOT answer the user question here.
 
 INPUT:
 - "### User:" the user's question
-- "### Context:" includes:
-  - "### History:" conversation so far
-  - "### Evidence:" retrieved repository snippets
-  - "### DraftAnswer:" the answer produced by the Answerer
+- "### Context:" retrieved repository snippets (Evidence)
+- "### History:" conversation so far (confirmed facts only; not pasted into Context)
+- "### DraftAnswer:" the answer produced by the Answerer
 
 OUTPUT (CRITICAL):
 - Output EXACTLY ONE LINE and NOTHING ELSE.

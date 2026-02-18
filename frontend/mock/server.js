@@ -9,8 +9,7 @@ const zlib = require("zlib");
 
 const PORT = parseInt(process.env.PORT || "8081", 10);
 
-const ROOT = process.cwd();
-const UI_FILE = path.join(ROOT, "strona.html");
+const UI_FILE = path.join(__dirname, "page.html");
 
 // Default PlantUML server (official). You can override with env var if needed.
 const PLANTUML_SERVER = String(process.env.PLANTUML_SERVER || "https://www.plantuml.com/plantuml").replace(/\/+$/, "");
@@ -59,7 +58,7 @@ function readBody(req) {
 function getSessionId(req) {
   const sid = (req.headers["x-session-id"] || "").toString().trim();
   if (sid) return sid;
-  return crypto.randomUUID();
+  return randomId();
 }
 
 function runIdFromPayload(payload) {
@@ -68,7 +67,7 @@ function runIdFromPayload(payload) {
   const provided = safeStr(payload && (payload.pipeline_run_id || payload.run_id)).trim();
   if (provided) return provided;
   const ts = Date.now();
-  const rand = crypto.randomUUID().slice(0, 8);
+  const rand = randomId().slice(0, 8);
   return `${ts}_mock_${rand}`;
 }
 
@@ -78,8 +77,21 @@ function safeStr(v) {
 
 function pickRandom(arr) {
   if (!arr || arr.length === 0) return null;
-  const idx = crypto.randomInt(0, arr.length);
+  const idx = Math.floor(Math.random() * arr.length);
   return arr[idx];
+}
+
+function randomId() {
+  // crypto.randomUUID is not available in older Node versions (e.g. 12).
+  if (typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  try {
+    return crypto.randomBytes(16).toString("hex");
+  } catch (e) {
+    // Last-resort fallback.
+    return String(Date.now()) + "_" + String(Math.floor(Math.random() * 1e9));
+  }
 }
 
 function buildAppConfig() {
@@ -149,6 +161,25 @@ function buildAppConfig() {
         wikiUrl: {
           pl: "https://pl.wikipedia.org/wiki/Claude_Shannon",
           en: "https://en.wikipedia.org/wiki/Claude_Shannon"
+        }
+      },
+      {
+        id: "chuck",
+        pipelineName: "chuck",
+        snapshotPickerMode: "none",
+        snapshotSetId: "",
+        snapshots: [],
+        icon: "🥋",
+        displayName: "Chuck Norris",
+        cardDescription: { pl: "Wsparcie IT i kodowania", en: "IT and coding support" },
+        welcomeTemplate: {
+          pl: "Zapytaj {link} o analizę IT, kod i architekturę.",
+          en: "Ask {link} about IT analysis, code, and architecture."
+        },
+        welcomeLinkText: { pl: "Chucka Norrisa", en: "Chuck Norris" },
+        wikiUrl: {
+          pl: "https://pl.wikipedia.org/wiki/Chuck_Norris",
+          en: "https://en.wikipedia.org/wiki/Chuck_Norris"
         }
       }
     ]
@@ -868,6 +899,7 @@ function buildMockMarkdownResponse(ctx) {
 const server = http.createServer(async (req, res) => {
   const parsed = url.parse(req.url, true);
   const pathname = parsed.pathname || "/";
+  const basePath = pathname.endsWith("/dev") ? pathname.slice(0, -4) : pathname;
 
   if (req.method === "OPTIONS") {
     setCors(res);
@@ -876,21 +908,21 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  if (req.method === "GET" && (pathname === "/" || pathname === "/strona.html")) {
+  if (req.method === "GET" && (pathname === "/" || pathname === "/page.html")) {
     try {
       const html = fs.readFileSync(UI_FILE, "utf8");
       sendHtml(res, 200, html);
     } catch (e) {
-      sendText(res, 404, "Missing file: " + UI_FILE + "\nPut strona.html next to server.js");
+      sendText(res, 404, "Missing file: " + UI_FILE + "\nPut page.html next to server.js");
     }
     return;
   }
 
-  if (req.method === "GET" && pathname === "/app-config") {
+  if (req.method === "GET" && basePath === "/app-config") {
     return sendJson(res, 200, buildAppConfig());
   }
 
-  if (req.method === "GET" && pathname === "/pipeline/stream") {
+  if (req.method === "GET" && basePath === "/pipeline/stream") {
     const runId = (parsed.query && parsed.query.run_id) ? String(parsed.query.run_id) : "";
     res.writeHead(200, {
       "Content-Type": "text/event-stream",
@@ -930,7 +962,7 @@ const server = http.createServer(async (req, res) => {
 
   // POST /query is the main endpoint used by the UI.
   // POST /search is kept as an alias for older HTML versions.
-  if (req.method === "POST" && (pathname === "/query" || pathname === "/search")) {
+  if (req.method === "POST" && (basePath === "/query" || basePath === "/search")) {
     let payload = {};
     try {
       const raw = await readBody(req);
@@ -946,12 +978,12 @@ const server = http.createServer(async (req, res) => {
     let snapshotA = null;
     let snapshotB = null;
     if (Array.isArray(payload.snapshots)) {
-      snapshotA = payload.snapshots[0] ?? null;
-      snapshotB = payload.snapshots[1] ?? null;
+      snapshotA = payload.snapshots[0] == null ? null : payload.snapshots[0];
+      snapshotB = payload.snapshots[1] == null ? null : payload.snapshots[1];
     } else {
       // Legacy fallback
-      snapshotA = payload.branchA ?? null;
-      snapshotB = payload.branchB ?? null;
+      snapshotA = payload.branchA == null ? null : payload.branchA;
+      snapshotB = payload.branchB == null ? null : payload.branchB;
     }
 
     // UI sends translateChat: true for PL, false for EN.
@@ -972,7 +1004,7 @@ const server = http.createServer(async (req, res) => {
     });
   }
 
-  if (req.method === "GET" && pathname === "/health") {
+  if (req.method === "GET" && basePath === "/health") {
     return sendJson(res, 200, { ok: true });
   }
 
@@ -990,7 +1022,7 @@ server.on("error", (err) => {
 
 server.listen(PORT, "0.0.0.0", () => {
   console.log("Mock server running: http://localhost:" + PORT);
-  console.log("Open UI:             http://localhost:" + PORT + "/strona.html");
-  console.log("Endpoints:           GET /app-config, POST /query (alias /search)");
+  console.log("Open UI:             http://localhost:" + PORT + "/page.html");
+  console.log("Endpoints:           GET /app-config (/dev), POST /query (/dev), POST /search (/dev)");
   console.log("PlantUML server:     " + PLANTUML_SERVER);
 });

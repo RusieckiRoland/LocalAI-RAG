@@ -1,6 +1,6 @@
 # Mock server (Node.js) — running it
 
-This mock pretends to be a backend for `strona.html`:
+This mock pretends to be a backend for `page.html`:
 - returns `/app-config` (consultants + branch picker mode),
 - handles `POST /query` and the alias `POST /search`,
 - generates random Markdown responses (including PlantUML for Ada),
@@ -10,7 +10,7 @@ This mock pretends to be a backend for `strona.html`:
 - Node.js **18+** (also works on 22.x)
 - Files in the **same directory**:
   - `server.js`
-  - `strona.html`
+  - `page.html`
 
 ## Run (Windows — PowerShell)
 Go to the folder with the files and run:
@@ -22,10 +22,10 @@ node server.js
 
 After startup you should see something like:
 - `Mock server running: http://localhost:8081`
-- `Open UI: http://localhost:8081/strona.html`
+- `Open UI: http://localhost:8081/page.html`
 
 Open in your browser:
-- `http://localhost:8081/strona.html`
+- `http://localhost:8081/page.html`
 
 ## Run (Linux/macOS)
 ```bash
@@ -69,7 +69,7 @@ PLANTUML_SERVER="https://www.plantuml.com/plantuml" node server.js
 - `POST /query` — main UI endpoint
 - `POST /search` — alias (for older UI versions)
 - `GET /health` — simple `{"ok": true}`
-- `GET /strona.html` — serves the UI
+- `GET /page.html` — serves the UI
 
 ## Quick test (curl)
 ```bash
@@ -82,5 +82,5 @@ curl -X POST http://localhost:8081/query ^
 ### Port already in use
 If you see a “port in use” message, set a different `PORT` (e.g. 8082) and run again.
 
-### Missing `strona.html`
-The server will return 404 with a message that the file is missing. Make sure `strona.html` is next to `server.js`.
+### Missing `page.html`
+The server will return 404 with a message that the file is missing. Make sure `page.html` is next to `server.js`.
