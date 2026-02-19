@@ -22,6 +22,7 @@ class Model:
     NOTE:
     Prompt construction is NOT done here. It must be done by the pipeline step (call_model).
     """
+    supports_cancel_check = True
 
     def __init__(self, model_path: str, *, default_max_tokens: int = 1500, n_ctx: int = 4096):
         self.modelPath = model_path  # keep original attribute name for compatibility

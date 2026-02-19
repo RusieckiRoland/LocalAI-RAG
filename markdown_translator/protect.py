@@ -111,4 +111,7 @@ def restore_placeholders(text: str, mapping: Dict[str, str]) -> str:
 
 def normalize_placeholder_spacing(text: str) -> str:
     # Some translators may insert spaces inside <...> placeholders: "< IC_1>" -> "<IC_1>"
-    return re.sub(r"<\s*([A-Z]+)_\s*(\d+)\s*>", r"<\1_\2>", text)
+    text = re.sub(r"<\s*([A-Z]+)_\s*(\d+)\s*>", r"<\1_\2>", text)
+    # Some translators drop the closing ">": "<CT_0," -> "<CT_0>,"
+    text = re.sub(r"<\s*([A-Z]+)_\s*(\d+)\s*(?=$|[^A-Za-z0-9_>])", r"<\1_\2>", text)
+    return text

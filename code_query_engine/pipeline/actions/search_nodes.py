@@ -490,12 +490,15 @@ class SearchNodesAction(PipelineActionBase):
                     search_type = lp
                 elif lp == "semantic_rerank":
                     search_type = "semantic"
-            # 3) strict no-fallback behavior: the mode must be explicit.
+            # 3) fallback when router didn't provide search_type.
             if search_type == "auto":
-                raise ValueError(
-                    "search_nodes: search_type='auto' requires explicit search_type "
-                    "in payload (or explicit prefix decision)."
+                msg = (
+                    "search_nodes: search_type='auto' missing explicit search_type; "
+                    "falling back to semantic"
                 )
+                py_logger.warning(msg)
+                print(f"WARNING: {msg}")
+                search_type = "semantic"
 
         if search_type not in _ALLOWED_SEARCH_TYPES:
             raise ValueError(f"search_nodes: resolved invalid search_type='{search_type}'. Allowed: {sorted(_ALLOWED_SEARCH_TYPES)}")

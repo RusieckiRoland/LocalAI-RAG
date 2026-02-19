@@ -132,6 +132,7 @@ class CallModelAction(PipelineActionBase):
         temperature = opt_float(get_override(raw=step.raw, settings=runtime.pipeline_settings, key="temperature"))
         top_k = opt_int(get_override(raw=step.raw, settings=runtime.pipeline_settings, key="top_k"))
         top_p = opt_float(get_override(raw=step.raw, settings=runtime.pipeline_settings, key="top_p"))
+        server_name = str(get_override(raw=step.raw, settings=runtime.pipeline_settings, key="server_name") or "").strip()
 
         # Precedence: max_output_tokens overrides max_tokens if both are provided.
         if max_output_tokens is not None:
@@ -144,6 +145,8 @@ class CallModelAction(PipelineActionBase):
             model_kwargs["top_k"] = top_k
         if top_p is not None:
             model_kwargs["top_p"] = top_p
+        if server_name and bool(getattr(model, "supports_server_name", False)):
+            model_kwargs["server_name"] = server_name
 
         setattr(state, _TRACE_PROMPT_NAME_ATTR, prompt_key)
 
@@ -303,14 +306,16 @@ class CallModelAction(PipelineActionBase):
         messages.append({"role": "user", "content": user_part})
         setattr(state, _TRACE_RENDERED_CHAT_MESSAGES_ATTR, messages)
 
-        cancel_check = make_cancel_check(state)
+        cancel_check = make_cancel_check(state) if bool(getattr(model, "supports_cancel_check", False)) else None
+        call_kwargs = dict(model_kwargs)
+        if cancel_check is not None:
+            call_kwargs["cancel_check"] = cancel_check
         return str(
             ask_chat(
                 prompt=user_part,
                 history=hist_dialog,
                 system_prompt=system_prompt,
-                cancel_check=cancel_check,
-                **model_kwargs,
+                **call_kwargs,
             )
             or ""
         )
@@ -328,13 +333,15 @@ class CallModelAction(PipelineActionBase):
         if not callable(ask):
             raise ValueError("call_model: model.ask(...) is required")
 
-        cancel_check = make_cancel_check(state)
+        cancel_check = make_cancel_check(state) if bool(getattr(model, "supports_cancel_check", False)) else None
+        call_kwargs = dict(model_kwargs)
+        if cancel_check is not None:
+            call_kwargs["cancel_check"] = cancel_check
         return str(
             ask(
                 prompt=rendered_prompt,
                 system_prompt=None,
-                cancel_check=cancel_check,
-                **model_kwargs,
+                **call_kwargs,
             )
             or ""
         )

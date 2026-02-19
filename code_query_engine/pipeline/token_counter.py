@@ -61,6 +61,27 @@ class LlamaCppTokenCounter(TokenCounter):
         return self.count_tokens(text)
 
 
+@dataclass(frozen=True)
+class ApproxTokenCounter(TokenCounter):
+    """
+    Fallback token counter for server LLM mode.
+    Uses a rough chars-per-token heuristic to keep budget enforcement working.
+    """
+
+    chars_per_token: float = 4.0
+    min_tokens: int = 1
+
+    def count_tokens(self, text: str) -> int:
+        s = str(text or "")
+        if not s:
+            return 0
+        est = int(len(s) / max(self.chars_per_token, 1.0))
+        return max(self.min_tokens, est)
+
+    def count(self, text: str) -> int:
+        return self.count_tokens(text)
+
+
 def require_token_counter(obj: object) -> TokenCounter:
     """
     Strict validator used by actions/runners.

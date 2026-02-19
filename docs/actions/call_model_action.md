@@ -95,6 +95,59 @@ Result:
 - each `user_parts.<name>` becomes: `template.format(text)`,
 - `user_part` is the concatenation of all parts in the order defined in YAML.
 
+---
+
+## External server LLM (server mode)
+You can route `call_model` to **external LLM servers** instead of the local llama-cpp model.
+
+### 1) Enable server mode
+In `config.json`:
+```json
+{
+  "serverLLM": true,
+  "model_context_window": 8192
+}
+```
+When `serverLLM: true`, the local model is **not** started.
+
+### 2) Configure servers in `ServersLLM.json`
+Create a file at repo root: `ServersLLM.json`.
+
+Example:
+```json
+{
+  "servers": [
+    {
+      "name": "local_llm",
+      "base_url": "http://localhost:18081",
+      "default": true,
+      "api_key": "",
+      "timeout_seconds": 120,
+      "mode": "openai",
+      "model": "",
+      "completions_path": "/v1/completions",
+      "chat_completions_path": "/v1/chat/completions"
+    }
+  ]
+}
+```
+
+Rules:
+- `default: true` marks the **default server**.
+- If multiple servers have `default: true`, the **first** is used and a warning is logged.
+- If **no** server has `default: true`, startup fails (error in logs/console).
+
+### 3) Select server per step (`server_name`)
+In pipeline YAML:
+```yaml
+- id: call_model_main
+  action: call_model
+  server_name: "local_llm"
+  prompt_key: "rejewski/answer_v1"
+```
+
+If `server_name` is **omitted**, `call_model` uses the server with `default: true`.
+
 ### Example (context summarization)
 ```yaml
 - id: call_model_summarize_context

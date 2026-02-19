@@ -1,0 +1,15 @@
+{
+  "servers": [
+    {
+      "name": "local_llm",
+      "base_url": "http://localhost:18081",
+      "default": true,
+      "api_key": "",
+      "timeout_seconds": 120,
+      "mode": "openai",
+      "model": "",
+      "completions_path": "/v1/completions",
+      "chat_completions_path": "/v1/chat/completions"
+    }
+  ]
+}

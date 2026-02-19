@@ -14,7 +14,7 @@ YAMLpipeline:
     max_turn_loops: 6
 
     # Token budgets
-    max_context_tokens: 6000
+    max_context_tokens: 28000
     max_history_tokens: 800
 
     # Rolling summary policy
@@ -290,6 +290,8 @@ YAMLpipeline:
     
     - id: translate_out
       action: translate_out_if_needed      
+      use_main_model: true
+      translate_prompt_key: "utility/translate_md_en_pl"      
       next: finalize
 
     - id: finalize

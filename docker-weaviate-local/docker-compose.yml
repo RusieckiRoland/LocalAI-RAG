@@ -16,3 +16,4 @@ services:
 
 volumes:
   weaviate_data:
+    name: weaviate-local_weaviate_data

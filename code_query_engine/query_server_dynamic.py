@@ -308,18 +308,76 @@ def _resolve_cfg_path(p: str) -> str:
     return os.path.join(PROJECT_ROOT, v)
 
 
-# NOTE: your Model wrapper is outside the uploaded set; keep as-is in repo.
-from .model import Model  # noqa: E402
+_server_llm = bool(_runtime_cfg.get("serverLLM"))
 
 
-_model = Model(
-    _resolve_cfg_path(str(_runtime_cfg.get("model_path_analysis") or "")),
-    default_max_tokens=int(_runtime_cfg.get("model_max_tokens", 1500) or 1500),
-    n_ctx=int(_runtime_cfg.get("model_context_window", 4096) or 4096),
-)
+def _load_llm_servers() -> tuple[dict[str, "ServerLLMConfig"], str]:
+    path = os.path.join(PROJECT_ROOT, "ServersLLM.json")
+    if not os.path.isfile(path):
+        raise ValueError(f"ServersLLM.json not found: {path}")
+    with open(path, "r", encoding="utf-8") as f:
+        data = json.load(f) or {}
+    servers_raw = data.get("servers") or []
+    if not isinstance(servers_raw, list) or not servers_raw:
+        raise ValueError("ServersLLM.json: 'servers' must be a non-empty list")
+    servers: dict[str, ServerLLMConfig] = {}
+    default_candidates: list[str] = []
+    for item in servers_raw:
+        if not isinstance(item, dict):
+            continue
+        name = str(item.get("name") or "").strip()
+        base_url = str(item.get("base_url") or "").strip()
+        if not name or not base_url:
+            continue
+        if bool(item.get("default")):
+            default_candidates.append(name)
+        servers[name] = ServerLLMConfig(
+            name=name,
+            base_url=base_url,
+            api_key=str(item.get("api_key") or "").strip(),
+            timeout_seconds=int(item.get("timeout_seconds") or 120),
+            mode=str(item.get("mode") or "openai").strip(),
+            model=str(item.get("model") or "").strip(),
+            completions_path=str(item.get("completions_path") or "/v1/completions").strip(),
+            chat_completions_path=str(item.get("chat_completions_path") or "/v1/chat/completions").strip(),
+        )
+    if not servers:
+        raise ValueError("ServersLLM.json: no valid servers found")
+    if not default_candidates:
+        raise ValueError("ServersLLM.json: no server with default:true")
+    if len(default_candidates) > 1:
+        msg = (
+            "ServersLLM.json: multiple servers with default:true; "
+            f"using first: {default_candidates[0]} (candidates: {default_candidates})"
+        )
+        py_logger.warning(msg)
+        print(f"WARNING: {msg}")
+    return servers, default_candidates[0]
+
+_model = None
+if not _server_llm:
+    # NOTE: your Model wrapper is outside the uploaded set; keep as-is in repo.
+    from .model import Model  # noqa: E402
+
+    _model = Model(
+        _resolve_cfg_path(str(_runtime_cfg.get("model_path_analysis") or "")),
+        default_max_tokens=int(_runtime_cfg.get("model_max_tokens", 1500) or 1500),
+        n_ctx=int(_runtime_cfg.get("model_context_window", 4096) or 4096),
+    )
+else:
+    from .llm_server_client import ServerLLMClient, ServerLLMConfig  # noqa: E402
+
+    try:
+        servers, default_name = _load_llm_servers()
+        _model = ServerLLMClient(servers=servers, default_name=default_name)
+        py_logger.warning("serverLLM=true: local model initialization skipped (using server '%s').", default_name)
+    except Exception as e:
+        py_logger.error("serverLLM=true but failed to load ServersLLM.json: %s", e)
+        print(f"ERROR: serverLLM=true but failed to load ServersLLM.json: {e}")
+        raise
 
 try:
-    _llm = getattr(_model, "llm", None)
+    _llm = getattr(_model, "llm", None) if _model is not None else None
     _n_ctx = None
     if _llm is not None:
         v = getattr(_llm, "n_ctx", None)
@@ -337,14 +395,15 @@ _translator_pl_en = Translator(_resolve_cfg_path(str(_runtime_cfg.get("model_tra
 
 _interaction_logger = InteractionLogger(cfg=_logging_cfg)
 
-from code_query_engine.pipeline.token_counter import LlamaCppTokenCounter, require_token_counter
+from code_query_engine.pipeline.token_counter import LlamaCppTokenCounter, ApproxTokenCounter, require_token_counter
 
 token_counter = None
 
 try:
     llm = getattr(_model, "llm", None)
     if llm is None:
-        py_logger.warning("degraded-mode: model has no .llm; token counter disabled")
+        token_counter = ApproxTokenCounter()
+        py_logger.warning("degraded-mode: model has no .llm; using approximate token counter")
     else:
         token_counter = LlamaCppTokenCounter(llama=llm)
 except Exception as e:
@@ -998,6 +1057,13 @@ def _handle_query_request(*, require_bearer_auth: bool):
         overrides["retrieval_filters"] = retrieval_filters_override
     if access_ctx.allowed_commands:
         overrides["allowed_commands"] = list(access_ctx.allowed_commands)
+    if "model_context_window" not in pipeline_settings and "model_context_window" not in overrides:
+        try:
+            mcw = int(_runtime_cfg.get("model_context_window", 0) or 0)
+        except Exception:
+            mcw = 0
+        if mcw > 0:
+            overrides["model_context_window"] = mcw
 
     custom_auth_error = _enforce_custom_access_policies(
         access_ctx=access_ctx,
