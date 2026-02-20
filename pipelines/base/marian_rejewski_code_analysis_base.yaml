@@ -14,7 +14,7 @@ YAMLpipeline:
     max_turn_loops: 6
 
     # Token budgets
-    max_context_tokens: 28000
+    max_context_tokens: 5000
     max_history_tokens: 800
 
     # Rolling summary policy

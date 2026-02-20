@@ -3,7 +3,7 @@
     {
       "name": "local_llm",
       "base_url": "http://localhost:18081",
-      "default": false,
+      "default": true,
       "api_key": "",
       "timeout_seconds": 120,
       "mode": "openai",
@@ -30,7 +30,7 @@
     },{
   "name": "deepseek",
   "base_url": "https://api.deepseek.com",
-  "default": true,
+  "default": false,
   "api_key": "${OPENAI_API_KEY}",
   "timeout_seconds": 120,
   "mode": "openai",

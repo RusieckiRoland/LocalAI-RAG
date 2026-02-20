@@ -238,6 +238,9 @@ class SnapshotRegistry:
                 return v
         return snapshot_id
 
+    def resolve_snapshot_label(self, *, repository: str, snapshot_id: str) -> str:
+        return self._resolve_snapshot_label(repository, snapshot_id)
+
     def _unique_preserve_order(self, items: List[str]) -> List[str]:
         seen = set()
         out: List[str] = []

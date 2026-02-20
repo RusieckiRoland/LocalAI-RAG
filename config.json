@@ -1,10 +1,10 @@
 {
   "output_dir": "branches",
   "model_path_embd": "models/embedding/e5-base-v2",
-  "model_path_analysis": "models/code_analysis/qwenCoder/qwen2.5-coder-32b-instruct-q4_k_m.gguf",
+  "model_path_analysis": "models/code_analysis/codeLlama_34_Instruct/codellama-34b-instruct.Q4_K_M.gguf",
   "serverLLM": true,
   "model_max_tokens": 1500,
-  "model_context_window": 32000,
+  "model_context_window": 16000,
   "model_translation_en_pl": "models/translation/en_pl/Helsinki_NLPopus_mt_en_pl",
   "model_translation_pl_en": "models/translation/pl_en/Helsinki_NLPopus_mt_pl_en",
   "log_path": "log/ai_interaction.log",

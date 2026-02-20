@@ -1042,6 +1042,33 @@ def _handle_query_request(*, require_bearer_auth: bool):
     if not snapshot_id and snapshot_set_id:
         snapshot_id = _resolve_snapshot_id_from_set(snapshot_set_id=snapshot_set_id, repository=repository or None)
 
+    snapshot_friendly_names: Dict[str, str] = {}
+    if _snapshot_registry:
+        try:
+            if snapshot_set_id:
+                snapshots = _snapshot_registry.list_snapshots(
+                    snapshot_set_id=snapshot_set_id,
+                    repository=repository or None,
+                )
+                snapshot_friendly_names = {s.id: s.label for s in (snapshots or []) if s.id and s.label}
+            else:
+                if snapshot_id:
+                    label = _snapshot_registry.resolve_snapshot_label(
+                        repository=repository or "",
+                        snapshot_id=snapshot_id,
+                    )
+                    if label:
+                        snapshot_friendly_names[snapshot_id] = label
+                if snapshot_id_b:
+                    label_b = _snapshot_registry.resolve_snapshot_label(
+                        repository=repository or "",
+                        snapshot_id=snapshot_id_b,
+                    )
+                    if label_b:
+                        snapshot_friendly_names[snapshot_id_b] = label_b
+        except Exception:
+            py_logger.exception("soft-failure: resolve snapshot friendly names")
+
     session_id = _valid_session_id(request.headers.get("X-Session-ID") or _get_str_field(payload, "session_id", ""))
 
     # Resolve access context (dev-only auth for now).
@@ -1091,6 +1118,8 @@ def _handle_query_request(*, require_bearer_auth: bool):
         overrides["retrieval_filters"] = retrieval_filters_override
     if access_ctx.allowed_commands:
         overrides["allowed_commands"] = list(access_ctx.allowed_commands)
+    if snapshot_friendly_names:
+        overrides["snapshot_friendly_names"] = snapshot_friendly_names
     if "model_context_window" not in pipeline_settings and "model_context_window" not in overrides:
         try:
             mcw = int(_runtime_cfg.get("model_context_window", 0) or 0)

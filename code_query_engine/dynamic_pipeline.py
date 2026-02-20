@@ -243,6 +243,17 @@ class DynamicPipelineRunner:
                 setattr(state, "snapshot_id_b", overrides.get("snapshot_id_b"))
             if "snapshot_set_id" in overrides and not snapshot_set_id:
                 setattr(state, "snapshot_set_id", overrides.get("snapshot_set_id"))
+            if "snapshot_friendly_names" in overrides:
+                raw_friendly = overrides.get("snapshot_friendly_names")
+                if isinstance(raw_friendly, dict):
+                    clean: dict[str, str] = {}
+                    for k, v in raw_friendly.items():
+                        key = str(k or "").strip()
+                        val = str(v or "").strip()
+                        if key and val:
+                            clean[key] = val
+                    if clean:
+                        state.snapshot_friendly_names = clean
             if "allowed_commands" in overrides:
                 raw_allowed = overrides.get("allowed_commands")
                 if isinstance(raw_allowed, list):

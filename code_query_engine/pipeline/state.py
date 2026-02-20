@@ -25,6 +25,7 @@ class PipelineState:
     snapshot_id: Optional[str] = None
     snapshot_id_b: Optional[str] = None
     snapshot_set_id: Optional[str] = None
+    snapshot_friendly_names: Dict[str, str] = field(default_factory=dict)
     allowed_commands: List[str] = field(default_factory=list)
 
     # Router outputs / parse artifacts
