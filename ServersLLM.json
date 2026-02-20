@@ -3,13 +3,43 @@
     {
       "name": "local_llm",
       "base_url": "http://localhost:18081",
-      "default": true,
+      "default": false,
       "api_key": "",
       "timeout_seconds": 120,
       "mode": "openai",
       "model": "",
       "completions_path": "/v1/completions",
-      "chat_completions_path": "/v1/chat/completions"
-    }
+      "chat_completions_path": "/v1/chat/completions",
+      "throttling": {
+        "enabled": false
+      }
+    },
+     {
+      "name": "openai",
+      "base_url": "https://api.openai.com",
+      "default": false,
+      "api_key": "${OPENAI_API_KEY}",
+      "timeout_seconds": 120,
+      "mode": "openai",
+      "model": "gpt-4.1",
+      "completions_path": "/v1/completions",
+      "chat_completions_path": "/v1/chat/completions",
+      "throttling": {
+        "enabled": true
+      }
+    },{
+  "name": "deepseek",
+  "base_url": "https://api.deepseek.com",
+  "default": true,
+  "api_key": "${OPENAI_API_KEY}",
+  "timeout_seconds": 120,
+  "mode": "openai",
+  "model": "deepseek-coder",
+  "completions_path": "/v1/completions",
+  "chat_completions_path": "/v1/chat/completions",
+  "throttling": {
+    "enabled": true
+  }
+}
   ]
 }

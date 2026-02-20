@@ -256,10 +256,10 @@ The script writes into the **already existing** directories (it won’t invent n
 **Quick verify:**
 
 ```bash
-ls -lh models/code_analysis/codeLlama_13b_Instruct/*.gguf
+ls -lh models/code_analysis/*/*.gguf
 ls -1  models/embedding/e5-base-v2 | wc -l
 ls -1  models/translation/en_pl/Helsinki_NLPopus_mt_en_pl
-ls -1  models/translation/pl_en/Helsinki-NLPopus-mt-pl-en
+ls -1  models/translation/pl_en/Helsinki_NLPopus_mt_pl_en
 ```
 
 If any folder lacks files, use the fallback below.
@@ -270,14 +270,16 @@ If any folder lacks files, use the fallback below.
 
 If something fails, or links change upstream, open the `download_model.md` located **inside each target folder** and execute its **copy‑paste commands** (run them from the **repo root**, do **not** create new directories):
 
-* `code_analysis/codeLlama_13b_Instruct/download_model.md` → **code model (GGUF)**
-* `embedding/e5-base-v2/download_model.md` → **embedding model**
-* `translation/en_pl/Helsinki_NLPopus_mt_en_pl/download_model.md` → **EN→PL** translation
-* `translation/pl_en/Helsinki-NLPopus-mt-pl-en/download_model.md` → **PL→EN** translation
+* `models/code_analysis/<model_folder>/download_model.md` → **code model (GGUF, if present)**
+* `models/embedding/e5-base-v2/download_model.md` → **embedding model**
+* `models/translation/en_pl/Helsinki_NLPopus_mt_en_pl/download_model.md` → **EN→PL** translation
+* `models/translation/pl_en/Helsinki_NLPopus_mt_pl_en/download_model.md` → **PL→EN** translation
 
 > **Do not duplicate instructions in the README.** Use the commands from the `download_model.md` files **as‑is**, and place files only into the **existing** directories.
 
 Git tracks **only** the `download_model.md` placeholders; all downloaded weights remain untracked.
+
+Ensure `config.json["model_path_analysis"]` points to the GGUF you downloaded.
 
 **Do not proceed to tests until all four folders contain the downloaded files.**
 
@@ -291,9 +293,9 @@ Git tracks **only** the `download_model.md` placeholders; all downloaded weights
 {
   "output_dir": "branches",
   "model_path_embd": "models/embedding/e5-base-v2",
-  "model_path_analysis": "models/code_analysis/codeLlama_13b_Instruct/CodeLlama-13b-Instruct-hf-Q8_0.gguf",
+  "model_path_analysis": "models/code_analysis/qwenCoder/qwen2.5-coder-32b-instruct-q4_k_m.gguf",
   "model_translation_en_pl": "models/translation/en_pl/Helsinki_NLPopus_mt_en_pl",
-  "model_translation_pl_en": "models/translation/pl_en/Helsinki-NLPopus-mt-pl-en",
+  "model_translation_pl_en": "models/translation/pl_en/Helsinki_NLPopus_mt_pl_en",
   "log_path": "log/ai_interaction.log",
   "use_gpu": true,
   "plantuml_server": "http://localhost:8080",
@@ -321,8 +323,6 @@ Git tracks **only** the `download_model.md` placeholders; all downloaded weights
 ```bash
 APP_SECRET_KEY=change-me-to-a-long-random-string
 API_TOKEN=your-internal-token-here
-APP_DEVELOPMENT=1
-IDP_AUTH_ENABLED=1
 
 # === Server settings ===
 APP_HOST=0.0.0.0
@@ -334,17 +334,24 @@ ALLOWED_ORIGINS=http://localhost:8080,http://127.0.0.1:8080
 # === Query limits (optional) ===
 APP_MAX_QUERY_LEN=8000
 APP_MAX_FIELD_LEN=128
+
+# === Only for debugging the pipeline; creates one JSON per user query
+RAG_PIPELINE_TRACE_FILE=1
+RAG_PIPELINE_TRACE_DIR=log/pipeline_traces
+
+# === Weaviate (secrets) ===
+WEAVIATE_API_KEY=your-weaviate-api-key-here
 ```
 
 **Description:**
 
 * `APP_SECRET_KEY` — Flask session secret; use a long random string in production.
 * `API_TOKEN` — internal API token for service-to-service calls.
-* `APP_DEVELOPMENT` — overrides development endpoint exposure (`1` enables `/dev` endpoints, `0` hides them).
-* `IDP_AUTH_ENABLED` — forces IDP JWT validation on `prod` endpoints (`1`) or disables it (`0`).
 * `APP_HOST` / `APP_PORT` — bind address and port of the Flask app.
 * `ALLOWED_ORIGINS` — comma-separated list of allowed CORS origins.
 * `APP_MAX_QUERY_LEN` / `APP_MAX_FIELD_LEN` — optional server-side limits for incoming requests.
+* `RAG_PIPELINE_TRACE_FILE` / `RAG_PIPELINE_TRACE_DIR` — optional per-query trace output (debug only).
+* `WEAVIATE_API_KEY` — API key used by Weaviate clients (if your Weaviate is secured).
 
 ### IDP settings in `config.json`
 
@@ -389,11 +396,11 @@ from llama_cpp import Llama
 print("CWD:", os.getcwd())
 
 patterns = [
-    "code_analysis/codeLlama_13b_Instruct/*.gguf",
-    "models/code_analysis/codeLlama_13b_Instruct/*.gguf",
-    "RAG/code_analysis/codeLlama_13b_Instruct/*.gguf",
-    "RAG/models/code_analysis/codeLlama_13b_Instruct/*.gguf",
-    "**/codeLlama_13b_Instruct/*.gguf",  # fallback (recursive)
+    "code_analysis/**/*.gguf",
+    "models/code_analysis/**/*.gguf",
+    "RAG/code_analysis/**/*.gguf",
+    "RAG/models/code_analysis/**/*.gguf",
+    "**/*.gguf",  # fallback (recursive)
 ]
 matches = []
 for pat in patterns:
@@ -403,8 +410,8 @@ matches = sorted(set(matches))
 if not matches:
     sys.exit(
         "ERROR: no .gguf found. Expected under one of:\n"
-        "  - code_analysis/codeLlama_13b_Instruct/\n"
-        "  - models/code_analysis/codeLlama_13b_Instruct/\n"
+        "  - code_analysis/<model_folder>/\n"
+        "  - models/code_analysis/<model_folder>/\n"
         "  - RAG/... equivalents\n"
         "Follow the download_model.md and retry."
     )
@@ -439,7 +446,7 @@ PY
 ```
 models/
 ├─ code_analysis/
-│  └─ codeLlama_13b_Instruct/
+│  └─ <model_folder>/
 │     ├─ CodeLlama-13b-Instruct-hf-Q8_0.gguf    # (ignored by Git)
 │     └─ download_model.md                      # tracked
 ├─ embedding/
@@ -452,7 +459,7 @@ models/
    │     ├─ [MarianMT files: config.json, *.bin, *.safetensors, sentencepiece.model]  # (ignored by Git)
    │     └─ download_model.md                    # tracked
    └─ pl_en/
-      └─ Helsinki-NLPopus-mt-pl-en/
+      └─ Helsinki_NLPopus_mt_pl_en/
          ├─ [MarianMT files: config.json, *.bin, *.safetensors, sentencepiece.model]  # (ignored by Git)
          └─ download_model.md                   # tracked
 
@@ -463,7 +470,7 @@ models/
 
 Weaviate setup is documented in a separate file:
 
-- `weaviate_local_setup.md`
+- `docs/weviate/weaviate_local_setup.md`
 
 ## 8.5) Branch preparation guide
 
@@ -497,15 +504,11 @@ After configuring your `.env`, start the backend server with:
 python start_AI_server.py --env
 ```
 
-### Endpoint modes (`developement` / `APP_DEVELOPMENT`)
+### Endpoint modes (`developement`)
 
 `config.json`:
 - set `"developement": true` to expose development endpoints
 - set `"developement": false` to hide development endpoints
-
-Override via env:
-- `APP_DEVELOPMENT=1` enables dev endpoints
-- `APP_DEVELOPMENT=0` hides dev endpoints (`404`)
 
 Development endpoints:
 - `GET /app-config/dev`
@@ -535,23 +538,23 @@ Security incident logging:
 
   ```bash
   # Generate checksums after download (commit this file to the repo if you want reproducibility)
-  (cd code_analysis/codeLlama_13b_Instruct && sha256sum *.gguf > CHECKSUMS.sha256)
-  (cd embedding && find . -type f ! -name 'download_model.md' -maxdepth 1 -print0 | xargs -0 sha256sum > CHECKSUMS.sha256)
-  (cd translation/en_pl/Helsinki_NLPopus_mt_en_pl && sha256sum * > CHECKSUMS.sha256)
-  (cd translation/pl_en/Helsinki-NLPopus-mt-pl-en && sha256sum * > CHECKSUMS.sha256)
+  (cd models/code_analysis/qwenCoder && sha256sum *.gguf > CHECKSUMS.sha256)
+  (cd models/embedding/e5-base-v2 && find . -type f ! -name 'download_model.md' -print0 | xargs -0 sha256sum > CHECKSUMS.sha256)
+  (cd models/translation/en_pl/Helsinki_NLPopus_mt_en_pl && sha256sum * > CHECKSUMS.sha256)
+  (cd models/translation/pl_en/Helsinki_NLPopus_mt_pl_en && sha256sum * > CHECKSUMS.sha256)
 
   # Verify at deploy/start time
-  sha256sum -c code_analysis/codeLlama_13b_Instruct/CHECKSUMS.sha256
-  sha256sum -c embedding/CHECKSUMS.sha256
-  sha256sum -c translation/en_pl/Helsinki_NLPopus_mt_en_pl/CHECKSUMS.sha256
-  sha256sum -c translation/pl_en/Helsinki-NLPopus-mt-pl-en/CHECKSUMS.sha256
+  sha256sum -c models/code_analysis/qwenCoder/CHECKSUMS.sha256
+  sha256sum -c models/embedding/e5-base-v2/CHECKSUMS.sha256
+  sha256sum -c models/translation/en_pl/Helsinki_NLPopus_mt_en_pl/CHECKSUMS.sha256
+  sha256sum -c models/translation/pl_en/Helsinki_NLPopus_mt_pl_en/CHECKSUMS.sha256
   ```
 
   If you prefer, store expected digests in `checksums.json` and verify them in an app startup hook.
 * **Deployment hygiene (remove MD placeholders):** production artifacts/images should ship only the code and the weights. Remove the `download_model.md` files during packaging to avoid leaking internal instructions:
 
   ```bash
-  find code_analysis embedding translation -name 'download_model.md' -delete
+  find models/code_analysis models/embedding models/translation -name 'download_model.md' -delete
   ```
 * **GPU concurrency:** for a single GPU, prefer **one process/worker** to avoid loading the model multiple times into VRAM; scale with a queue or per‑GPU processes when needed.
 * **Observability:** expose `/healthz` and `/readyz`, emit structured logs (JSON), and add latency/throughput metrics for retrieval and generation stages.
@@ -624,7 +627,7 @@ Once these changes are applied, the frontend can be treated as production code. 
 
 # 14) Quickstart (TL;DR)
 
-> **This section is fully consistent with the README.** It uses the Conda env name from `environment.yml` (**RAG-FAISS2**), installs the correct CUDA wheel of `llama-cpp-python` via a local file with `--no-deps`, downloads models via the one‑shot script first, and then provides verification and server start commands.
+> **This section is fully consistent with the README.** It uses the Conda env name from `environment.yml` (**rag-weaviate**), installs the correct CUDA wheel of `llama-cpp-python` via a local file with `--no-deps`, downloads models via the one‑shot script first, and then provides verification and server start commands.
 
 ---
 
@@ -648,7 +651,7 @@ chmod +x download_models.sh
 # and run its copy‑paste commands exactly (no new folders).
 
 # 4) Verify GPU acceleration (after models are present)
-python tests/test_llama_gpu.py
+python dev_tools/test_llama_gpu.py
 
 # 5) Run the server (env vars from .env)
 cp -n .env.example .env 2>/dev/null || true
@@ -660,6 +663,5 @@ python start_AI_server.py --env
 
 ### Notes
 
-* If FAISS‑GPU is unavailable on your platform/Python, you can temporarily use `faiss-cpu` and proceed.
 * If the CUDA wheel doesn’t match your CUDA/Python, pick the appropriate one from the `llama-cpp-python` release page (keep `--no-deps`).
 * The downloader writes **only** into the existing directories and Git ignores the fetched weights.

@@ -58,7 +58,7 @@ Uwaga: retrieval (`state.node_texts`) **nie jest osobnym składnikiem** — po `
 ## Polityka środowiskowa (dev/prod)
 
 Serwer rozróżnia tryb dev/prod tą samą flagą co endpointy deweloperskie:
-- `config.json["developement"]` / `["development"]` oraz/lub `APP_DEVELOPMENT`.
+- `config.json["developement"]` / `["development"]`.
 
 Na tej podstawie ustawiana jest polityka:
 - **dev**: `fail_fast`
@@ -121,4 +121,3 @@ Trim jest widoczny w trace (`history_trim`) przy `call_model.log_out`.
    - `max_output_tokens` per-step (router małe, answer/summarizer większe),
    - `budget_safety_margin_tokens` np. 128–256.
 3) W dev trzymaj `fail_fast`, w prod `auto_clamp` + monitoring warningów.
-

@@ -25,7 +25,7 @@ Expected dataset characteristics:
 From repository root:
 
 ```bash
-conda activate rag-faiss2
+conda activate rag-weaviate
 bash tools/run_retrival_integration_tests.sh
 ```
 

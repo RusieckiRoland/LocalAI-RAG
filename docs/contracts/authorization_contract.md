@@ -327,9 +327,8 @@ Security filtering MUST be applied in Weaviate queries (not post-filtered in Pyt
 Any deviation (e.g., temporary fallbacks) must be logged and treated as a blocking issue.
 
 Endpoint exposure by mode:
-- Development endpoints are controlled by config/env:
-  - `config.json`: `"developement": true|false`
-  - env override: `APP_DEVELOPMENT=1|0`
+- Development endpoints are controlled by `config.json`:
+  - `"developement": true|false` (also accepts `"development"`)
 - When disabled, `/app-config/dev`, `/search/dev`, `/query/dev` return `404`.
 - Production endpoints remain available: `/app-config/prod`, `/search/prod`, `/query/prod`.
 
@@ -383,7 +382,6 @@ For `prod` endpoints, token validation follows this order:
 1. If IDP auth is active (`identity_provider.enabled=true` and required fields present), validate JWT using `issuer`, `audience`, and `jwks_url`.
 2. Otherwise fallback to `Authorization: Bearer <API_TOKEN>` exact match.
 
-IDP activation can be forced/disabled with `IDP_AUTH_ENABLED=1|0`.
 
 ## 8. Roadmap to PROD
 - `DevUserAccessProvider` will be replaced by a database-backed provider.

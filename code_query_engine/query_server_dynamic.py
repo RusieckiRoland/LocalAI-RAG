@@ -307,6 +307,16 @@ def _resolve_cfg_path(p: str) -> str:
         return v
     return os.path.join(PROJECT_ROOT, v)
 
+_env_var_pattern = re.compile(r"^\s*\$\{([A-Z0-9_]+)\}\s*$")
+
+def _resolve_env_var(raw: str) -> str:
+    if not raw:
+        return ""
+    m = _env_var_pattern.match(raw)
+    if not m:
+        return raw
+    return (os.getenv(m.group(1)) or "").strip()
+
 
 _server_llm = bool(_runtime_cfg.get("serverLLM"))
 
@@ -331,15 +341,39 @@ def _load_llm_servers() -> tuple[dict[str, "ServerLLMConfig"], str]:
             continue
         if bool(item.get("default")):
             default_candidates.append(name)
+        throttling_raw = item.get("throttling")
+        throttling_enabled = False
+        throttling_cfg = None
+        if isinstance(throttling_raw, bool):
+            throttling_enabled = throttling_raw
+            throttling_cfg = ThrottleConfig()
+        elif isinstance(throttling_raw, dict):
+            throttling_enabled = bool(throttling_raw.get("enabled", False))
+            retry_on_status = throttling_raw.get("retry_on_status")
+            if isinstance(retry_on_status, list):
+                retry_on_status = tuple(int(x) for x in retry_on_status)
+            else:
+                retry_on_status = None
+            throttling_cfg = ThrottleConfig(
+                max_concurrency=int(throttling_raw.get("max_concurrency", 1)),
+                max_retries=int(throttling_raw.get("max_retries", 8)),
+                base_backoff_seconds=float(throttling_raw.get("base_backoff_seconds", 1.0)),
+                max_backoff_seconds=float(throttling_raw.get("max_backoff_seconds", 30.0)),
+                jitter_seconds=float(throttling_raw.get("jitter_seconds", 0.25)),
+                retry_on_status=retry_on_status or ThrottleConfig().retry_on_status,
+            )
+
         servers[name] = ServerLLMConfig(
             name=name,
             base_url=base_url,
-            api_key=str(item.get("api_key") or "").strip(),
+            api_key=_resolve_env_var(str(item.get("api_key") or "").strip()),
             timeout_seconds=int(item.get("timeout_seconds") or 120),
             mode=str(item.get("mode") or "openai").strip(),
             model=str(item.get("model") or "").strip(),
             completions_path=str(item.get("completions_path") or "/v1/completions").strip(),
             chat_completions_path=str(item.get("chat_completions_path") or "/v1/chat/completions").strip(),
+            throttling_enabled=throttling_enabled,
+            throttling=throttling_cfg,
         )
     if not servers:
         raise ValueError("ServersLLM.json: no valid servers found")
@@ -365,7 +399,7 @@ if not _server_llm:
         n_ctx=int(_runtime_cfg.get("model_context_window", 4096) or 4096),
     )
 else:
-    from .llm_server_client import ServerLLMClient, ServerLLMConfig  # noqa: E402
+    from .llm_server_client import ServerLLMClient, ServerLLMConfig, ThrottleConfig  # noqa: E402
 
     try:
         servers, default_name = _load_llm_servers()

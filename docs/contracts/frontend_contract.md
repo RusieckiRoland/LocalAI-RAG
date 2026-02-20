@@ -234,7 +234,7 @@ Endpoint selection:
 - development: `POST /search/dev`
 - production: `POST /search/prod`
 
-When development endpoints are disabled (`developement=false` or `APP_DEVELOPMENT=0`), `/dev` endpoints return `404`.
+When development endpoints are disabled (`developement=false`), `/dev` endpoints return `404`.
 
 ## Response contract (`POST /search*`)
 Minimum response fields:

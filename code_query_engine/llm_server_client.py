@@ -2,12 +2,17 @@ from __future__ import annotations
 
 import json
 import logging
+import random
+import threading
+import time
+import urllib.error
 import urllib.request
 from dataclasses import dataclass
-from typing import Any, Dict, Optional
+from typing import Any, Callable, Dict, Optional, TypeVar
 
 
 logger = logging.getLogger(__name__)
+T = TypeVar("T")
 
 
 @dataclass(frozen=True)
@@ -20,6 +25,73 @@ class ServerLLMConfig:
     model: str = ""
     completions_path: str = "/v1/completions"
     chat_completions_path: str = "/v1/chat/completions"
+    throttling_enabled: bool = False
+    throttling: Optional["ThrottleConfig"] = None
+
+
+@dataclass(frozen=True)
+class ThrottleConfig:
+    max_concurrency: int = 1
+    max_retries: int = 8
+    base_backoff_seconds: float = 1.0
+    max_backoff_seconds: float = 30.0
+    jitter_seconds: float = 0.25
+    retry_on_status: tuple[int, ...] = (429, 503, 502, 504)
+
+
+class OpenAIThrottle:
+    """
+    Thread-safe throttler:
+    - Limits concurrency via semaphore
+    - Retries with exponential backoff (+ jitter)
+    - Honors Retry-After header when present
+    """
+
+    def __init__(self, cfg: ThrottleConfig):
+        self._cfg = cfg
+        self._sem = threading.Semaphore(cfg.max_concurrency)
+
+    def call(self, fn: Callable[[], T]) -> T:
+        with self._sem:
+            attempt = 0
+            while True:
+                try:
+                    return fn()
+                except urllib.error.HTTPError as e:
+                    if e.code not in self._cfg.retry_on_status:
+                        raise
+
+                    attempt += 1
+                    if attempt > self._cfg.max_retries:
+                        raise
+
+                    retry_after = self._parse_retry_after(e)
+                    sleep_s = self._compute_sleep(attempt, retry_after)
+                    time.sleep(sleep_s)
+
+    def _parse_retry_after(self, e: urllib.error.HTTPError) -> Optional[float]:
+        ra = None
+        try:
+            ra = e.headers.get("Retry-After")
+        except Exception:
+            ra = None
+
+        if not ra:
+            return None
+
+        try:
+            return float(ra)
+        except ValueError:
+            return None
+
+    def _compute_sleep(self, attempt: int, retry_after: Optional[float]) -> float:
+        if retry_after is not None:
+            return max(0.0, min(self._cfg.max_backoff_seconds, retry_after))
+
+        exp = self._cfg.base_backoff_seconds * (2 ** (attempt - 1))
+        exp = min(self._cfg.max_backoff_seconds, exp)
+        jitter = random.random() * self._cfg.jitter_seconds
+        return exp + jitter
 
 
 class ServerLLMClient:
@@ -32,6 +104,7 @@ class ServerLLMClient:
     def __init__(self, *, servers: Dict[str, ServerLLMConfig], default_name: str) -> None:
         self._servers = dict(servers or {})
         self._default_name = (default_name or "").strip()
+        self._throttles: dict[str, OpenAIThrottle] = {}
         if not self._default_name:
             raise ValueError("ServerLLMClient: default_name is required")
         if self._default_name not in self._servers:
@@ -64,10 +137,11 @@ class ServerLLMClient:
             payload["temperature"] = float(temperature)
         if top_p is not None:
             payload["top_p"] = float(top_p)
-        if top_k is not None:
-            payload["top_k"] = int(top_k)
-        if repeat_penalty is not None:
-            payload["repeat_penalty"] = float(repeat_penalty)
+        if server.mode != "openai":
+            if top_k is not None:
+                payload["top_k"] = int(top_k)
+            if repeat_penalty is not None:
+                payload["repeat_penalty"] = float(repeat_penalty)
 
         url = self._join(server.base_url, server.completions_path)
         res = self._post_json(url, payload, server=server)
@@ -107,10 +181,11 @@ class ServerLLMClient:
             payload["temperature"] = float(temperature)
         if top_p is not None:
             payload["top_p"] = float(top_p)
-        if top_k is not None:
-            payload["top_k"] = int(top_k)
-        if repeat_penalty is not None:
-            payload["repeat_penalty"] = float(repeat_penalty)
+        if server.mode != "openai":
+            if top_k is not None:
+                payload["top_k"] = int(top_k)
+            if repeat_penalty is not None:
+                payload["repeat_penalty"] = float(repeat_penalty)
 
         url = self._join(server.base_url, server.chat_completions_path)
         res = self._post_json(url, payload, server=server)
@@ -128,18 +203,40 @@ class ServerLLMClient:
         return base.rstrip("/") + "/" + path.lstrip("/")
 
     def _post_json(self, url: str, payload: Dict[str, Any], *, server: ServerLLMConfig) -> Dict[str, Any]:
-        data = json.dumps(payload).encode("utf-8")
-        req = urllib.request.Request(url, data=data, method="POST")
-        req.add_header("Content-Type", "application/json")
-        if server.api_key:
-            req.add_header("Authorization", f"Bearer {server.api_key}")
-        try:
+        def _do_request() -> Dict[str, Any]:
+            data = json.dumps(payload).encode("utf-8")
+            req = urllib.request.Request(url, data=data, method="POST")
+            req.add_header("Content-Type", "application/json")
+            if server.api_key:
+                req.add_header("Authorization", f"Bearer {server.api_key}")
             with urllib.request.urlopen(req, timeout=server.timeout_seconds) as resp:
                 body = resp.read().decode("utf-8")
             return json.loads(body)
+        try:
+            if server.throttling_enabled:
+                throttle = self._get_throttle(server)
+                return throttle.call(_do_request)
+            return _do_request()
+        except urllib.error.HTTPError as e:
+            body = ""
+            try:
+                body = e.read().decode("utf-8")
+            except Exception:
+                body = "<unreadable>"
+            logger.error("ServerLLMClient request failed: %s body=%s", e, body)
+            raise
         except Exception as e:
             logger.error("ServerLLMClient request failed: %s", e)
             raise
+
+    def _get_throttle(self, server: ServerLLMConfig) -> OpenAIThrottle:
+        existing = self._throttles.get(server.name)
+        if existing is not None:
+            return existing
+        cfg = server.throttling or ThrottleConfig()
+        throttle = OpenAIThrottle(cfg)
+        self._throttles[server.name] = throttle
+        return throttle
 
     @staticmethod
     def _extract_completion_text(res: Dict[str, Any]) -> str:
