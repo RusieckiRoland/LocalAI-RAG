@@ -74,6 +74,14 @@ class IUserConversationStore(Protocol):
     ) -> None:
         ...
 
+    def list_recent_finalized_turns_by_session(
+        self,
+        *,
+        session_id: str,
+        limit: int,
+    ) -> list[ConversationTurn]:
+        ...
+
 
 class IConversationHistoryService(Protocol):
     """
@@ -117,4 +125,3 @@ class IConversationHistoryService(Protocol):
         Returns ordered mapping (insertion-ordered dict) of question_neutral -> answer_neutral.
         """
         ...
-

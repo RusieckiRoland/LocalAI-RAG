@@ -4,6 +4,7 @@ import logging
 import json
 import os
 import re
+import time
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -31,6 +32,8 @@ from server.auth.policies_provider import default_json_provider
 from server.app_config import AppConfigService, default_templates_store
 from server.pipelines import PipelineAccessService, PipelineSnapshotStore
 from server.snapshots import SnapshotRegistry
+from code_query_engine.conversation_history.types import ConversationTurn
+from code_query_engine.conversation_history.ports import IUserConversationStore
 from code_query_engine.work_callback import (
     get_work_callback_broker,
     register_cancel_routes,
@@ -126,6 +129,17 @@ if _development_env in ("1", "true", "yes", "on"):
     _development_enabled = True
 elif _development_env in ("0", "false", "no", "off"):
     _development_enabled = False
+
+_mock_sql_raw = _runtime_cfg.get("mockSqlServer", False)
+_mock_sql_enabled = bool(_mock_sql_raw) and _development_enabled
+_mock_sql_ttl_hours_raw = _runtime_cfg.get("mockSqlTtlHours", 24 * 60)
+try:
+    _mock_sql_ttl_hours = float(_mock_sql_ttl_hours_raw)
+except Exception:
+    _mock_sql_ttl_hours = float(24 * 60)
+_mock_sql_ttl_ms = int(max(0.0, _mock_sql_ttl_hours) * 3600 * 1000)
+if _mock_sql_raw and not _development_enabled:
+    py_logger.warning("mockSqlServer is enabled in config, but development mode is off; mock SQL history is disabled.")
 
 
 # ------------------------------------------------------------
@@ -284,7 +298,82 @@ _history_backend = _make_history_backend()
 
 from code_query_engine.conversation_history.factory import build_conversation_history_service  # noqa: E402
 
-_conversation_history_service = build_conversation_history_service(session_backend=_history_backend)
+# ------------------------------------------------------------
+# Mock SQL history store (development only)
+# ------------------------------------------------------------
+
+_history_sessions: dict[str, dict] = {}
+_history_messages: dict[str, list[dict]] = {}
+
+
+class _ReadOnlyMockSqlHistoryStore(IUserConversationStore):
+    def upsert_session_link(self, *, identity_id: str, session_id: str) -> None:
+        return
+
+    def insert_turn(self, *, turn: ConversationTurn) -> None:
+        return
+
+    def upsert_turn_final(
+        self,
+        *,
+        identity_id: str,
+        session_id: str,
+        turn_id: str,
+        answer_neutral: str,
+        answer_translated: str | None,
+        answer_translated_is_fallback: bool | None,
+        finalized_at_utc: str | None,
+        meta: dict[str, Any] | None,
+    ) -> None:
+        return
+
+    def list_recent_finalized_turns_by_session(
+        self,
+        *,
+        session_id: str,
+        limit: int,
+    ) -> list[ConversationTurn]:
+        sid = str(session_id or "").strip()
+        if not sid:
+            return []
+        lim = int(limit or 0)
+        if lim <= 0:
+            lim = 20
+
+        msgs = [m for m in (_history_messages.get(sid) or []) if not m.get("deletedAt")]
+        if not msgs:
+            return []
+        msgs.sort(key=lambda m: m.get("ts") or 0)
+        msgs = msgs[-lim:]
+
+        out: list[ConversationTurn] = []
+        for m in msgs:
+            ts = int(m.get("ts") or 0)
+            created_at = datetime.fromtimestamp(ts / 1000.0, timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+            out.append(
+                ConversationTurn(
+                    turn_id=str(m.get("messageId") or ""),
+                    session_id=sid,
+                    request_id="",
+                    created_at_utc=created_at,
+                    identity_id=None,
+                    finalized_at_utc=created_at,
+                    question_neutral=str(m.get("q") or ""),
+                    answer_neutral=str(m.get("a") or ""),
+                    question_translated=None,
+                    answer_translated=None,
+                    answer_translated_is_fallback=None,
+                    metadata={},
+                )
+            )
+        return out
+
+
+_durable_store: IUserConversationStore | None = _ReadOnlyMockSqlHistoryStore() if _mock_sql_enabled else None
+_conversation_history_service = build_conversation_history_service(
+    session_backend=_history_backend,
+    durable_store=_durable_store,
+)
 
 
 # ------------------------------------------------------------
@@ -397,6 +486,8 @@ if not _server_llm:
         _resolve_cfg_path(str(_runtime_cfg.get("model_path_analysis") or "")),
         default_max_tokens=int(_runtime_cfg.get("model_max_tokens", 1500) or 1500),
         n_ctx=int(_runtime_cfg.get("model_context_window", 4096) or 4096),
+        use_gpu=bool(_runtime_cfg.get("use_gpu", True)),
+        n_gpu_layers=_runtime_cfg.get("model_n_gpu_layers", _runtime_cfg.get("n_gpu_layers")),
     )
 else:
     from .llm_server_client import ServerLLMClient, ServerLLMConfig, ThrottleConfig  # noqa: E402
@@ -555,6 +646,65 @@ _runner = DynamicPipelineRunner(
 
 app = Flask(__name__)
 CORS(app, origins=ALLOWED_ORIGINS)
+
+def _history_unavailable():
+    return jsonify({
+        "error": "history_persistence_unavailable",
+        "message": "History persistence is not available. Enable development mode and mockSqlServer in config.",
+    }), 503
+
+
+def _history_user_id() -> str:
+    auth = (request.headers.get("Authorization") or "").strip()
+    if auth.lower().startswith("bearer dev-user:"):
+        return auth.split(":", 1)[1].strip() or "anon"
+    return (request.headers.get("X-User-ID") or "anon").strip() or "anon"
+
+
+def _history_tenant_id() -> str:
+    return (request.headers.get("X-Tenant-ID") or "tenant-default").strip() or "tenant-default"
+
+
+def _history_now_ms() -> int:
+    return int(time.time() * 1000)
+
+
+def _history_is_anon(user_id: str) -> bool:
+    return (user_id or "").strip() == "anon"
+
+
+def _history_list_sessions(*, tenant_id: str, user_id: str, limit: int, cursor: str | None, q: str | None) -> dict:
+    _history_prune()
+    sessions = [
+        s for s in _history_sessions.values()
+        if s.get("tenantId") == tenant_id and s.get("userId") == user_id and not s.get("deletedAt")
+    ]
+    sessions.sort(key=lambda s: s.get("updatedAt") or 0, reverse=True)
+
+    if q:
+        qn = q.lower()
+        sessions = [s for s in sessions if (s.get("title") or "").lower().find(qn) >= 0]
+
+    start_idx = 0
+    if cursor:
+        for i, s in enumerate(sessions):
+            if str(s.get("updatedAt")) == str(cursor):
+                start_idx = i + 1
+                break
+
+    items = sessions[start_idx:start_idx + limit]
+    next_cursor = str(items[-1].get("updatedAt")) if len(items) == limit else None
+    return {"items": items, "next_cursor": next_cursor}
+
+
+def _history_prune() -> None:
+    if _mock_sql_ttl_ms <= 0:
+        return
+    cutoff = _history_now_ms() - _mock_sql_ttl_ms
+    expired = [sid for sid, s in _history_sessions.items() if (s.get("updatedAt") or 0) < cutoff]
+    for sid in expired:
+        _history_sessions.pop(sid, None)
+        _history_messages.pop(sid, None)
 
 
 def _resolve_snapshot_id_from_set(*, snapshot_set_id: str, repository: str | None) -> str:
@@ -1217,3 +1367,141 @@ def auth_check_prod():
     if auth_error is not None:
         return auth_error
     return jsonify({"ok": True, "mode": "prod", "auth": "bearer"})
+
+
+# ------------------------------------------------------------
+# Chat history (mock SQL store)
+# ------------------------------------------------------------
+
+@app.route("/chat-history/sessions", methods=["GET", "POST"])
+def chat_history_sessions():
+    if not _mock_sql_enabled:
+        return _history_unavailable()
+
+    if request.method == "GET":
+        _history_prune()
+        tenant_id = _history_tenant_id()
+        user_id = _history_user_id()
+        if _history_is_anon(user_id):
+            return jsonify({"items": [], "next_cursor": None})
+        limit = int(request.args.get("limit", 50))
+        limit = max(1, min(200, limit))
+        cursor = request.args.get("cursor")
+        q = request.args.get("q")
+        return jsonify(_history_list_sessions(
+            tenant_id=tenant_id,
+            user_id=user_id,
+            limit=limit,
+            cursor=cursor,
+            q=q,
+        ))
+
+    payload = request.get_json(silent=True) or {}
+    tenant_id = _history_tenant_id()
+    user_id = _history_user_id()
+    now = _history_now_ms()
+    session_id = str(payload.get("sessionId") or payload.get("session_id") or uuid.uuid4().hex)
+    session = {
+        "sessionId": session_id,
+        "tenantId": tenant_id,
+        "userId": user_id,
+        "title": str(payload.get("title") or payload.get("firstQuestion") or "New chat"),
+        "consultantId": str(payload.get("consultantId") or payload.get("consultant") or ""),
+        "createdAt": now,
+        "updatedAt": now,
+        "messageCount": 0,
+        "deletedAt": None,
+    }
+    if not _history_is_anon(user_id):
+        _history_sessions[session_id] = session
+        _history_messages[session_id] = []
+    return jsonify(session)
+
+
+@app.route("/chat-history/sessions/<session_id>", methods=["GET", "PATCH", "DELETE"])
+def chat_history_session(session_id: str):
+    if not _mock_sql_enabled:
+        return _history_unavailable()
+
+    _history_prune()
+    tenant_id = _history_tenant_id()
+    user_id = _history_user_id()
+    if _history_is_anon(user_id):
+        return jsonify({"error": "not_found"}), 404
+    session = _history_sessions.get(session_id)
+    if not session or session.get("tenantId") != tenant_id or session.get("userId") != user_id or session.get("deletedAt"):
+        return jsonify({"error": "not_found"}), 404
+
+    if request.method == "GET":
+        return jsonify(session)
+
+    if request.method == "DELETE":
+        now = _history_now_ms()
+        session["deletedAt"] = now
+        session["updatedAt"] = now
+        return jsonify({"ok": True, "sessionId": session_id})
+
+    payload = request.get_json(silent=True) or {}
+    if "title" in payload and payload["title"] is not None:
+        session["title"] = str(payload["title"])
+    if "consultantId" in payload and payload["consultantId"] is not None:
+        session["consultantId"] = str(payload["consultantId"])
+    session["updatedAt"] = _history_now_ms()
+    return jsonify(session)
+
+
+@app.route("/chat-history/sessions/<session_id>/messages", methods=["GET", "POST"])
+def chat_history_messages(session_id: str):
+    if not _mock_sql_enabled:
+        return _history_unavailable()
+
+    _history_prune()
+    tenant_id = _history_tenant_id()
+    user_id = _history_user_id()
+    if _history_is_anon(user_id):
+        if request.method == "GET":
+            return jsonify({"items": [], "next_cursor": None})
+        # Accept but do not persist
+        msg = {
+            "messageId": uuid.uuid4().hex,
+            "sessionId": session_id,
+            "ts": _history_now_ms(),
+            "q": "",
+            "a": "",
+            "meta": None,
+            "deletedAt": None,
+        }
+        return jsonify(msg)
+    session = _history_sessions.get(session_id)
+    if not session or session.get("tenantId") != tenant_id or session.get("userId") != user_id or session.get("deletedAt"):
+        return jsonify({"error": "not_found"}), 404
+
+    if request.method == "GET":
+        limit = int(request.args.get("limit", 100))
+        limit = max(1, min(200, limit))
+        before = request.args.get("before")
+        before_ts = int(before) if before else None
+        all_msgs = [m for m in _history_messages.get(session_id, []) if not m.get("deletedAt")]
+        if before_ts:
+            all_msgs = [m for m in all_msgs if int(m.get("ts") or 0) < before_ts]
+        items = all_msgs[-limit:]
+        next_cursor = str(items[0].get("ts")) if len(items) == limit else None
+        return jsonify({"items": items, "next_cursor": next_cursor})
+
+    payload = request.get_json(silent=True) or {}
+    now = _history_now_ms()
+    msg = {
+        "messageId": str(payload.get("messageId") or payload.get("message_id") or uuid.uuid4().hex),
+        "sessionId": session_id,
+        "ts": now,
+        "q": "" if payload.get("q") is None else str(payload.get("q")),
+        "a": "" if payload.get("a") is None else str(payload.get("a")),
+        "meta": payload.get("meta"),
+        "deletedAt": None,
+    }
+    msgs = _history_messages.get(session_id, [])
+    msgs.append(msg)
+    _history_messages[session_id] = msgs
+    session["updatedAt"] = now
+    session["messageCount"] = len(msgs)
+    return jsonify(msg)

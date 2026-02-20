@@ -492,12 +492,6 @@ class SearchNodesAction(PipelineActionBase):
                     search_type = "semantic"
             # 3) fallback when router didn't provide search_type.
             if search_type == "auto":
-                msg = (
-                    "search_nodes: search_type='auto' missing explicit search_type; "
-                    "falling back to semantic"
-                )
-                py_logger.warning(msg)
-                print(f"WARNING: {msg}")
                 search_type = "semantic"
 
         if search_type not in _ALLOWED_SEARCH_TYPES:

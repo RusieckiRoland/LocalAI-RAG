@@ -24,10 +24,20 @@ class Model:
     """
     supports_cancel_check = True
 
-    def __init__(self, model_path: str, *, default_max_tokens: int = 1500, n_ctx: int = 4096):
+    def __init__(
+        self,
+        model_path: str,
+        *,
+        default_max_tokens: int = 1500,
+        n_ctx: int = 4096,
+        use_gpu: bool = True,
+        n_gpu_layers: Optional[int] = None,
+    ):
         self.modelPath = model_path  # keep original attribute name for compatibility
         self.default_max_tokens = int(default_max_tokens)
         self.n_ctx = int(n_ctx)
+        self.use_gpu = bool(use_gpu)
+        self.n_gpu_layers = n_gpu_layers if n_gpu_layers is None else int(n_gpu_layers)
         if self.default_max_tokens <= 0:
             raise ValueError("Model: default_max_tokens must be > 0")
         if self.n_ctx <= 0:
@@ -229,15 +239,27 @@ class Model:
         """
         Try GPU first, then fall back to CPU if GPU init fails.
         """
+        if not self.use_gpu:
+            llm = Llama(
+                model_path=model_path,
+                n_ctx=int(n_ctx),
+                n_threads=8,
+                n_gpu_layers=0,
+                verbose=False,
+            )
+            self._log_gpu_status(llm, requested_layers=0)
+            return llm
+
+        requested_layers = -1 if self.n_gpu_layers is None else int(self.n_gpu_layers)
         try:
             llm = Llama(
                 model_path=model_path,
                 n_ctx=int(n_ctx),
                 n_threads=8,
-                n_gpu_layers=-1,
+                n_gpu_layers=requested_layers,
                 verbose=False,
             )
-            self._log_gpu_status(llm, requested_layers=-1)
+            self._log_gpu_status(llm, requested_layers=requested_layers)
             return llm
         except Exception as gpu_err:
             logger.error(self._red(f"GPU init failed, falling back to CPU. Error: {gpu_err}"))

@@ -1,9 +1,9 @@
 # Conversation history — switching from mock to real stores
 
-This project supports conversation history with two scopes:
+This project supports conversation history with two scopes and two mocks:
 
-1) **Session store** (ephemeral): Redis in production or an in-memory mock.
-2) **Durable store** (authoritative for authenticated users): SQL in production (not shipped here), or an in-memory mock.
+1) **Session store** (ephemeral): Redis in production, in-memory mock in development.
+2) **Durable store** (authoritative for authenticated users): SQL in production, mock in development.
 
 Terminology used in code:
 - `neutral` = canonical language representation (currently English)
@@ -50,10 +50,17 @@ To switch from the in-memory durable store to a real SQL store:
 
 3) Ensure authenticated requests provide `user_id` (identity_id) so the service writes to SQL.
 
+## Production requirement
+Production must replace **both** mocks:
+- session store mock → real Redis
+- durable store mock → real SQL
+
+## Deployment notes (durable store)
+High-level guidance is in `docs/howto/chat_history_deployment.md`.
+
 ## Pipeline integration points
 These pipeline actions use the new service when present:
 - `load_conversation_history` reads recent **neutral** Q/A into:
   - `state.history_qa_neutral`, `state.history_dialog`, `state.history_blocks`
 - `finalize` writes the finalized turn (neutral + translated) via:
   - `runtime.conversation_history_service`
-

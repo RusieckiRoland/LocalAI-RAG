@@ -251,6 +251,56 @@ If the backend returns `cancelled: true`, frontend should:
 
 ---
 
+## Chat history API contract
+
+Frontend uses a dedicated history API for listing sessions and loading messages.
+
+Endpoints:
+- `GET /chat-history/sessions?limit=50&cursor=...&q=...`
+- `GET /chat-history/sessions/{sessionId}`
+- `GET /chat-history/sessions/{sessionId}/messages?limit=100&before=...`
+- `POST /chat-history/sessions`
+- `POST /chat-history/sessions/{sessionId}/messages`
+- `PATCH /chat-history/sessions/{sessionId}`
+- `DELETE /chat-history/sessions/{sessionId}`
+
+Session list response shape:
+```json
+{
+  "items": [
+    {
+      "sessionId": "s_123",
+      "title": "Pytanie o UML",
+      "consultantId": "ada",
+      "createdAt": 1719140000000,
+      "updatedAt": 1719140300000,
+      "messageCount": 6
+    }
+  ],
+  "next_cursor": "1719140000000"
+}
+```
+
+Messages response shape:
+```json
+{
+  "items": [
+    {
+      "messageId": "m_1",
+      "ts": 1719140000000,
+      "q": "Zrób diagram klas",
+      "a": "..."
+    }
+  ],
+  "next_cursor": "1719140000000"
+}
+```
+
+If history persistence is unavailable, the UI shows:
+`Brak uruchomionego serwera persystencji historii (chat-history).`
+
+---
+
 ## Trace stream + cancel contract
 
 ### Trace stream endpoint

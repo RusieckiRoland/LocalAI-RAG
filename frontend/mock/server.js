@@ -14,6 +14,12 @@ const UI_FILE = path.join(__dirname, "page.html");
 // Default PlantUML server (official). You can override with env var if needed.
 const PLANTUML_SERVER = String(process.env.PLANTUML_SERVER || "https://www.plantuml.com/plantuml").replace(/\/+$/, "");
 
+// In-memory chat history store (lifetime of this process).
+const chatHistory = {
+  sessions: new Map(), // sessionId -> session
+  messages: new Map(), // sessionId -> [messages]
+};
+
 function setCors(res) {
   // Allow file:// origin ("null") and normal http origins.
   // Using "*" is enough for this mock (no credentials).
@@ -92,6 +98,41 @@ function randomId() {
     // Last-resort fallback.
     return String(Date.now()) + "_" + String(Math.floor(Math.random() * 1e9));
   }
+}
+
+function nowTs() {
+  return Date.now();
+}
+
+function getAuthUser(req) {
+  const auth = String(req.headers["authorization"] || "");
+  const match = auth.match(/^Bearer\\s+dev-user:([^\\s]+)$/i);
+  return match ? match[1] : "anon";
+}
+
+function getTenantId(req) {
+  // Simple mock: single-tenant unless header provided.
+  return String(req.headers["x-tenant-id"] || "tenant-default");
+}
+
+function listSessions({ tenantId, userId, limit, cursor, q }) {
+  const all = Array.from(chatHistory.sessions.values())
+    .filter(s => s.tenantId === tenantId && s.userId === userId && !s.deletedAt)
+    .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+
+  const filtered = q
+    ? all.filter(s => (s.title || "").toLowerCase().includes(q.toLowerCase()))
+    : all;
+
+  let startIdx = 0;
+  if (cursor) {
+    const idx = filtered.findIndex(s => String(s.updatedAt) === String(cursor));
+    startIdx = idx >= 0 ? idx + 1 : 0;
+  }
+
+  const items = filtered.slice(startIdx, startIdx + limit);
+  const next = items.length === limit ? String(items[items.length - 1].updatedAt) : null;
+  return { items, next_cursor: next };
 }
 
 function buildAppConfig() {
@@ -899,7 +940,12 @@ function buildMockMarkdownResponse(ctx) {
 const server = http.createServer(async (req, res) => {
   const parsed = url.parse(req.url, true);
   const pathname = parsed.pathname || "/";
-  const basePath = pathname.endsWith("/dev") ? pathname.slice(0, -4) : pathname;
+  let basePath = pathname;
+  if (pathname.endsWith("/dev")) {
+    basePath = pathname.slice(0, -4);
+  } else if (pathname.endsWith("/prod")) {
+    basePath = pathname.slice(0, -5);
+  }
 
   if (req.method === "OPTIONS") {
     setCors(res);
@@ -958,6 +1004,141 @@ const server = http.createServer(async (req, res) => {
       clearInterval(timer);
     });
     return;
+  }
+
+  if (req.method === "GET" && basePath === "/chat-history/sessions") {
+    const tenantId = getTenantId(req);
+    const userId = getAuthUser(req);
+    const limit = Math.max(1, Math.min(200, parseInt(parsed.query.limit || "50", 10)));
+    const cursor = parsed.query.cursor ? String(parsed.query.cursor) : null;
+    const q = parsed.query.q ? String(parsed.query.q) : "";
+    return sendJson(res, 200, listSessions({ tenantId, userId, limit, cursor, q }));
+  }
+
+  if (req.method === "GET" && basePath.startsWith("/chat-history/sessions/") && !basePath.endsWith("/messages")) {
+    const tenantId = getTenantId(req);
+    const userId = getAuthUser(req);
+    const sessionId = basePath.split("/").pop();
+    const session = chatHistory.sessions.get(sessionId);
+    if (!session || session.tenantId !== tenantId || session.userId !== userId || session.deletedAt) {
+      return sendJson(res, 404, { error: "not_found" });
+    }
+    return sendJson(res, 200, session);
+  }
+
+  if (req.method === "GET" && basePath.endsWith("/messages")) {
+    const tenantId = getTenantId(req);
+    const userId = getAuthUser(req);
+    const sessionId = basePath.split("/").slice(-2)[0];
+    const session = chatHistory.sessions.get(sessionId);
+    if (!session || session.tenantId !== tenantId || session.userId !== userId || session.deletedAt) {
+      return sendJson(res, 404, { error: "not_found" });
+    }
+    const limit = Math.max(1, Math.min(200, parseInt(parsed.query.limit || "100", 10)));
+    const before = parsed.query.before ? parseInt(parsed.query.before, 10) : null;
+    const all = (chatHistory.messages.get(sessionId) || []).filter(m => !m.deletedAt);
+    const filtered = before ? all.filter(m => m.ts < before) : all;
+    const items = filtered.slice(-limit);
+    const next = items.length === limit ? String(items[0].ts) : null;
+    return sendJson(res, 200, { items, next_cursor: next });
+  }
+
+  if (req.method === "POST" && basePath === "/chat-history/sessions") {
+    let payload = {};
+    try {
+      const raw = await readBody(req);
+      payload = raw ? JSON.parse(raw) : {};
+    } catch (e) {
+      return sendJson(res, 400, { error: "Invalid JSON" });
+    }
+    const tenantId = getTenantId(req);
+    const userId = getAuthUser(req);
+    const now = nowTs();
+    const sessionId = String(payload.sessionId || randomId());
+    const session = {
+      sessionId,
+      tenantId,
+      userId,
+      title: safeStr(payload.title || payload.firstQuestion || "New chat"),
+      consultantId: safeStr(payload.consultantId || payload.consultant || ""),
+      createdAt: now,
+      updatedAt: now,
+      messageCount: 0,
+      deletedAt: null,
+    };
+    chatHistory.sessions.set(sessionId, session);
+    chatHistory.messages.set(sessionId, []);
+    return sendJson(res, 200, session);
+  }
+
+  if (req.method === "POST" && basePath.endsWith("/messages")) {
+    let payload = {};
+    try {
+      const raw = await readBody(req);
+      payload = raw ? JSON.parse(raw) : {};
+    } catch (e) {
+      return sendJson(res, 400, { error: "Invalid JSON" });
+    }
+    const tenantId = getTenantId(req);
+    const userId = getAuthUser(req);
+    const sessionId = basePath.split("/").slice(-2)[0];
+    const session = chatHistory.sessions.get(sessionId);
+    if (!session || session.tenantId !== tenantId || session.userId !== userId || session.deletedAt) {
+      return sendJson(res, 404, { error: "not_found" });
+    }
+    const now = nowTs();
+    const msg = {
+      messageId: String(payload.messageId || randomId()),
+      sessionId,
+      ts: now,
+      q: payload.q == null ? "" : String(payload.q),
+      a: payload.a == null ? "" : String(payload.a),
+      meta: payload.meta || null,
+      deletedAt: null,
+    };
+    const list = chatHistory.messages.get(sessionId) || [];
+    list.push(msg);
+    chatHistory.messages.set(sessionId, list);
+    session.updatedAt = now;
+    session.messageCount = list.length;
+    chatHistory.sessions.set(sessionId, session);
+    return sendJson(res, 200, msg);
+  }
+
+  if (req.method === "PATCH" && basePath.startsWith("/chat-history/sessions/")) {
+    let payload = {};
+    try {
+      const raw = await readBody(req);
+      payload = raw ? JSON.parse(raw) : {};
+    } catch (e) {
+      return sendJson(res, 400, { error: "Invalid JSON" });
+    }
+    const tenantId = getTenantId(req);
+    const userId = getAuthUser(req);
+    const sessionId = basePath.split("/").pop();
+    const session = chatHistory.sessions.get(sessionId);
+    if (!session || session.tenantId !== tenantId || session.userId !== userId || session.deletedAt) {
+      return sendJson(res, 404, { error: "not_found" });
+    }
+    if (payload.title != null) session.title = String(payload.title);
+    if (payload.consultantId != null) session.consultantId = String(payload.consultantId);
+    session.updatedAt = nowTs();
+    chatHistory.sessions.set(sessionId, session);
+    return sendJson(res, 200, session);
+  }
+
+  if (req.method === "DELETE" && basePath.startsWith("/chat-history/sessions/")) {
+    const tenantId = getTenantId(req);
+    const userId = getAuthUser(req);
+    const sessionId = basePath.split("/").pop();
+    const session = chatHistory.sessions.get(sessionId);
+    if (!session || session.tenantId !== tenantId || session.userId !== userId || session.deletedAt) {
+      return sendJson(res, 404, { error: "not_found" });
+    }
+    session.deletedAt = nowTs();
+    session.updatedAt = nowTs();
+    chatHistory.sessions.set(sessionId, session);
+    return sendJson(res, 200, { ok: true, sessionId });
   }
 
   if (req.method === "POST" && basePath === "/pipeline/cancel") {
@@ -1035,6 +1216,8 @@ server.on("error", (err) => {
 server.listen(PORT, "0.0.0.0", () => {
   console.log("Mock server running: http://localhost:" + PORT);
   console.log("Open UI:             http://localhost:" + PORT + "/page.html");
-  console.log("Endpoints:           GET /app-config (/dev), POST /query (/dev), POST /search (/dev), POST /pipeline/cancel (/dev)");
+  console.log("Endpoints:           GET /app-config (/dev,/prod), POST /query (/dev,/prod), POST /search (/dev,/prod), POST /pipeline/cancel (/dev,/prod)");
+  console.log("Chat history:        GET /chat-history/sessions, GET /chat-history/sessions/{id}, GET /chat-history/sessions/{id}/messages");
+  console.log("                     POST /chat-history/sessions, POST /chat-history/sessions/{id}/messages, PATCH/DELETE /chat-history/sessions/{id}");
   console.log("PlantUML server:     " + PLANTUML_SERVER);
 });

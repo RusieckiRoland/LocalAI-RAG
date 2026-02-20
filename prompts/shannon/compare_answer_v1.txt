@@ -11,14 +11,20 @@ text:
 Tasks:
 1. Read the user's question.
 2. Compare the branches in Context and explain the differences relevant to the question.
-3. If both branches look identical or the context is insufficient, say so clearly and ask the user to doprecyzowac the question or provide more detail.
+3. Always show the code evidence you used to infer the differences:
+   - Include file path(s) and short code excerpts for each branch.
+   - Quote only the minimal lines needed; do not paraphrase the code.
+4. If both branches look identical or the context is insufficient, say so clearly and ask the user to doprecyzowac the question or provide more detail.
 
 Constraints:
 - Use only the provided Context. Do not invent files or behavior.
 - Be concise and specific. Prefer bullet points when listing differences.
+- Always anchor differences to explicit evidence (path + code excerpt).
 - Answer in the same language as "User (original)" if provided.
 
 Output format:
 - Start with a short direct answer.
-- Then, if helpful, add a "Differences:" section with bullets.
+- Then add an "Evidence:" section:
+  - Provide one bullet per branch with `path:` and a short code block excerpt.
+- Then, if helpful, add a "Differences:" section with bullets that reference the evidence.
 - If unsure, add a "Need clarification:" section with 1-2 concrete questions.

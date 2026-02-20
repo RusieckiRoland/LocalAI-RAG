@@ -324,7 +324,7 @@ class CallModelAction(PipelineActionBase):
     def ask_manual_prompt_llm(
         self,
         *,
-        state: PipelineState,
+        state: Optional[PipelineState] = None,
         model: Any,
         rendered_prompt: str,
         model_kwargs: Dict[str, Any],
@@ -333,7 +333,9 @@ class CallModelAction(PipelineActionBase):
         if not callable(ask):
             raise ValueError("call_model: model.ask(...) is required")
 
-        cancel_check = make_cancel_check(state) if bool(getattr(model, "supports_cancel_check", False)) else None
+        cancel_check = None
+        if state is not None and bool(getattr(model, "supports_cancel_check", False)):
+            cancel_check = make_cancel_check(state)
         call_kwargs = dict(model_kwargs)
         if cancel_check is not None:
             call_kwargs["cancel_check"] = cancel_check

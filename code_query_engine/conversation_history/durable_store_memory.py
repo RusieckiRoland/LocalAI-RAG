@@ -82,3 +82,24 @@ class InMemoryUserConversationStore(IUserConversationStore):
             )
         )
 
+    def list_recent_finalized_turns_by_session(
+        self,
+        *,
+        session_id: str,
+        limit: int,
+    ) -> list[ConversationTurn]:
+        sid = str(session_id or "").strip()
+        if not sid:
+            return []
+        lim = int(limit or 0)
+        if lim <= 0:
+            lim = 20
+
+        out: list[ConversationTurn] = []
+        for turns in self._turns_by_identity.values():
+            for t in turns:
+                if t.session_id == sid and t.finalized_at_utc:
+                    out.append(t)
+
+        out.sort(key=lambda t: t.finalized_at_utc or "")
+        return out[-lim:]

@@ -304,6 +304,4 @@ class DynamicPipelineRunner:
         query_type = state.query_type or state.retrieval_mode or None
         steps_used = state.steps_used
         model_input_en = state.model_input_en_or_fallback()
-        pipeline_run_id = getattr(state, "pipeline_run_id", None)
-
-        return final_answer, query_type, steps_used, model_input_en, pipeline_run_id
+        return final_answer, query_type, steps_used, model_input_en

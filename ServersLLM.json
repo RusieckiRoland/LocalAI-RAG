@@ -3,7 +3,7 @@
     {
       "name": "local_llm",
       "base_url": "http://localhost:18081",
-      "default": true,
+      "default": false,
       "api_key": "",
       "timeout_seconds": 120,
       "mode": "openai",
@@ -17,7 +17,7 @@
      {
       "name": "openai",
       "base_url": "https://api.openai.com",
-      "default": false,
+      "default": true,
       "api_key": "${OPENAI_API_KEY}",
       "timeout_seconds": 120,
       "mode": "openai",

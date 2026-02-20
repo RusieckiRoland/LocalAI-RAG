@@ -155,6 +155,11 @@ class ConversationHistoryService(IConversationHistoryService):
             return {}
 
         turns = self._session_store.list_recent_finalized_turns(session_id=sid, limit=lim)
+        if not turns and self._durable_store is not None:
+            try:
+                turns = self._durable_store.list_recent_finalized_turns_by_session(session_id=sid, limit=lim)
+            except Exception:
+                turns = turns or []
         out: dict[str, str] = {}
         for t in turns:
             q = (t.question_neutral or "").strip()

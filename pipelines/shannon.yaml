@@ -4,7 +4,7 @@ YAMLpipeline:
   settings:
     entry_step_id: translate_in
     snapshot_set_id: "nopCommerce_4-60_4-90"
-    max_context_tokens: 9000
+    max_context_tokens: 5000
     retrieval_budget_tokens: 2000
     max_history_tokens: 800
     max_turn_loops: 3

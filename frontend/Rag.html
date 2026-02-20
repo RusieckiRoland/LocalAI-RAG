@@ -17,17 +17,64 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/languages/javascript.min.js"></script>
 
   <style>
-    html, body { height: 100%; margin: 0; font-family: 'Noto Sans', sans-serif; line-height: 1.6; background:#f9fafb; }
+    html, body { height: 100%; margin: 0; font-family: 'Noto Sans', sans-serif; line-height: 1.6; background:#f9fafb; overflow: hidden; }
 
     /* Layout */
     :root {
       --trace-width: 360px;
       --trace-collapsed-width: 44px;
+      --history-width: 280px;
+      --history-collapsed-width: 44px;
+      --content-max-width: 1200px;
     }
 
-    #chat-container { display: flex; flex-direction: column; height: 100%; position: relative; }
-    #main-area { display: flex; gap: 1rem; flex: 1 1 auto; min-height: 0; padding: 0 1rem 1rem 1rem; }
-    #response { display: flex; flex-direction: column-reverse; overflow-y: auto; padding: 0 0 1rem 0; flex: 1 1 auto; min-width: 0; }
+    #chat-container {
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      position: relative;
+      margin-left: var(--history-width);
+      width: calc(100% - var(--history-width));
+      padding-left: 0;
+      overflow: hidden;
+    }
+    .content-shell {
+      display: flex;
+      flex-direction: column;
+      flex: 1 1 auto;
+      min-height: 0;
+      height: 100%;
+      width: calc(100% - 2rem);
+      max-width: var(--content-max-width);
+      margin: 0 auto;
+    }
+    body.history-collapsed #chat-container {
+      margin-left: var(--history-collapsed-width);
+      width: calc(100% - var(--history-collapsed-width));
+    }
+    body.history-overlay #chat-container {
+      margin-left: 0;
+      width: 100%;
+    }
+    #main-area {
+      display: flex;
+      gap: 1rem;
+      flex: 1 1 auto;
+      min-height: 0;
+      padding: 0 1rem 1rem 1rem;
+      justify-content: center;
+      overflow: hidden;
+    }
+    #response {
+      display: flex;
+      flex-direction: column-reverse;
+      overflow-y: auto;
+      padding: 0 0 1rem 0;
+      flex: 1 1 auto;
+      min-height: 0;
+      min-width: 0;
+      width: 100%;
+    }
     .response-entry { margin-bottom: 1rem; }
 
     /* Header bar */
@@ -37,16 +84,25 @@
       box-shadow: 0 1px 2px rgba(0,0,0,0.05);
       padding: .5rem .75rem;
       border-radius: .75rem;
-      margin: .75rem 1rem .5rem 1rem;
+      margin: .75rem 0 .5rem 0;
 
       display: grid;
-      grid-template-columns: auto 1fr auto;
+      grid-template-columns: 1fr auto;
       align-items: center;
       gap: .75rem;
     }
 
     /* Consultant tabs */
-    #consultants { display:flex; gap:.5rem; flex-wrap:wrap; align-items:center; justify-content:center; }
+    #consultants {
+      display: flex;
+      gap: .5rem;
+      flex-wrap: nowrap;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      min-width: 0;
+    }
+    #consultants.consultants-tight { gap: .25rem; }
 
     .consultant-card {
       border: 1px solid #e5e7eb;
@@ -59,6 +115,7 @@
       background: #ffffff;
       transition: background-color 0.15s, border-color 0.15s, box-shadow 0.15s;
       min-height: 44px;
+      white-space: nowrap;
     }
     .consultant-card:hover { background-color: #f9fafb; }
     .consultant-card.active {
@@ -76,6 +133,12 @@
       box-shadow: none;
       background-color: #f3f4f6;
     }
+    .consultant-card.compact {
+      padding: 0.4rem;
+      min-width: 44px;
+      justify-content: center;
+    }
+    .consultant-card.compact .consultant-text { display: none; }
 
     .consultant-icon {
       width: 34px;
@@ -109,22 +172,21 @@
       box-shadow: 0 2px 6px rgba(0,0,0,0.08);
     }
 
-    /* New chat button (in topbar, left) */
-    .topbar-newchat {
-      background:#2563eb;
-      color:#fff;
-      border-radius:.75rem;
-      padding:.55rem .9rem;
-      font-weight:800;
-      display:inline-flex;
-      align-items:center;
-      justify-content:center;
-      gap:.45rem;
-      height: 44px;
-      white-space: nowrap;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+    /* History toggle button */
+    .history-collapse-btn,
+    .history-expand-btn {
+      border: 1px solid #e5e7eb;
+      background: #f3f4f6;
+      color: #111827;
+      border-radius: 0.6rem;
+      padding: 0.35rem 0.45rem;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
     }
-    .topbar-newchat:hover { background:#1d4ed8; }
+    .history-collapse-btn:hover,
+    .history-expand-btn:hover { background: #e5e7eb; }
 
     .topbar-spacer { width: 1px; height: 1px; }
 
@@ -171,13 +233,20 @@
       display: flex;
       flex-direction: column;
       gap: 0.75rem;
-      margin: 0 1rem 1rem 1rem;
+      width: calc(100% - 2rem);
+      max-width: var(--content-max-width);
+      margin: 0 auto 1rem auto;
+    }
+    #queryForm:not(.centered) {
+      position: sticky;
+      bottom: 0;
+      z-index: 20;
     }
 
     #queryForm.centered {
-      position: absolute;
-      top: 52%;
-      left: 50%;
+      position: fixed;
+      top: 50%;
+      left: calc(50% + (var(--history-width) / 2));
       transform: translate(-50%, -50%);
       width: calc(100% - 2rem);
       max-width: 1050px;
@@ -185,6 +254,15 @@
       border-radius: 1rem;
       border: 1px solid #eef2f7;
       box-shadow: 0 8px 30px rgba(0,0,0,0.08);
+      z-index: 20;
+    }
+    body.history-collapsed #queryForm.centered {
+      left: calc(50% + (var(--history-collapsed-width) / 2));
+    }
+    @media (max-width: 1100px) {
+      #queryForm.centered {
+        left: 50%;
+      }
     }
 
     .welcome-message {
@@ -539,9 +617,18 @@
       padding: 0.25em 0.55em; font-size: 0.75em; cursor: pointer; opacity: 0;
       transition: opacity 0.2s;
     }
+    .find-doc-btn {
+      position: absolute; right: 5.7em; top: 0.5em;
+      background-color: #0ea5e9; color: white; border: none; border-radius: 0.5em;
+      padding: 0.25em 0.55em; font-size: 0.75em; cursor: pointer; opacity: 0;
+      transition: opacity 0.2s;
+    }
+    .find-doc-btn.hidden { display: none; }
     pre:hover .copy-btn { opacity: 1; }
+    pre:hover .find-doc-btn { opacity: 1; }
     .copy-btn:hover { background-color: #2563eb; }
     .copy-btn.copied { background-color: #10b981; }
+    .find-doc-btn:hover { background-color: #0284c7; }
 
     .ui-error {
       margin: 0.0rem 1rem 0.5rem 1rem;
@@ -600,6 +687,166 @@
       color: white;
     }
 
+    .auth-controls {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .auth-user-select {
+      border: 1px solid #e5e7eb;
+      border-radius: 0.5rem;
+      padding: 0.35rem 0.55rem;
+      font-size: 0.85rem;
+      background: #f9fafb;
+      display: none;
+    }
+    .auth-controls.active .auth-user-select {
+      display: inline-flex;
+    }
+
+    /* History sidebar */
+    .app-shell {
+      display: block;
+      min-height: 100vh;
+      background: #f8fafc;
+    }
+    #history-panel {
+      width: var(--history-width);
+      background: #ffffff;
+      border-right: 1px solid #e5e7eb;
+      padding: 0.85rem 0.9rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+      position: fixed;
+      top: 0;
+      left: 0;
+      bottom: 0;
+      height: 100vh;
+      overflow: hidden;
+      transition: width 0.18s ease;
+      z-index: 40;
+    }
+    body.history-overlay #history-panel {
+      box-shadow: 10px 0 30px rgba(0,0,0,0.08);
+    }
+    body.history-collapsed #history-panel {
+      width: var(--history-collapsed-width);
+    }
+    .history-expand-btn {
+      position: absolute;
+      top: 0.6rem;
+      right: 0.35rem;
+      display: none;
+    }
+    body.history-collapsed .history-expand-btn {
+      display: inline-flex;
+    }
+    .history-panel-content {
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+      min-height: 0;
+      transition: opacity 0.12s ease;
+    }
+    body.history-collapsed .history-panel-content {
+      opacity: 0;
+      pointer-events: none;
+    }
+    .history-collapse-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.5rem;
+    }
+    .history-top { display: flex; flex-direction: column; gap: 0.65rem; }
+    .history-newchat-btn {
+      width: 100%;
+      border: 1px solid #e5e7eb;
+      background: #f3f4f6;
+      color: #111827;
+      font-weight: 600;
+      border-radius: 0.6rem;
+      padding: 0.55rem 0.75rem;
+      text-align: left;
+      cursor: pointer;
+    }
+    .history-newchat-btn:hover { background: #e5e7eb; }
+    .history-search-input {
+      width: 100%;
+      border: 1px solid #e5e7eb;
+      border-radius: 0.6rem;
+      padding: 0.5rem 0.7rem;
+      font-size: 0.9rem;
+      background: #f9fafb;
+    }
+    .history-section-title {
+      font-size: 0.85rem;
+      font-weight: 700;
+      color: #6b7280;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      margin-top: 0.25rem;
+    }
+    .history-list {
+      display: flex;
+      flex-direction: column;
+      gap: 0.25rem;
+      overflow: auto;
+      padding-right: 0.25rem;
+    }
+    .history-item {
+      border-radius: 0.6rem;
+      padding: 0.5rem 0.6rem;
+      cursor: pointer;
+      color: #111827;
+      background: transparent;
+      border: 1px solid transparent;
+    }
+    .history-item:hover { background: #f3f4f6; }
+    .history-item.active {
+      background: #e0f2fe;
+      border-color: #bae6fd;
+    }
+    .history-item-title {
+      font-size: 0.9rem;
+      font-weight: 600;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .history-item-meta {
+      font-size: 0.75rem;
+      color: #6b7280;
+      margin-top: 0.15rem;
+    }
+    .history-empty {
+      font-size: 0.85rem;
+      color: #9ca3af;
+      padding: 0.4rem 0.2rem;
+      display: none;
+    }
+
+    @media (max-width: 1100px) {
+      :root {
+        --history-width: 240px;
+        --history-collapsed-width: 40px;
+      }
+      #chat-container {
+        margin-left: 0;
+        width: 100%;
+        padding-left: 0;
+      }
+      .app-shell { background: #ffffff; }
+      #queryForm.centered {
+        left: 50%;
+      }
+      .content-shell {
+        width: calc(100% - 2rem);
+        max-width: 100%;
+      }
+    }
+
     /* Trace panel */
     #trace-panel {
       position: fixed;
@@ -620,6 +867,30 @@
       transition: transform 0.2s ease, opacity 0.2s ease;
       overflow: hidden;
       z-index: 45;
+    }
+    .trace-filter-wrap {
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+    .trace-filter-row {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .trace-filter-clear-btn {
+      border-radius: 0.5rem;
+      border: 1px solid #e5e7eb;
+      background: #f3f4f6;
+      color: #111827;
+      font-size: 0.8rem;
+      padding: 0.35rem 0.6rem;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    .trace-filter-clear-btn:hover { background: #e5e7eb; }
+    .trace-doc-filter {
+      display: none;
     }
     #trace-panel .trace-handle {
       display: none;
@@ -1029,19 +1300,48 @@
 <body>
   <div class="dev-badge">Development Mode</div>
 
-  <div class="max-w-7xl mx-auto h-screen" id="chat-container">
-    <div class="topbar">
-      <button onclick="newChat()" class="topbar-newchat" id="newChatBtn">♻️ Nowy Chat</button>
-      <div class="flex gap-2" id="consultants"></div>
-      <div class="auth-controls" id="authControls">
-        <button id="authToggleBtn" class="auth-btn" type="button">Fake Login</button>
+  <div class="app-shell">
+    <aside id="history-panel">
+      <button id="historyExpandBtn" class="history-expand-btn" type="button" aria-label="Expand history">
+        <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M9 6l6 6-6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </button>
+      <div class="history-panel-content">
+        <div class="history-collapse-row">
+          <button id="historyCollapseBtn" class="history-collapse-btn" type="button" aria-label="Collapse history">
+            <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M15 6l-6 6 6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </button>
+        </div>
+        <div class="history-top">
+          <button id="historyNewChatBtn" class="history-newchat-btn" type="button">Nowy chat</button>
+          <input id="historySearchInput" class="history-search-input" type="search" placeholder="Wyszukaj czaty" aria-label="Wyszukaj czaty">
+        </div>
+        <div class="history-section-title" id="historySectionTitle">Twoje czaty</div>
+        <div id="historyList" class="history-list"></div>
+        <div id="historyEmpty" class="history-empty">Brak historii</div>
       </div>
-    </div>
+    </aside>
 
-    <div class="ui-error" id="uiError"></div>
+    <div id="chat-container">
+    <div class="content-shell">
+      <div class="topbar">
+        <div class="flex gap-2" id="consultants"></div>
+        <div class="auth-controls" id="authControls">
+          <button id="authToggleBtn" class="auth-btn" type="button">Fake Login</button>
+          <select id="authUserSelect" class="auth-user-select" aria-label="Wybierz użytkownika">
+            <option value="dev-user-1">dev-user-1</option>
+            <option value="dev-user-2">dev-user-2</option>
+          </select>
+        </div>
+      </div>
 
-    <div id="main-area">
-      <div id="response"></div>
+      <div class="ui-error" id="uiError"></div>
+
+      <div id="main-area">
+        <div id="response"></div>
 
       <aside id="trace-panel" aria-live="polite">
         <div class="trace-handle" id="traceHandle" role="button" aria-label="Otwórz etapy" tabindex="0">Etapy</div>
@@ -1052,7 +1352,13 @@
           </div>
           <div class="trace-status" id="traceStatus">Brak aktywnego zadania</div>
           <div class="trace-filter-wrap">
-            <input id="traceFilterInput" class="trace-filter-input" type="search" placeholder="Szukaj etapów..." aria-label="Szukaj etapów">
+            <div class="trace-filter-row">
+              <input id="traceFilterInput" class="trace-filter-input" type="search" placeholder="Filtruj etapy..." aria-label="Filtruj etapy">
+              <button id="traceFilterClearBtn" class="trace-filter-clear-btn" type="button">Wyczyść filtr</button>
+            </div>
+            <div class="trace-filter-row trace-doc-filter" id="traceDocFilterWrap">
+              <input id="traceDocFilterInput" class="trace-filter-input" type="search" placeholder="Szukaj w dokumentach..." aria-label="Szukaj w dokumentach">
+            </div>
           </div>
         </div>
         <div class="trace-list" id="traceList"></div>
@@ -1060,33 +1366,35 @@
       </aside>
     </div>
 
-    <form id="queryForm">
-      <div class="welcome-message" id="welcomeMessage"></div>
+      <form id="queryForm">
+        <div class="welcome-message" id="welcomeMessage"></div>
 
-      <textarea id="query" placeholder="Wpisz pytanie..." class="input-field w-full"></textarea>
+        <textarea id="query" placeholder="Wpisz pytanie..." class="input-field w-full"></textarea>
 
-      <div class="controls-row">
-        <div class="branch-controls" id="branchControls">
-          <!-- Rendered by JS -->
-        </div>
-        <div class="controls-spacer" id="controlsSpacer"></div>
+        <div class="controls-row">
+          <div class="branch-controls" id="branchControls">
+            <!-- Rendered by JS -->
+          </div>
+          <div class="controls-spacer" id="controlsSpacer"></div>
 
-        <div class="actions-controls">
-          <select id="lang" class="select-field lang-select">
-            <option value="pl">PL Rozmawiaj po polsku</option>
-            <option value="en">EN English (no translation)</option>
-          </select>
+          <div class="actions-controls">
+            <select id="lang" class="select-field lang-select">
+              <option value="pl">PL Rozmawiaj po polsku</option>
+              <option value="en">EN English (no translation)</option>
+            </select>
 
-          <div class="send-wrap">
-            <div class="query-progress" id="queryProgress"></div>
-            <button type="submit" class="send-btn" id="sendBtn">
-              <span class="send-label">Wyślij</span>
-              <span class="send-stop" aria-hidden="true"></span>
-            </button>
+            <div class="send-wrap">
+              <div class="query-progress" id="queryProgress"></div>
+              <button type="submit" class="send-btn" id="sendBtn">
+                <span class="send-label">Wyślij</span>
+                <span class="send-stop" aria-hidden="true"></span>
+              </button>
+            </div>
           </div>
         </div>
-      </div>
-    </form>
+      </form>
+    </div>
+    </div>
   </div>
 
   <div class="modal-backdrop" id="snapshotModalBackdrop" style="display:none;">
@@ -1226,7 +1534,14 @@
   let isQueryInProgress = false;
 
   let fakeAuthEnabled = false;
-  const DEV_AUTH_USER_ID = "dev-user-1";
+  let activeDevUserId = "dev-user-1";
+
+  const HISTORY_STORAGE_KEY = "chatHistoryByUser_v1";
+  let historyStore = null;
+  let historyBackendAvailable = true;
+  let activeHistorySessionId = null;
+  let historySearchQuery = "";
+  let historyCollapsed = false;
 
   const form = document.getElementById("queryForm");
   const queryInput = document.getElementById("query");
@@ -1240,6 +1555,16 @@
   const branchControls = document.getElementById("branchControls");
   const controlsSpacer = document.getElementById("controlsSpacer");
   const authToggleBtn = document.getElementById("authToggleBtn");
+  const authUserSelect = document.getElementById("authUserSelect");
+  const authControls = document.getElementById("authControls");
+  const historyPanel = document.getElementById("history-panel");
+  const historyCollapseBtn = document.getElementById("historyCollapseBtn");
+  const historyExpandBtn = document.getElementById("historyExpandBtn");
+  const historyNewChatBtn = document.getElementById("historyNewChatBtn");
+  const historySearchInput = document.getElementById("historySearchInput");
+  const historySectionTitle = document.getElementById("historySectionTitle");
+  const historyList = document.getElementById("historyList");
+  const historyEmpty = document.getElementById("historyEmpty");
   const snapshotModalBackdrop = document.getElementById("snapshotModalBackdrop");
   const snapshotModalTitle = document.getElementById("snapshotModalTitle");
   const snapshotModalBody = document.getElementById("snapshotModalBody");
@@ -1249,6 +1574,9 @@
   const traceTitle = document.getElementById("traceTitle");
   const traceStatus = document.getElementById("traceStatus");
   const traceFilterInput = document.getElementById("traceFilterInput");
+  const traceDocFilterWrap = document.getElementById("traceDocFilterWrap");
+  const traceDocFilterInput = document.getElementById("traceDocFilterInput");
+  const traceFilterClearBtn = document.getElementById("traceFilterClearBtn");
   const traceFilterEmpty = document.getElementById("traceFilterEmpty");
   const traceHandle = document.getElementById("traceHandle");
   const traceCloseBtn = document.getElementById("traceCloseBtn");
@@ -1273,6 +1601,7 @@
   let traceStatusKey = "idle";
   let traceStatusArg = null;
   let traceFilterQuery = "";
+  let traceDocFilterQuery = "";
   let traceLastSearchTarget = null;
   const TRACE_FILTER_MAX_TOTAL_CHARS = 24000;
   const TRACE_FILTER_MAX_TOKEN_CHARS = 1200;
@@ -1282,6 +1611,7 @@
   const traceDocBatches = {};
   let traceDocModalKeys = [];
   let traceDocModalIndex = -1;
+  let traceDocTotal = 0;
   let activeAbortController = null;
   let requestInFlight = false;
 
@@ -1291,6 +1621,240 @@
 
   function cloneDefaultAppConfig() {
     return JSON.parse(JSON.stringify(DEFAULT_APP_CONFIG));
+  }
+
+  function getHistoryUserKey() {
+    if (fakeAuthEnabled) return `user:${activeDevUserId}`;
+    return "user:anon";
+  }
+
+  async function loadHistoryStore() {
+    historyStore = {};
+    historyBackendAvailable = true;
+    try {
+      const authHeaders = {};
+      if (fakeAuthEnabled) {
+        authHeaders["Authorization"] = `Bearer dev-user:${activeDevUserId}`;
+      }
+      const res = await fetch(`${API_BASE}/chat-history/sessions?limit=200`, { headers: authHeaders });
+      if (!res.ok) {
+        historyBackendAvailable = false;
+        return;
+      }
+      const json = await res.json();
+      const sessions = Array.isArray(json.items) ? json.items : [];
+      historyStore = { sessions };
+    } catch (e) {
+      historyBackendAvailable = false;
+    }
+  }
+
+  function saveHistoryStore() {
+    // No-op: history is persisted server-side.
+  }
+
+  function ensureUserHistory() {
+    if (!historyStore) historyStore = {};
+    if (!historyStore.sessions) historyStore.sessions = [];
+    return historyStore;
+  }
+
+  function getUserSessions() {
+    const user = ensureUserHistory();
+    return Array.isArray(user.sessions) ? user.sessions : [];
+  }
+
+  function setUserSessions(sessions) {
+    if (!historyStore) historyStore = {};
+    historyStore.sessions = sessions || [];
+    saveHistoryStore();
+  }
+
+  function slugifyTitle(text) {
+    const raw = String(text || "").trim();
+    if (!raw) return "";
+    return raw.replace(/\s+/g, " ").slice(0, 64);
+  }
+
+  function buildHistoryItemTitle(session) {
+    if (!session) return "";
+    return slugifyTitle(session.title || session.firstQuestion || "New chat") || "New chat";
+  }
+
+  function renderHistoryList() {
+    if (!historyList || !historyEmpty) return;
+    const sessions = getUserSessions();
+    const q = normalizeTraceFilterQuery(historySearchQuery);
+    historyList.innerHTML = "";
+    let visible = 0;
+    sessions.forEach((s) => {
+      const title = buildHistoryItemTitle(s);
+      const hay = `${title} ${(s.consultantId || "")}`.toLowerCase();
+      if (q && !hay.includes(q)) return;
+      visible += 1;
+      const item = document.createElement("div");
+      item.className = "history-item";
+      if (activeHistorySessionId && s.sessionId === activeHistorySessionId) {
+        item.classList.add("active");
+      }
+      const t1 = document.createElement("div");
+      t1.className = "history-item-title";
+      t1.textContent = title;
+      const t2 = document.createElement("div");
+      t2.className = "history-item-meta";
+      t2.textContent = s.updatedAt ? new Date(s.updatedAt).toLocaleString(getTexts(getCurrentLang()).locale) : "";
+      item.appendChild(t1);
+      item.appendChild(t2);
+      item.addEventListener("click", () => {
+        loadHistorySession(s.sessionId);
+      });
+      historyList.appendChild(item);
+    });
+    historyEmpty.style.display = visible === 0 ? "block" : "none";
+  }
+
+  function setHistoryCollapsed(next) {
+    historyCollapsed = !!next;
+    document.body.classList.toggle("history-collapsed", historyCollapsed);
+    try {
+      localStorage.setItem("historyCollapsed", historyCollapsed ? "1" : "0");
+    } catch (e) {}
+  }
+
+  function updateHistoryOverlayMode() {
+    const root = getComputedStyle(document.documentElement);
+    const contentMax = parseInt(root.getPropertyValue("--content-max-width"), 10) || 1050;
+    const historyW = parseInt(root.getPropertyValue("--history-width"), 10) || 280;
+    const padding = 64;
+    const needsOverlay = window.innerWidth < (contentMax + historyW + padding);
+    document.body.classList.toggle("history-overlay", needsOverlay);
+  }
+
+  function persistSessionUpdate(sessionId, updater) {
+    const sessions = getUserSessions();
+    let found = false;
+    const next = sessions.map((s) => {
+      if (s.sessionId !== sessionId) return s;
+      found = true;
+      return updater(s);
+    });
+    if (!found) return;
+    next.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+    setUserSessions(next);
+  }
+
+  async function upsertHistorySession({ sessionId, consultantId, snapshotSetId, snapshots, question, answer }) {
+    const now = Date.now();
+    const sessions = getUserSessions();
+    let existing = sessions.find((s) => s.sessionId === sessionId);
+    if (!existing) {
+      existing = {
+        sessionId,
+        consultantId: consultantId || null,
+        snapshotSetId: snapshotSetId || null,
+        snapshots: snapshots || [],
+        title: slugifyTitle(question),
+        firstQuestion: question || "",
+        createdAt: now,
+        updatedAt: now,
+        messages: []
+      };
+      sessions.unshift(existing);
+    }
+    existing.consultantId = consultantId || existing.consultantId;
+    existing.snapshotSetId = snapshotSetId || existing.snapshotSetId;
+    existing.snapshots = snapshots || existing.snapshots || [];
+    existing.updatedAt = now;
+    if (!existing.title) existing.title = slugifyTitle(question);
+    if (question || answer) {
+      existing.messages = Array.isArray(existing.messages) ? existing.messages : [];
+      existing.messages.push({ q: question || "", a: answer || "", ts: now });
+    }
+    setUserSessions(sessions);
+    activeHistorySessionId = sessionId;
+    renderHistoryList();
+
+    if (!historyBackendAvailable) return;
+    const authHeaders = {};
+    if (fakeAuthEnabled) {
+      authHeaders["Authorization"] = `Bearer dev-user:${activeDevUserId}`;
+    }
+    try {
+      if (!existing._persisted) {
+        const res = await fetch(`${API_BASE}/chat-history/sessions`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", ...authHeaders },
+          body: JSON.stringify({
+            sessionId,
+            title: existing.title || existing.firstQuestion || "New chat",
+            consultantId: consultantId || null
+          })
+        });
+        if (res.ok) {
+          existing._persisted = true;
+        }
+      }
+      await fetch(`${API_BASE}/chat-history/sessions/${encodeURIComponent(sessionId)}/messages`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeaders },
+        body: JSON.stringify({ q: question || "", a: answer || "" })
+      });
+    } catch (e) {
+      historyBackendAvailable = false;
+    }
+  }
+
+  async function loadHistorySession(sessionId) {
+    const sessions = getUserSessions();
+    const session = sessions.find((s) => s.sessionId === sessionId);
+    if (!session) return;
+    const selectedSessionId = session.sessionId;
+    activeHistorySessionId = selectedSessionId;
+    sessionId = selectedSessionId;
+    localStorage.setItem("sessionId", selectedSessionId);
+    responseDiv.innerHTML = "";
+    const lang = getCurrentLang();
+    const t = getTexts(lang);
+    let messages = session.messages || [];
+    if (historyBackendAvailable) {
+      try {
+        const authHeaders = {};
+        if (fakeAuthEnabled) {
+          authHeaders["Authorization"] = `Bearer dev-user:${activeDevUserId}`;
+        }
+        const res = await fetch(`${API_BASE}/chat-history/sessions/${encodeURIComponent(selectedSessionId)}/messages?limit=200`, { headers: authHeaders });
+        if (res.ok) {
+          const json = await res.json();
+          messages = Array.isArray(json.items) ? json.items : messages;
+        }
+      } catch (e) {
+        historyBackendAvailable = false;
+      }
+    }
+    messages.slice().reverse().forEach((msg) => {
+      const markdown = msg.a || t.noResponse;
+      const html = marked.parse(markdown);
+      const timestamp = new Date(msg.ts || Date.now()).toLocaleString(t.locale);
+      const questionHTML = `
+        <div class="bg-white p-4 rounded-xl shadow-sm border border-gray-100 response-entry">
+          <div class="text-sm text-gray-500 mb-2">
+            ${timestamp} ${t.ask}: <i>${escapeHtml(msg.q || "")}</i>
+          </div>
+          <div class="markdown-content text-gray-900">${html}</div>
+        </div>
+      `;
+      responseDiv.innerHTML = questionHTML + responseDiv.innerHTML;
+    });
+    if (session.snapshotSetId) {
+      conversationSnapshotSetId = session.snapshotSetId;
+      localStorage.setItem("conversationSnapshotSetId", conversationSnapshotSetId);
+    }
+    if (session.consultantId) {
+      proceedSelectConsultant(session.consultantId);
+    }
+    updateFormPosition();
+    addCopyButtons();
+    renderHistoryList();
   }
 
   function generateTraceRunId() {
@@ -1350,7 +1914,9 @@
         traceStatusRetry: "Połączenie przerwane, ponawiam...",
         traceStatusNoRunId: "Brak trace_id w odpowiedzi backendu.",
         traceStatusErrorStart: "Błąd podczas uruchamiania trace.",
-        traceFilterPlaceholder: "Szukaj etapów...",
+        traceFilterPlaceholder: "Filtruj etapy...",
+        traceDocFilterPlaceholder: "Szukaj w dokumentach...",
+        traceFilterClear: "Wyczyść filtr",
         traceFilterNoMatch: "Brak dopasowań.",
         traceDocs: (count) => `Dokumenty (${count})`,
         traceOpenDoc: "Otwórz dokument",
@@ -1358,6 +1924,11 @@
         traceDocPrev: "Poprzedni dokument",
         traceDocNext: "Następny dokument",
         traceDocCount: (idx, total) => `${idx}/${total}`,
+        findInDocs: "Szukaj w dok.",
+        historyTitle: "Twoje czaty",
+        historySearchPlaceholder: "Wyszukaj czaty",
+        historyEmpty: "Brak historii",
+        historyNewChat: "Nowy czat",
         queryProgressText: "Zapytanie w toku",
         consultantLocked: "Nie można zmienić konsultanta w trakcie odpowiedzi."
 	    },
@@ -1398,7 +1969,9 @@
         traceStatusRetry: "Connection interrupted, retrying...",
         traceStatusNoRunId: "No trace_id in backend response.",
         traceStatusErrorStart: "Trace startup failed.",
-        traceFilterPlaceholder: "Search stages...",
+        traceFilterPlaceholder: "Filter stages...",
+        traceDocFilterPlaceholder: "Search documents...",
+        traceFilterClear: "Clear filter",
         traceFilterNoMatch: "No matches.",
         traceDocs: (count) => `Documents (${count})`,
       traceOpenDoc: "Open document",
@@ -1406,6 +1979,11 @@
       traceDocPrev: "Previous document",
       traceDocNext: "Next document",
       traceDocCount: (idx, total) => `${idx}/${total}`,
+      findInDocs: "Search docs",
+      historyTitle: "Your chats",
+      historySearchPlaceholder: "Search chats",
+      historyEmpty: "No history",
+      historyNewChat: "New chat",
         queryProgressText: "Query in progress",
         consultantLocked: "You cannot change the consultant while a reply is in progress."
 	    }
@@ -1492,6 +2070,7 @@
       document.body.classList.remove("trace-has-unread");
       document.body.classList.remove("trace-handle-boost");
     }
+    updateFindDocButtonsVisibility();
   }
 
   function setTraceAvailable(isAvailable) {
@@ -1533,6 +2112,28 @@
 
   function normalizeTraceFilterQuery(value) {
     return String(value || "").trim().toLowerCase().replace(/\s+/g, " ");
+  }
+
+  function normalizeDocFilterQuery(value) {
+    return String(value || "").trim().toLowerCase().replace(/\s+/g, " ");
+  }
+
+  function updateTraceFilterClearState() {
+    if (!traceFilterClearBtn) return;
+    const active = Boolean(traceFilterQuery || traceDocFilterQuery);
+    traceFilterClearBtn.style.display = active ? "inline-flex" : "none";
+  }
+
+  function updateTraceDocFilterVisibility() {
+    if (!traceDocFilterWrap) return;
+    const show = traceDocTotal > 0;
+    traceDocFilterWrap.style.display = show ? "flex" : "none";
+    if (!show) {
+      traceDocFilterQuery = "";
+      if (traceDocFilterInput) traceDocFilterInput.value = "";
+    }
+    updateTraceFilterClearState();
+    updateFindDocButtonsVisibility();
   }
 
   function scoreFuzzyMatch(haystack, needle) {
@@ -1617,43 +2218,81 @@
       }
     }
 
-    if (Array.isArray(evt.docs)) {
-      for (const doc of evt.docs) {
-        if (!doc || typeof doc !== "object") continue;
-        push(doc.id);
-        push(doc.preview);
-        push(doc.markdown);
-      }
-    }
-
     return parts.join(" ");
   }
 
-  function applyTraceFilter() {
+  function buildDocFilterText(doc) {
+    if (!doc || typeof doc !== "object") return "";
+    const parts = [];
+    const push = (v) => {
+      if (v === null || v === undefined) return;
+      const s = String(v).trim();
+      if (!s) return;
+      parts.push(s);
+    };
+    push(doc.id);
+    push(doc.path || doc.file_path || doc.filePath || doc.relative_path || doc.source_path || doc.sourcePath);
+    push(doc.preview);
+    push(doc.markdown);
+    return parts.join(" ").toLowerCase();
+  }
+
+  function applyTraceFilters() {
     if (!traceList) return;
 
     const items = traceList.querySelectorAll(".trace-item");
     let total = 0;
     let matches = 0;
+    const hasStageFilter = Boolean(traceFilterQuery);
+    const hasDocFilter = Boolean(traceDocFilterQuery);
+
     for (const item of items) {
       total += 1;
       const haystack = String(item.__traceFilterText || item.dataset.filterText || "").toLowerCase();
-      const match = !traceFilterQuery || haystack.includes(traceFilterQuery);
+      const stageMatch = !hasStageFilter || haystack.includes(traceFilterQuery);
+      let docMatch = true;
+
+      const docItems = item.querySelectorAll(".trace-doc-item");
+      const docsWrap = item.querySelector(".trace-docs");
+
+      if (hasDocFilter) {
+        let anyDoc = false;
+        let anyMatch = false;
+        docItems.forEach((docItem) => {
+          anyDoc = true;
+          const docText = String(docItem.dataset.docFilterText || "").toLowerCase();
+          const isMatch = docText.includes(traceDocFilterQuery);
+          docItem.style.display = isMatch ? "" : "none";
+          if (isMatch) anyMatch = true;
+        });
+        if (docsWrap) docsWrap.style.display = anyMatch ? "" : "none";
+        docMatch = anyDoc && anyMatch;
+      } else {
+        docItems.forEach((docItem) => { docItem.style.display = ""; });
+        if (docsWrap) docsWrap.style.display = "";
+      }
+
+      const match = stageMatch && docMatch;
       item.style.display = match ? "" : "none";
-      item.classList.toggle("is-search-match", !!traceFilterQuery && match);
-      if (match && traceFilterQuery) matches += 1;
+      item.classList.toggle("is-search-match", (hasStageFilter || hasDocFilter) && match);
+      if (match && (hasStageFilter || hasDocFilter)) matches += 1;
     }
 
     if (traceFilterEmpty) {
-      const showEmpty = Boolean(traceFilterQuery) && total > 0 && matches === 0;
+      const showEmpty = (hasStageFilter || hasDocFilter) && total > 0 && matches === 0;
       traceFilterEmpty.style.display = showEmpty ? "block" : "none";
     }
+
+    updateTraceFilterClearState();
   }
 
   function resetTracePanel() {
     if (traceList) traceList.innerHTML = "";
     traceFilterQuery = "";
     if (traceFilterInput) traceFilterInput.value = "";
+    traceDocFilterQuery = "";
+    if (traceDocFilterInput) traceDocFilterInput.value = "";
+    traceDocTotal = 0;
     if (traceFilterEmpty) traceFilterEmpty.style.display = "none";
     for (const key of Object.keys(traceDocsByKey)) delete traceDocsByKey[key];
     traceDocSeq = 0;
@@ -1664,6 +2303,8 @@
     closeTraceDocModal();
     traceEventCount = 0;
     setTraceStatusByKey("waiting");
+    updateTraceDocFilterVisibility();
+    updateTraceFilterClearState();
   }
 
   function setRequestInFlight(isActive) {
@@ -1682,7 +2323,7 @@
     if (!runId) return;
     const authHeaders = {};
     if (fakeAuthEnabled) {
-      authHeaders["Authorization"] = `Bearer dev-user:${DEV_AUTH_USER_ID}`;
+      authHeaders["Authorization"] = `Bearer dev-user:${activeDevUserId}`;
     }
     try {
       await fetch(`${API_BASE}${CANCEL_PATH}`, {
@@ -1813,7 +2454,7 @@
         });
       });
     }
-    applyTraceFilter();
+    applyTraceFilters();
     markTraceUnread();
     if (!traceFilterQuery) {
       traceList.scrollTo({ top: traceList.scrollHeight, behavior: "smooth" });
@@ -1840,13 +2481,14 @@
     const items = docs.slice(0, 20).map((doc, idx) => {
       const title = escapeHtml(doc.id || "doc");
       const docKey = allKeys[idx];
+      const docFilterText = escapeHtml(buildDocFilterText(doc));
       const meta = [];
       if (doc.depth !== undefined && doc.depth !== null) meta.push(`depth: ${doc.depth}`);
       if (doc.text_len !== undefined && doc.text_len !== null) meta.push(`len: ${doc.text_len}`);
       const metaStr = meta.length ? `<div class="trace-item-meta">${escapeHtml(meta.join(" • "))}</div>` : "";
       const preview = doc.preview ? `<div class="trace-doc-preview">${escapeHtml(doc.preview)}</div>` : "";
       const open = `<button type="button" class="trace-doc-open" data-doc-key="${escapeHtml(docKey)}">${escapeHtml(t.traceOpenDoc)}</button>`;
-      return `<div class="trace-doc-item"><div class="trace-item-title">${title}</div>${metaStr}${preview}${open}</div>`;
+      return `<div class="trace-doc-item" data-doc-filter-text="${docFilterText}"><div class="trace-item-title">${title}</div>${metaStr}${preview}${open}</div>`;
     }).join("");
 
     return `
@@ -1861,6 +2503,8 @@
     traceDocSeq += 1;
     const key = `d_${traceDocSeq}`;
     traceDocsByKey[key] = doc || {};
+    traceDocTotal += 1;
+    updateTraceDocFilterVisibility();
     return key;
   }
 
@@ -1937,7 +2581,7 @@
   async function fetchAppConfig() {
     const authHeaders = {};
     if (fakeAuthEnabled) {
-      authHeaders["Authorization"] = `Bearer dev-user:${DEV_AUTH_USER_ID}`;
+      authHeaders["Authorization"] = `Bearer dev-user:${activeDevUserId}`;
     }
 
     const res = await fetch(`${API_BASE}${APP_CONFIG_PATH}`, {
@@ -1970,6 +2614,26 @@
       consultantsById[c.id] = c;
     }
     snapshotPolicy = String(appConfig?.snapshotPolicy || "single").trim() || "single";
+  }
+
+  function updateConsultantLayout() {
+    if (!consultantsContainer) return;
+    const cards = Array.from(consultantsContainer.querySelectorAll(".consultant-card"));
+    if (cards.length === 0) return;
+
+    consultantsContainer.classList.remove("consultants-tight");
+    cards.forEach(c => c.classList.remove("compact"));
+
+    const fits = () => consultantsContainer.scrollWidth <= consultantsContainer.clientWidth + 1;
+    if (fits()) return;
+
+    cards.forEach(c => {
+      const id = c.getAttribute("data-consultant-id");
+      if (id !== selectedConsultant) c.classList.add("compact");
+    });
+
+    if (fits()) return;
+    consultantsContainer.classList.add("consultants-tight");
   }
 
   function buildConsultantsBar(lang) {
@@ -2012,6 +2676,7 @@
       el.classList.toggle("active", id === selectedConsultant);
     });
     setConsultantsLocked(isQueryInProgress);
+    requestAnimationFrame(updateConsultantLayout);
   }
 
   function renderWelcomeMessage(lang = getCurrentLang()) {
@@ -2471,6 +3136,13 @@
     });
   }
 
+  function refreshFindButtonsText(lang) {
+    const t = getTexts(lang);
+    document.querySelectorAll(".find-doc-btn").forEach(btn => {
+      btn.textContent = t.findInDocs;
+    });
+  }
+
   function applyLang(lang) {
     const t = getTexts(lang);
 
@@ -2487,10 +3159,24 @@
       traceFilterInput.placeholder = t.traceFilterPlaceholder;
       traceFilterInput.setAttribute("aria-label", t.traceFilterPlaceholder);
     }
+    if (traceDocFilterInput) {
+      traceDocFilterInput.placeholder = t.traceDocFilterPlaceholder;
+      traceDocFilterInput.setAttribute("aria-label", t.traceDocFilterPlaceholder);
+    }
+    if (traceFilterClearBtn) {
+      traceFilterClearBtn.textContent = t.traceFilterClear;
+    }
     if (traceFilterEmpty) traceFilterEmpty.textContent = t.traceFilterNoMatch;
     if (authToggleBtn) {
       authToggleBtn.textContent = fakeAuthEnabled ? "Fake Logout" : "Fake Login";
     }
+    if (historySectionTitle) historySectionTitle.textContent = t.historyTitle;
+    if (historySearchInput) {
+      historySearchInput.placeholder = t.historySearchPlaceholder;
+      historySearchInput.setAttribute("aria-label", t.historySearchPlaceholder);
+    }
+    if (historyNewChatBtn) historyNewChatBtn.textContent = t.historyNewChat;
+    if (historyEmpty) historyEmpty.textContent = t.historyEmpty;
     if (queryProgress && queryProgress.classList.contains("active")) {
       queryProgress.textContent = t.queryProgressText;
     }
@@ -2505,8 +3191,10 @@
 
     // Fix: existing copy buttons must update when language changes.
     refreshCopyButtonsText(lang);
+    refreshFindButtonsText(lang);
     setTraceStatusByKey(traceStatusKey, traceStatusArg);
-    applyTraceFilter();
+    applyTraceFilters();
+    renderHistoryList();
   }
 
   function selectConsultant(id) {
@@ -2573,6 +3261,7 @@
     renderWelcomeMessage(getCurrentLang());
     renderBranchControls();
     updateSendButtonState();
+    updateConsultantLayout();
   }
 
   function newChat() {
@@ -2581,6 +3270,7 @@
     conversationSnapshotSetId = null;
     localStorage.removeItem("conversationSnapshotSetId");
     responseDiv.innerHTML = "";
+    activeHistorySessionId = null;
     stopTraceStream();
     resetTracePanel();
     setTraceStatusByKey("idle");
@@ -2588,6 +3278,7 @@
     closeTraceDocModal();
     updateFormPosition();
     updateSendButtonState();
+    renderHistoryList();
   }
 
   function updateFormPosition() {
@@ -2621,6 +3312,27 @@
     } else {
       queryInput.style.height = "";
     }
+  }
+
+  function getSelectionTextInPre(pre) {
+    if (!pre) return "";
+    const sel = window.getSelection ? window.getSelection() : null;
+    if (!sel || sel.isCollapsed || sel.rangeCount === 0) return "";
+    const range = sel.getRangeAt(0);
+    const node = range.commonAncestorContainer;
+    if (!pre.contains(node)) return "";
+    return String(sel.toString() || "").trim();
+  }
+
+  function updateFindDocButtonsVisibility() {
+    const traceOpen = document.body.classList.contains("trace-open");
+    document.querySelectorAll("pre").forEach(pre => {
+      const btn = pre.querySelector(".find-doc-btn");
+      if (!btn) return;
+      const selected = getSelectionTextInPre(pre);
+      const shouldShow = traceOpen && traceDocTotal > 0 && Boolean(selected);
+      btn.classList.toggle("hidden", !shouldShow);
+    });
   }
 
   function addCopyButtons() {
@@ -2671,7 +3383,25 @@
       });
 
       pre.appendChild(button);
+
+      const findBtn = document.createElement("button");
+      findBtn.className = "find-doc-btn hidden";
+      findBtn.textContent = t.findInDocs;
+      findBtn.addEventListener("click", (e) => {
+        e.preventDefault();
+        if (!document.body.classList.contains("trace-open")) return;
+        if (traceDocTotal <= 0) return;
+        const selected = getSelectionTextInPre(pre);
+        if (!selected) return;
+        traceDocFilterQuery = normalizeDocFilterQuery(selected);
+        if (traceDocFilterInput) traceDocFilterInput.value = selected;
+        applyTraceFilters();
+        updateTraceFilterClearState();
+        setTraceOpen(true);
+      });
+      pre.appendChild(findBtn);
     });
+    updateFindDocButtonsVisibility();
   }
 
   function scrollToLatestResponse() {
@@ -2704,6 +3434,11 @@
     if (!query || query.length > 1000) {
       if (query.length > 1000) alert(t.error + " (" + t.queryTooLong + ")");
       return;
+    }
+
+    if (activeHistorySessionId) {
+      sessionId = activeHistorySessionId;
+      localStorage.setItem("sessionId", sessionId);
     }
 
     setRequestInFlight(true);
@@ -2751,7 +3486,7 @@
 
       const authHeaders = {};
       if (fakeAuthEnabled) {
-        authHeaders["Authorization"] = `Bearer dev-user:${DEV_AUTH_USER_ID}`;
+        authHeaders["Authorization"] = `Bearer dev-user:${activeDevUserId}`;
       }
 
       activeAbortController = new AbortController();
@@ -2770,7 +3505,13 @@
 
       const json = await res.json();
       if (json.session_id) {
-        sessionId = json.session_id;
+        if (!activeHistorySessionId || activeHistorySessionId === json.session_id) {
+          sessionId = json.session_id;
+          localStorage.setItem("sessionId", sessionId);
+        }
+      }
+      if (!sessionId) {
+        sessionId = `local_${Date.now()}`;
         localStorage.setItem("sessionId", sessionId);
       }
       if (json.pipeline_run_id) {
@@ -2800,6 +3541,16 @@
       `;
 
       responseDiv.innerHTML = questionHTML + responseDiv.innerHTML;
+      if (sessionId) {
+        upsertHistorySession({
+          sessionId,
+          consultantId: selectedConsultant,
+          snapshotSetId: body.snapshot_set_id || null,
+          snapshots: body.snapshots || [],
+          question: query,
+          answer: markdown
+        });
+      }
       if (body.snapshots && body.snapshots.length > 0 && body.snapshot_set_id) {
         conversationSnapshotSetId = body.snapshot_set_id;
         localStorage.setItem("conversationSnapshotSetId", conversationSnapshotSetId);
@@ -2848,6 +3599,24 @@
     if (authToggleBtn) {
       authToggleBtn.classList.toggle("active", fakeAuthEnabled);
       authToggleBtn.textContent = fakeAuthEnabled ? "Fake Logout" : "Fake Login";
+    }
+    if (authControls) {
+      authControls.classList.toggle("active", fakeAuthEnabled);
+    }
+    if (authUserSelect) {
+      const savedUser = localStorage.getItem("fakeAuthUserId");
+      if (savedUser) activeDevUserId = savedUser;
+      authUserSelect.value = activeDevUserId;
+    }
+
+    await loadHistoryStore();
+    historyCollapsed = localStorage.getItem("historyCollapsed") === "1";
+    setHistoryCollapsed(historyCollapsed);
+    updateHistoryOverlayMode();
+    activeHistorySessionId = localStorage.getItem("sessionId") || null;
+    renderHistoryList();
+    if (!historyBackendAvailable) {
+      showUiError("Brak uruchomionego serwera persystencji historii (chat-history).");
     }
 
     let startupIssue = null;
@@ -2907,6 +3676,8 @@
 
     window.addEventListener("resize", () => {
       autoSizeAllBranchSelects();
+      updateConsultantLayout();
+      updateHistoryOverlayMode();
     });
 
     form.addEventListener("submit", handleSubmit);
@@ -2917,7 +3688,41 @@
         localStorage.setItem("fakeAuthEnabled", fakeAuthEnabled ? "1" : "0");
         authToggleBtn.classList.toggle("active", fakeAuthEnabled);
         authToggleBtn.textContent = fakeAuthEnabled ? "Fake Logout" : "Fake Login";
+        if (authControls) authControls.classList.toggle("active", fakeAuthEnabled);
+        if (!fakeAuthEnabled) {
+          historySearchQuery = "";
+          if (historySearchInput) historySearchInput.value = "";
+          if (queryInput) {
+            queryInput.value = "";
+            resetQueryInputHeight();
+          }
+          newChat();
+        }
         bootstrapUi();
+      });
+    }
+    if (historyCollapseBtn) {
+      historyCollapseBtn.addEventListener("click", () => setHistoryCollapsed(true));
+    }
+    if (historyExpandBtn) {
+      historyExpandBtn.addEventListener("click", () => setHistoryCollapsed(false));
+    }
+    if (authUserSelect) {
+      authUserSelect.addEventListener("change", (evt) => {
+        activeDevUserId = String(evt.target.value || "dev-user-1");
+        localStorage.setItem("fakeAuthUserId", activeDevUserId);
+        loadHistoryStore();
+        activeHistorySessionId = null;
+        renderHistoryList();
+      });
+    }
+    if (historyNewChatBtn) {
+      historyNewChatBtn.addEventListener("click", () => newChat());
+    }
+    if (historySearchInput) {
+      historySearchInput.addEventListener("input", (evt) => {
+        historySearchQuery = String(evt.target.value || "");
+        renderHistoryList();
       });
     }
 
@@ -2961,7 +3766,22 @@
     if (traceFilterInput) {
       traceFilterInput.addEventListener("input", (evt) => {
         traceFilterQuery = normalizeTraceFilterQuery(evt.target.value);
-        applyTraceFilter();
+        applyTraceFilters();
+      });
+    }
+    if (traceDocFilterInput) {
+      traceDocFilterInput.addEventListener("input", (evt) => {
+        traceDocFilterQuery = normalizeDocFilterQuery(evt.target.value);
+        applyTraceFilters();
+      });
+    }
+    if (traceFilterClearBtn) {
+      traceFilterClearBtn.addEventListener("click", () => {
+        traceFilterQuery = "";
+        traceDocFilterQuery = "";
+        if (traceFilterInput) traceFilterInput.value = "";
+        if (traceDocFilterInput) traceDocFilterInput.value = "";
+        applyTraceFilters();
       });
     }
 
@@ -2998,6 +3818,10 @@
       if (document.body.classList.contains("trace-open")) {
         setTraceOpen(false);
       }
+    });
+
+    document.addEventListener("selectionchange", () => {
+      updateFindDocButtonsVisibility();
     });
 
     resetTracePanel();

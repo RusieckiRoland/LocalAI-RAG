@@ -32,6 +32,7 @@ dependencies:
       - jinja2            # ✅ Dependency also needed by llama-cpp-python
       - typing-extensions # ✅ Safe for PyTorch and llama-cpp-python
       - python-dotenv
+      - sqlalchemy
       - weaviate-client
       - pyjwt[crypto]
 
