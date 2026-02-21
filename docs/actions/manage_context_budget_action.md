@@ -290,7 +290,7 @@ Behavior:
       source: context_blocks
       template: "### Context:\n{}\n\n"
     user_question:
-      source: user_question_en
+      source: user_question_neutral
       template: "### User:\n{}\n\n"
   next: set_context_from_summary
 

@@ -5,7 +5,7 @@
 `FinalizeAction` is a pipeline action that **finalizes a turn’s answer**:
 
 1) **Materializes the user-visible output** into `state.final_answer`.
-2) Produces the final user-visible answer (`final_answer`) from `answer_en`/`answer_translated`.
+2) Produces the final user-visible answer (`final_answer`) from `answer_neutral`/`answer_translated`.
 3) (Optionally) performs **persist/logging** side-effects: writes to history and emits an interaction log.
 
 Key rule: `FinalizeAction` is the single place that **sets `state.final_answer`** as the answer shown to the user.
@@ -15,8 +15,8 @@ Key rule: `FinalizeAction` is the single place that **sets `state.final_answer`*
 `FinalizeAction` is deterministic and follows this priority:
 
 - if `state.translate_chat` is enabled and `state.answer_translated` is non-empty → `state.final_answer = state.answer_translated`
-- otherwise → `state.final_answer = state.answer_en`
-(`FinalizeAction` does not fall back to `last_model_response` — upstream steps should set `state.answer_en`.)
+- otherwise → `state.final_answer = state.answer_neutral`
+(`FinalizeAction` does not fall back to `last_model_response` — upstream steps should set `state.answer_neutral`.)
 
 ## What it writes to state
 
@@ -25,7 +25,7 @@ Always:
 - `state.final_answer` — set by priority: translated if present (and `translate_chat=true`), otherwise neutral.
 
 The action **does not translate**. Upstream steps should set:
-- `state.answer_en` (neutral)
+- `state.answer_neutral` (neutral)
 - (optionally) `state.answer_translated` (translated)
 
 ## Persist / logging — optional
@@ -33,7 +33,7 @@ The action **does not translate**. Upstream steps should set:
 `FinalizeAction` can also perform persistence side-effects:
 
 - history write (preferred): `runtime.conversation_history_service` (neutral + translated)
-- history write (legacy): `runtime.history_manager.set_final_answer(state.answer_en, state.answer_translated)`
+- history write (legacy): `runtime.history_manager.set_final_answer(state.answer_neutral, state.answer_translated)`
 - interaction log: `runtime.logger.log_interaction(...)` (question, consultant, branches, and answer)
 
 You can **disable** persistence via a step flag:

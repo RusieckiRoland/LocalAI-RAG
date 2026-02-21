@@ -15,7 +15,7 @@ from code_query_engine.pipeline.state import PipelineState
 
 class SetAnswerAction:
     def execute(self, step: StepDef, state: PipelineState, runtime: PipelineRuntime) -> Optional[str]:
-        state.answer_en = "ok"
+        state.answer_neutral = "ok"
         state.final_answer = "ok"
         state.query_type = "direct answer"
         return None

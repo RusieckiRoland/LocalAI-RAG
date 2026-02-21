@@ -24,7 +24,7 @@ YAMLpipeline:
       prompt_key: "e2e/router_v1"
       user_parts:
         user_question:
-          source: user_question_en
+          source: user_question_neutral
           template: "### User:\n{}\n"
       next: handle_router
 
@@ -72,7 +72,7 @@ YAMLpipeline:
           source: context_blocks
           template: "### Evidence:\n{}\n"
         user_question:
-          source: user_question_en
+          source: user_question_neutral
           template: "### User:\n{}\n"
       next: handle_answer
 

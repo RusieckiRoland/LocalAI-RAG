@@ -19,7 +19,7 @@ This action reads:
 - Answer text fields in priority order:
   - `final_answer`
   - `answer_translated`
-  - `answer_en`
+  - `answer_neutral`
   - `last_model_response`
 
 ## Step configuration (YAML)
@@ -62,7 +62,7 @@ Validation rules:
 ## Runtime semantics
 
 1. Resolve base text to append to (priority order):
-   - `final_answer` → `answer_translated` → `answer_en` → `last_model_response`.
+   - `final_answer` → `answer_translated` → `answer_neutral` → `last_model_response`.
 2. For each command type in order:
    - Look up command in registry.
    - Check permission via `state.allowed_commands`.

@@ -34,9 +34,9 @@ def test_finalize_writes_neutral_and_translated_with_fallback() -> None:
         translate_chat=True,
         user_id="u1",
     )
-    state.user_question_en = "Q_EN"
-    state.user_question_pl = "Q_PL"
-    state.answer_en = "A_EN"
+    state.user_question_neutral = "Q_EN"
+    state.user_question_translated = "Q_PL"
+    state.answer_neutral = "A_EN"
     state.answer_translated = ""  # force fallback
 
     step = type("S", (), {"raw": {"persist_turn": True}, "id": "finalize", "action": "finalize"})()

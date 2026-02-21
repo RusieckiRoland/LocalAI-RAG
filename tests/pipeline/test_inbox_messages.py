@@ -69,7 +69,7 @@ class _ConsumerAction(_NoopAction):
     def do_execute(self, step: StepDef, state: PipelineState, runtime: PipelineRuntime) -> Optional[str]:
         # Base class populates this on step entry.
         msgs = list(getattr(state, "inbox_last_consumed", []) or [])
-        state.answer_en = f"consumed={len(msgs)}"
+        state.answer_neutral = f"consumed={len(msgs)}"
         return None
 
 

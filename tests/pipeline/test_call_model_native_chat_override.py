@@ -40,7 +40,7 @@ class _State:
     consultant = "c"
     last_model_response = ""
     context_blocks = ["CTX"]
-    user_question_en = "Q"
+    user_question_neutral = "Q"
     history_dialog = [{"role": "user", "content": "hi"}, {"role": "assistant", "content": "hello"}]
 
 
@@ -58,7 +58,7 @@ def test_call_model_uses_pipeline_settings_native_chat_when_step_omits_flag(monk
                 "prompt_key": "x",
                 "user_parts": {
                     "evidence": {"source": "context_blocks", "template": "{}"},
-                    "user_question": {"source": "user_question_en", "template": "{}"},
+                    "user_question": {"source": "user_question_neutral", "template": "{}"},
                 },
             }
         },
@@ -86,7 +86,7 @@ def test_call_model_step_native_chat_false_overrides_pipeline_settings_true(monk
                 "native_chat": False,
                 "user_parts": {
                     "evidence": {"source": "context_blocks", "template": "{}"},
-                    "user_question": {"source": "user_question_en", "template": "{}"},
+                    "user_question": {"source": "user_question_neutral", "template": "{}"},
                 },
             }
         },

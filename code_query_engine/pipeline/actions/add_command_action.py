@@ -87,8 +87,8 @@ class AddCommandAction(PipelineActionBase):
             return state.final_answer, "final_answer"
         if state.answer_translated:
             return state.answer_translated, "answer_translated"
-        if state.answer_en:
-            return state.answer_en, "answer_en"
+        if state.answer_neutral:
+            return state.answer_neutral, "answer_neutral"
         if state.last_model_response:
             return state.last_model_response, "last_model_response"
         return None, ""

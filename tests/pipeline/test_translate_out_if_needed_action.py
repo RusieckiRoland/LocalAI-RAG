@@ -81,7 +81,7 @@ YAMLpipeline:
         consultant="rejewski",
         translate_chat=True,
     )
-    state.answer_en = "Hello"
+    state.answer_neutral = "Hello"
 
     out = PipelineEngine(build_default_action_registry()).run(pipe, state, rt)
     assert out.answer_translated == "PL: Hello"
@@ -139,7 +139,7 @@ YAMLpipeline:
         consultant="rejewski",
         translate_chat=True,
     )
-    state.answer_en = "Hello"
+    state.answer_neutral = "Hello"
 
     out = PipelineEngine(build_default_action_registry()).run(pipe, state, rt)
     assert out.answer_translated == "Witaj"

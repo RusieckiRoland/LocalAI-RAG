@@ -12,7 +12,7 @@ by `finalize` to select the user-visible output.
 
 Reads:
 - `state.translate_chat`
-- `state.answer_en`
+- `state.answer_neutral`
 - `runtime.markdown_translator` (preferred, supports `.translate_markdown(str)`; may also provide `.translate(str)`)
 - `runtime.model` (only when `use_main_model: true`)
 
@@ -47,24 +47,24 @@ will call `runtime.model` to perform the translation using the referenced prompt
 ## Runtime semantics
 
 - If `translate_chat` is false → no-op.
-- If `answer_en` is empty → no-op.
+- If `answer_neutral` is empty → no-op.
 - If `use_main_model` is true:
   - `translate_prompt_key` is required (otherwise the action raises an error).
   - Loads `<prompts_dir>/<translate_prompt_key>.txt` and calls `runtime.model` to translate.
   - `translate_prompt_key` may use Windows separators (`\`); it is normalized to `/` when resolving the prompt file.
-  - The action sends `answer_en` as the model input. If the loaded system prompt contains markers
+  - The action sends `answer_neutral` as the model input. If the loaded system prompt contains markers
     `<<<MARKDOWN_EN` and `MARKDOWN_EN`, the action wraps the input to match that contract:
-    - `<<<MARKDOWN_EN\n{answer_en}\nMARKDOWN_EN`
+    - `<<<MARKDOWN_EN\n{answer_neutral}\nMARKDOWN_EN`
   - Optional overrides supported (same keys as `call_model`):
     - `native_chat` (if true: calls `model.ask_chat(...)`; else: renders a manual prompt and calls `model.ask(...)`)
     - `prompt_format` (manual prompt mode; default: `codellama_inst_7_34`)
     - `max_tokens` / `max_output_tokens`, `temperature`, `top_k`, `top_p`
 - If `runtime.markdown_translator.translate_markdown` is available:
-  - `state.answer_translated = translator.translate_markdown(answer_en)`
+  - `state.answer_translated = translator.translate_markdown(answer_neutral)`
 - Else if `runtime.markdown_translator.translate` is available:
-  - `state.answer_translated = translator.translate(answer_en)`
+  - `state.answer_translated = translator.translate(answer_neutral)`
 - Otherwise:
-  - `state.answer_translated = answer_en` (fallback)
+  - `state.answer_translated = answer_neutral` (fallback)
 
 ## Tracing
 

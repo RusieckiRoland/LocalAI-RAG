@@ -35,7 +35,7 @@ Each user request produces exactly one **turn**:
 - `pipeline_name`, `consultant`, `repository` (optional metadata)
 - `translate_chat` (bool)
 - `question_en` (string, required)
-- `answer_en` (string, required once finalized)
+- `answer_neutral` (string, required once finalized)
 - `question_pl` (string, optional)
 - `answer_pl` (string, optional)
 - `answer_pl_is_fallback` (bool, optional; true if `answer_pl` was not translated but copied from EN)
@@ -50,7 +50,7 @@ Each user request produces exactly one **turn**:
   - unique by `(session_id, request_id)` in the session store
   - for authenticated storage, unique by `(identity_id, session_id, request_id)`
 - `question_en` must always be stored (English-neutral).
-- `answer_en` must always be stored for finalized turns.
+- `answer_neutral` must always be stored for finalized turns.
 - For authenticated users: `identity_id` is stored and linked to `session_id`.
 - If translation is not performed, `question_pl` / `answer_pl` may be empty.
 - If `translate_chat=true`, `answer_pl` should be present; if not, the system should set `answer_pl_is_fallback=true` when falling back.
@@ -116,8 +116,8 @@ This component is also responsible for linking:
 ### 1) Session conversation store (ephemeral)
 `ISessionConversationStore`
 - `start_turn(*, session_id: str, request_id: str, identity_id: str | None, question_en: str, question_pl: str | None, meta: dict) -> str turn_id`
-- `finalize_turn(*, session_id: str, turn_id: str, answer_en: str, answer_pl: str | None, answer_pl_is_fallback: bool | None, meta: dict) -> None`
-- `get_recent_turns_en(*, session_id: str, limit: int, finalized_only: bool = True) -> list[dict{turn_id, question_en, answer_en}]`
+- `finalize_turn(*, session_id: str, turn_id: str, answer_neutral: str, answer_pl: str | None, answer_pl_is_fallback: bool | None, meta: dict) -> None`
+- `get_recent_turns_en(*, session_id: str, limit: int, finalized_only: bool = True) -> list[dict{turn_id, question_en, answer_neutral}]`
 - `get_session_meta(*, session_id: str) -> dict`
 - `set_session_meta(*, session_id: str, identity_id: str | None, meta: dict) -> None`
 
@@ -126,7 +126,7 @@ Implementation examples:
 - `finalize_turn` must be idempotent: repeated calls for the same `(session_id, turn_id)` must not corrupt data.
 
 **finalized_only semantics**
-- When `finalized_only=True`, return only turns where `answer_en` is present (finalized).
+- When `finalized_only=True`, return only turns where `answer_neutral` is present (finalized).
 
 **Finalize without start**
 - If finalization is called for a missing `(session_id, turn_id)` the system MUST fail fast and log an error
@@ -136,7 +136,7 @@ Implementation examples:
 `IUserConversationStore`
 - `upsert_session_link(*, identity_id: str, session_id: str) -> None`
 - `insert_turn(*, turn: Turn) -> None`
-- `upsert_turn_final(*, identity_id: str, session_id: str, turn_id: str, answer_en: str, answer_pl: str | None, answer_pl_is_fallback: bool | None, finalized_at: str | None, meta: dict | None) -> None`
+- `upsert_turn_final(*, identity_id: str, session_id: str, turn_id: str, answer_neutral: str, answer_pl: str | None, answer_pl_is_fallback: bool | None, finalized_at: str | None, meta: dict | None) -> None`
 
 Notes:
 - Writes should be idempotent by natural keys (e.g. `(identity_id, session_id, turn_id)`).
@@ -152,7 +152,7 @@ Notes:
   - ensures `session_id ⇔ identity_id` link for authenticated users
 - `on_request_finalized(...) -> None`
   - called from `finalize` when `final_answer` is determined
-  - writes `answer_en` + optional `answer_pl`
+  - writes `answer_neutral` + optional `answer_pl`
 
 **Metadata forwarding (recommended)**
 - `IConversationHistoryService` should forward an allowlisted subset of `meta` into SQL `metadata` (e.g. `channel`, `device_type`, `ip_hash`).
@@ -185,11 +185,11 @@ Orphan sessions:
    - Store `turn_id` on pipeline state so `finalize` can update the same turn.
 
 2) **Finalize action**:
-   - Calls history service with `answer_en` and `answer_pl` (if present).
+   - Calls history service with `answer_neutral` and `answer_pl` (if present).
 
 ### Where history is read
 `load_conversation_history` should load **English Q/A pairs** (neutral language) into the pipeline state:
-- `Dict(question_en, answer_en)` or a list of such dicts.
+- `Dict(question_en, answer_neutral)` or a list of such dicts.
 - The prompt composition layer decides how to render it.
 
 ## Record updates / redaction

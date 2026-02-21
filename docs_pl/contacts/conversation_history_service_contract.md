@@ -10,7 +10,7 @@ System musi zachować parowanie języków i mapowanie tożsamości:
 - `session_id` jest zawsze obecne.
 - Język neutralny to **angielski**:
   - `question_en` (neutralne)
-  - `answer_en` (neutralne)
+  - `answer_neutral` (neutralne)
 - Jeżeli jest tłumaczenie i/lub użytkownik podał treść w języku narodowym (polski):
   - `question_pl` (opcjonalne)
   - `answer_pl` (opcjonalne)
@@ -34,7 +34,7 @@ Każde pytanie użytkownika tworzy dokładnie jeden **turn**:
 - `pipeline_name`, `consultant`, `repository` (opcjonalne metadane)
 - `translate_chat` (bool)
 - `question_en` (string, wymagane)
-- `answer_en` (string, wymagane po finalizacji)
+- `answer_neutral` (string, wymagane po finalizacji)
 - `question_pl` (string, opcjonalne)
 - `answer_pl` (string, opcjonalne)
 - `answer_pl_is_fallback` (bool, opcjonalne; true jeśli `answer_pl` nie jest tłumaczeniem, tylko kopią EN)
@@ -49,7 +49,7 @@ Każde pytanie użytkownika tworzy dokładnie jeden **turn**:
   - unikalność po `(session_id, request_id)` w magazynie sesyjnym
   - dla zapisu trwałego: unikalność po `(identity_id, session_id, request_id)`
 - `question_en` musi być zawsze zapisane (neutralne EN).
-- `answer_en` musi być zawsze zapisane dla zfinalizowanych turnów.
+- `answer_neutral` musi być zawsze zapisane dla zfinalizowanych turnów.
 - Dla użytkowników zalogowanych: zapisujemy `identity_id` i wiążemy je z `session_id`.
 - Jeśli tłumaczenie nie zachodzi, `question_pl` / `answer_pl` mogą być puste.
 - Jeśli `translate_chat=true`, to `answer_pl` powinno być obecne; jeśli nie, system powinien ustawić `answer_pl_is_fallback=true` przy fallbacku.
@@ -115,8 +115,8 @@ Serwis odpowiada też za powiązanie:
 ### 1) Magazyn historii sesji (ulotny)
 `ISessionConversationStore`
 - `start_turn(*, session_id: str, request_id: str, identity_id: str | None, question_en: str, question_pl: str | None, meta: dict) -> str turn_id`
-- `finalize_turn(*, session_id: str, turn_id: str, answer_en: str, answer_pl: str | None, answer_pl_is_fallback: bool | None, meta: dict) -> None`
-- `get_recent_turns_en(*, session_id: str, limit: int, finalized_only: bool = True) -> list[dict{turn_id, question_en, answer_en}]`
+- `finalize_turn(*, session_id: str, turn_id: str, answer_neutral: str, answer_pl: str | None, answer_pl_is_fallback: bool | None, meta: dict) -> None`
+- `get_recent_turns_en(*, session_id: str, limit: int, finalized_only: bool = True) -> list[dict{turn_id, question_en, answer_neutral}]`
 - `get_session_meta(*, session_id: str) -> dict`
 - `set_session_meta(*, session_id: str, identity_id: str | None, meta: dict) -> None`
 
@@ -125,7 +125,7 @@ Rekomendacja implementacyjna:
 - `finalize_turn` musi być idempotentne: powtórne wywołania dla `(session_id, turn_id)` nie mogą psuć danych.
 
 **Semantyka finalized_only**
-- Gdy `finalized_only=True`, zwracaj tylko turny, w których `answer_en` jest obecne (zfinalizowane).
+- Gdy `finalized_only=True`, zwracaj tylko turny, w których `answer_neutral` jest obecne (zfinalizowane).
 
 **Finalizacja bez startu**
 - Jeśli finalizacja zostanie wywołana dla nieistniejącego `(session_id, turn_id)`, system MUSI fail-fast i zalogować błąd
@@ -135,7 +135,7 @@ Rekomendacja implementacyjna:
 `IUserConversationStore`
 - `upsert_session_link(*, identity_id: str, session_id: str) -> None`
 - `insert_turn(*, turn: Turn) -> None`
-- `upsert_turn_final(*, identity_id: str, session_id: str, turn_id: str, answer_en: str, answer_pl: str | None, answer_pl_is_fallback: bool | None, finalized_at: str | None, meta: dict | None) -> None`
+- `upsert_turn_final(*, identity_id: str, session_id: str, turn_id: str, answer_neutral: str, answer_pl: str | None, answer_pl_is_fallback: bool | None, finalized_at: str | None, meta: dict | None) -> None`
 
 Uwagi:
 - Zapisy powinny być idempotentne po kluczach naturalnych (np. `(identity_id, session_id, turn_id)`).
@@ -151,7 +151,7 @@ Uwagi:
   - zapewnia powiązanie `session_id ⇔ identity_id` dla zalogowanych
 - `on_request_finalized(...) -> None`
   - wywoływane w `finalize`, gdy `final_answer` jest znane
-  - zapisuje `answer_en` oraz opcjonalnie `answer_pl`
+  - zapisuje `answer_neutral` oraz opcjonalnie `answer_pl`
 
 **Forwardowanie metadanych (rekomendowane)**
 - `IConversationHistoryService` powinien forwardować do SQL `metadata` tylko allowlistowane klucze z `meta` (np. `channel`, `device_type`, `ip_hash`).
@@ -184,11 +184,11 @@ Sesje porzucone:
    - Umieszczenie `turn_id` w stanie pipeline, aby `finalize` zaktualizowało ten sam turn.
 
 2) **Akcja finalize**:
-   - Wywołanie serwisu historii z `answer_en` i `answer_pl` (jeżeli jest).
+   - Wywołanie serwisu historii z `answer_neutral` i `answer_pl` (jeżeli jest).
 
 ### Gdzie odczytujemy historię
 `load_conversation_history` powinno ładować **pary Q/A po angielsku** (język neutralny) do stanu pipeline:
-- `Dict(question_en, answer_en)` lub lista takich dictów.
+- `Dict(question_en, answer_neutral)` lub lista takich dictów.
 - Warstwa budowania promptu decyduje o formacie renderowania.
 
 ## Aktualizacje rekordu / redakcja

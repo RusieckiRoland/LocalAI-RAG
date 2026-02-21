@@ -25,7 +25,7 @@ YAMLpipeline:
       use_history: true
       user_parts:
         user_question:
-          source: user_question_en
+          source: user_question_neutral
           template: "### User:\n{}\n\n"
         context:
           source: composed_context_for_prompt
@@ -59,7 +59,7 @@ YAMLpipeline:
       use_history: true
       user_parts:
         user_question:
-          source: user_question_en
+          source: user_question_neutral
           template: "### User:\n{}\n\n"
         context:
           source: composed_context_for_prompt
@@ -76,7 +76,7 @@ YAMLpipeline:
       use_history: true
       user_parts:
         user_question:
-          source: user_question_en
+          source: user_question_neutral
           template: "### User:\n{}\n\n"
         context:
           source: composed_context_for_prompt
@@ -93,7 +93,7 @@ YAMLpipeline:
       use_history: true
       user_parts:
         user_question:
-          source: user_question_en
+          source: user_question_neutral
           template: "### User:\n{}\n\n"
         context:
           source: composed_context_for_prompt
@@ -106,7 +106,7 @@ YAMLpipeline:
     - id: set_answer_from_last_model_response
       action: set_variables
       rules:
-        - set: answer_en
+        - set: answer_neutral
           from: last_model_response
         - set: answer_translated
           value: null

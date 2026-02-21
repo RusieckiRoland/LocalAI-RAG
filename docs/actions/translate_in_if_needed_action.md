@@ -6,7 +6,7 @@ Updated: 2026-02-03
 
 `translate_in_if_needed` prepares the user question for the model. If the chat
 is in Polish (`translate_chat = true`), it translates the incoming query to
-English and stores it in `state.user_question_en`. Otherwise it copies the
+English and stores it in `state.user_question_neutral`. Otherwise it copies the
 original query.
 
 This action is intentionally lightweight and has no side-effects beyond
@@ -20,7 +20,7 @@ Reads:
 - `runtime.translator_pl_en` (must provide `.translate(str)`)
 
 Writes:
-- `state.user_question_en`
+- `state.user_question_neutral`
 
 ## Step configuration (YAML)
 
@@ -35,9 +35,9 @@ No additional step parameters are required.
 ## Runtime semantics
 
 - If `translate_chat` is true **and** `translator_pl_en.translate` exists:
-  - `state.user_question_en = translator_pl_en.translate(state.user_query)`
+  - `state.user_question_neutral = translator_pl_en.translate(state.user_query)`
 - Otherwise:
-  - `state.user_question_en = state.user_query`
+  - `state.user_question_neutral = state.user_query`
 
 ## Notes
 

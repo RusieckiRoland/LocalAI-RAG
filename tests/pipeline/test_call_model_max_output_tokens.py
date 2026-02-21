@@ -38,7 +38,7 @@ def test_call_model_max_output_tokens_overrides_max_tokens(monkeypatch: pytest.M
         consultant = "c"
         last_model_response = ""
         context_blocks = ["CTX"]
-        user_question_en = "Q"
+        user_question_neutral = "Q"
         history_dialog = []
 
     state = _State()
@@ -51,7 +51,7 @@ def test_call_model_max_output_tokens_overrides_max_tokens(monkeypatch: pytest.M
                 "prompt_key": "x",
                 "user_parts": {
                     "evidence": {"source": "context_blocks", "template": "{}"},
-                    "user_question": {"source": "user_question_en", "template": "{}"},
+                    "user_question": {"source": "user_question_neutral", "template": "{}"},
                 },
                 "max_tokens": 999,
                 "max_output_tokens": 123,

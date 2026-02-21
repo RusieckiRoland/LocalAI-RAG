@@ -300,7 +300,7 @@ class DynamicPipelineRunner:
 
         self._engine.run(pipeline, state, runtime)
 
-        final_answer = state.final_answer or state.answer_en or ""
+        final_answer = state.final_answer or state.answer_neutral or ""
         query_type = state.query_type or state.retrieval_mode or None
         steps_used = state.steps_used
         model_input_en = state.model_input_en_or_fallback()

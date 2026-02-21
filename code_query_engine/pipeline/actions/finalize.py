@@ -20,7 +20,7 @@ class FinalizeAction(PipelineActionBase):
     def log_in(self, step: StepDef, state: PipelineState, runtime: PipelineRuntime) -> Dict[str, Any]:
         return {
             "consultant": getattr(state, "consultant", None),
-            "answer_en": getattr(state, "answer_en", None),
+            "answer_neutral": getattr(state, "answer_neutral", None),
             "answer_translated": getattr(state, "answer_translated", None),
             "last_model_response": getattr(state, "last_model_response", None),
             "persist_turn": bool((step.raw or {}).get("persist_turn", True)),
@@ -46,16 +46,16 @@ class FinalizeAction(PipelineActionBase):
 
         # Finalize materializes the user-visible answer:
         # - If translate_chat is enabled and answer_translated is present -> final_answer = answer_translated.
-        # - Otherwise -> final_answer = answer_en.
+        # - Otherwise -> final_answer = answer_neutral.
         #
-        # NOTE: This action does NOT populate answer_en/answer_translated. Upstream steps must do it.
-        answer_en = (state.answer_en or "").strip()
+        # NOTE: This action does NOT populate answer_neutral/answer_translated. Upstream steps must do it.
+        answer_neutral = (state.answer_neutral or "").strip()
         answer_translated = (state.answer_translated or "").strip()
 
         if bool(getattr(state, "translate_chat", False)) and answer_translated:
             state.final_answer = answer_translated
         else:
-            state.final_answer = answer_en
+            state.final_answer = answer_neutral
 
         if not persist_enabled:
             return None
@@ -104,7 +104,7 @@ class FinalizeAction(PipelineActionBase):
                     pass
 
         try:
-            runtime.history_manager.set_final_answer(state.answer_en or "", state.answer_translated)
+            runtime.history_manager.set_final_answer(state.answer_neutral or "", state.answer_translated)
         except Exception:
             py_logger.exception("soft-failure: history_manager.set_final_answer failed; continuing")
             pass
@@ -121,7 +121,7 @@ class FinalizeAction(PipelineActionBase):
                 question_neutral = state.model_input_en_or_fallback()
                 question_translated = None
                 if bool(getattr(state, "translate_chat", False)):
-                    question_translated = (getattr(state, "user_question_pl", None) or state.user_query) or None
+                    question_translated = (getattr(state, "user_question_translated", None) or state.user_query) or None
 
                 turn_id = on_started(
                     session_id=state.session_id,
@@ -139,7 +139,7 @@ class FinalizeAction(PipelineActionBase):
                 )
                 setattr(state, "conversation_turn_id", turn_id)
 
-                answer_neutral = (state.answer_en or "").strip()
+                answer_neutral = (state.answer_neutral or "").strip()
                 answer_translated = (state.answer_translated or "").strip() or None
                 translated_is_fallback = None
                 if bool(getattr(state, "translate_chat", False)):

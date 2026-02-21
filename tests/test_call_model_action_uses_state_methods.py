@@ -30,7 +30,7 @@ class InMemoryHistory:
     def add_iteration(self, meta, faiss_results):
         return None
 
-    def set_final_answer(self, answer_en, answer_translated):
+    def set_final_answer(self, answer_neutral, answer_translated):
         return None
 
 
@@ -69,7 +69,7 @@ def test_call_model_action_uses_state_methods_not_bound_method_strings(
 
         # New call_model contract expects these fields (sources used in user_parts)
         context_blocks = ["CTX"]
-        user_question_en = "Q"
+        user_question_neutral = "Q"
         history_dialog = []
 
         # Legacy helper methods (must NOT leak as bound-method strings)
@@ -124,7 +124,7 @@ def test_call_model_action_uses_state_methods_not_bound_method_strings(
             "prompt_key": "rejewski/router_v1",
             "user_parts": {
                 "evidence": {"source": "context_blocks", "template": "{}"},
-                "user_question": {"source": "user_question_en", "template": "{}"},
+                "user_question": {"source": "user_question_neutral", "template": "{}"},
             },
             "use_history": True,
         },

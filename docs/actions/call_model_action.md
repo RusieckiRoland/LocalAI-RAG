@@ -159,7 +159,7 @@ If `server_name` is **omitted**, `call_model` uses the server with `default: tru
       source: context_blocks
       template: "### Evidence:\n{}\n\n"
     user_question:
-      source: user_question_en
+      source: user_question_neutral
       template: "### User:\n{}\n\n"
   next: call_model_answer
 ```
@@ -168,7 +168,7 @@ Meaning:
 - system prompt: `prompts/sumarizer.txt`
 - `user_part`:
   - `evidence` ← `state.context_blocks` wrapped as `### Evidence:`
-  - `user_question` ← `state.user_question_en` wrapped as `### User:`
+  - `user_question` ← `state.user_question_neutral` wrapped as `### User:`
 - history (because `use_history: true`) ← `state.history_dialog`
 - model output → `state.last_model_response`
 - after the step completes, the pipeline continues to `next: call_model_answer`

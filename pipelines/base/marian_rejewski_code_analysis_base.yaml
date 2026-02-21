@@ -61,7 +61,7 @@ YAMLpipeline:
       prompt_key: "rejewski/router_v1"
       user_parts:
         question:
-          source: user_question_en
+          source: user_question_neutral
           template: "### User:\n{}\n\n"
       next: dispatch_router_directives
 
@@ -145,7 +145,7 @@ YAMLpipeline:
           source: context_blocks
           template: "### Context:\n{}\n\n"
         user_question:
-          source: user_question_en
+          source: user_question_neutral
           template: "### User:\n{}\n\n"
       next: set_context_from_summary
 
@@ -183,7 +183,7 @@ YAMLpipeline:
           source: composed_context_for_prompt
           template: "### Context:\n{}\n\n"
         user_question:
-          source: user_question_en
+          source: user_question_neutral
           template: "### User:\n{}\n\n"
       next: dispatch_sufficiency_directives
 
@@ -227,7 +227,7 @@ YAMLpipeline:
           source: composed_context_for_prompt
           template: "### Context:\n{}\n\n"
         user_question:
-          source: user_question_en
+          source: user_question_neutral
           template: "### User:\n{}\n\n"
       next: search_hyde
 
@@ -243,7 +243,7 @@ YAMLpipeline:
           source: composed_context_for_prompt
           template: "### Context:\n{}\n\n"
         user_question:
-          source: user_question_en
+          source: user_question_neutral
           template: "### User:\n{}\n\n"
       next: set_answer_from_last_model_response
 
@@ -256,7 +256,7 @@ YAMLpipeline:
       use_history: true
       user_parts:
         user_question:
-          source: user_question_en
+          source: user_question_neutral
           template: "### User:\n{}\n\n"
         history:
           source: history_for_prompt
@@ -271,7 +271,7 @@ YAMLpipeline:
       prompt_key: "rejewski/answer_not_sure"
       user_parts:
          user_question:
-          source: user_question_en
+          source: user_question_neutral
           template: "\n<<<USER_QUESTION:\n{}\nUSER_QUESTION\n\n"
          evidence:
           source: context_blocks
@@ -281,7 +281,7 @@ YAMLpipeline:
     - id: set_answer_from_last_model_response
       action: set_variables
       rules:
-        - set: answer_en
+        - set: answer_neutral
           from: last_model_response
         - set: answer_translated
           value: null

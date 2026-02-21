@@ -490,9 +490,9 @@ class SearchNodesAction(PipelineActionBase):
                     search_type = lp
                 elif lp == "semantic_rerank":
                     search_type = "semantic"
-            # 3) fallback when router didn't provide search_type.
+            # 3) no explicit source -> fail fast (contract)
             if search_type == "auto":
-                search_type = "semantic"
+                raise ValueError("search_nodes: requires explicit search_type when search_type='auto'.")
 
         if search_type not in _ALLOWED_SEARCH_TYPES:
             raise ValueError(f"search_nodes: resolved invalid search_type='{search_type}'. Allowed: {sorted(_ALLOWED_SEARCH_TYPES)}")

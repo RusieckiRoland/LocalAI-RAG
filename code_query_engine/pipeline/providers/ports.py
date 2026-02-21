@@ -89,7 +89,7 @@ class IHistoryManager(Protocol):
     def add_iteration(self, query: str, results: List[Dict[str, Any]]) -> None:
         ...
 
-    def set_final_answer(self, answer_en: str, answer_translated: Optional[str] = None) -> None:
+    def set_final_answer(self, answer_neutral: str, answer_translated: Optional[str] = None) -> None:
         ...
 
     def get_context_blocks(self) -> List[str]:

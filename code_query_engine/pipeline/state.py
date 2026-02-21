@@ -61,13 +61,13 @@ class PipelineState:
     last_model_response: Optional[str] = None
 
     # Answer fields expected by multiple actions/engine
-    draft_answer_en: Optional[str] = None  
-    answer_en: Optional[str] = None
+    draft_answer_neutral: Optional[str] = None  
+    answer_neutral: Optional[str] = None
     answer_translated: Optional[str] = None
 
     # Translation artifacts
-    user_question_en: Optional[str] = None
-    user_question_pl: Optional[str] = None
+    user_question_neutral: Optional[str] = None
+    user_question_translated: Optional[str] = None
 
     # Diagnostics
     step_trace: List[str] = field(default_factory=list)
@@ -126,8 +126,8 @@ class PipelineState:
     def model_input_en_or_fallback(self) -> str:
         if self.model_input_en:
             return self.model_input_en
-        if self.user_question_en:
-            return self.user_question_en
+        if self.user_question_neutral:
+            return self.user_question_neutral
         return self.user_query
 
     # ------------------------------
