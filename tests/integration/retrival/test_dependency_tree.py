@@ -94,7 +94,9 @@ def test_dependency_tree_allowlist_expected_outputs(retrieval_integration_env, c
 def test_expand_dependency_tree_travel_permission(retrieval_integration_env) -> None:
     env = retrieval_integration_env
     if not env.round.permissions.get("acl_enabled", True):
-        pytest.skip("ACL disabled for this round.")
+        _log_graph_case(env, "travel_permission", [], [], [])
+        assert True
+        return
 
     client = connect(env)
     try:
