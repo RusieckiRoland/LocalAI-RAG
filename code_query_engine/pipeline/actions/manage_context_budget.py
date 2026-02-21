@@ -244,6 +244,9 @@ class ManageContextBudgetAction(PipelineActionBase):
                 or ""
             ).strip()
             text = str(node.get("text") or "")
+            metadata_lines = None
+            if isinstance(node.get("metadata_context"), list):
+                metadata_lines = [str(x) for x in node.get("metadata_context") if str(x or "").strip()]
 
             kind = classify_text(text).kind
             language = _normalize_language(kind)
@@ -256,6 +259,7 @@ class ManageContextBudgetAction(PipelineActionBase):
                 language=language,
                 compact=False,
                 text=text,
+                metadata_lines=metadata_lines,
             )
 
             # Evaluate budget with raw candidate (before compaction).
@@ -297,6 +301,7 @@ class ManageContextBudgetAction(PipelineActionBase):
                     language=language,
                     compact=True,
                     text=compact_text,
+                    metadata_lines=metadata_lines,
                 )
 
             candidate_with_divider = _with_divider(candidate_text, divide_new_content)
@@ -328,6 +333,11 @@ class ManageContextBudgetAction(PipelineActionBase):
                                 language=_normalize_language(classify_text(str((n or {}).get("text") or "")).kind),
                                 compact=False,
                                 text=str((n or {}).get("text") or ""),
+                                metadata_lines=(
+                                    [str(x) for x in (n or {}).get("metadata_context") if str(x or "").strip()]
+                                    if isinstance((n or {}).get("metadata_context"), list)
+                                    else None
+                                ),
                             ),
                             divide_new_content,
                         )
@@ -383,17 +393,20 @@ class ManageContextBudgetAction(PipelineActionBase):
         language: str,
         compact: bool,
         text: str,
+        metadata_lines: Optional[List[str]] = None,
     ) -> str:
         nid = node_id or ""
         p = path or ""
         lang = language or "unknown"
         c = "true" if compact else "false"
+        meta_lines = [str(x) for x in (metadata_lines or []) if str(x or "").strip()]
         return (
             "--- NODE ---\n"
             f"id: {nid}\n"
             f"path: {p}\n"
             f"language: {lang}\n"
             f"compact: {c}\n"
+            + ("metadata:\n" + "\n".join(meta_lines) + "\n" if meta_lines else "")
             "text:\n"
             f"{text}\n"
         )

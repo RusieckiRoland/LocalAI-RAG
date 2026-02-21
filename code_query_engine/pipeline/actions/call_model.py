@@ -101,6 +101,17 @@ class CallModelAction(PipelineActionBase):
         if not prompt_key:
             raise ValueError("call_model: prompt_key is required")
 
+        custom_banner = raw.get("custom_banner")
+        banner_neutral = None
+        banner_translated = None
+        if isinstance(custom_banner, dict):
+            bn = custom_banner.get("neutral")
+            bt = custom_banner.get("translated")
+            banner_neutral = str(bn) if bn is not None else None
+            banner_translated = str(bt) if bt is not None else None
+        setattr(state, "banner_neutral", banner_neutral)
+        setattr(state, "banner_translated", banner_translated)
+
         native_chat = opt_bool(get_override(raw=raw, settings=runtime.pipeline_settings, key="native_chat")) or False
 
         prompt_format = str(raw.get("prompt_format") or "").strip()

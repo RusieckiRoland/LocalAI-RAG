@@ -51,6 +51,8 @@ class AppConfigService:
             "templates": templates,
             "translateChat": True,
             "snapshotPolicy": self.snapshot_policy,
+            "historyGroups": runtime_cfg.get("history_groups") or [],
+            "historyImportant": runtime_cfg.get("history_important") or {},
         }
 
     def _list_repositories(self, cfg: Dict[str, Any]) -> List[str]:

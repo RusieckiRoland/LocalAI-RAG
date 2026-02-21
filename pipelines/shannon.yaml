@@ -8,6 +8,7 @@ YAMLpipeline:
     retrieval_budget_tokens: 2000
     max_history_tokens: 800
     max_turn_loops: 3
+    native_chat: true
     stages_visibility: explicit
 
   steps:

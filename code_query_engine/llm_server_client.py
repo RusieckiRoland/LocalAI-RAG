@@ -10,6 +10,8 @@ import urllib.request
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, Optional, TypeVar
 
+from code_query_engine.llm_query_logger import log_llm_query, LLMCallTimer
+
 
 logger = logging.getLogger(__name__)
 T = TypeVar("T")
@@ -144,7 +146,7 @@ class ServerLLMClient:
                 payload["repeat_penalty"] = float(repeat_penalty)
 
         url = self._join(server.base_url, server.completions_path)
-        res = self._post_json(url, payload, server=server)
+        res = self._post_json(url, payload, server=server, op="server_completion")
         return self._extract_completion_text(res)
 
     def ask_chat(
@@ -188,7 +190,7 @@ class ServerLLMClient:
                 payload["repeat_penalty"] = float(repeat_penalty)
 
         url = self._join(server.base_url, server.chat_completions_path)
-        res = self._post_json(url, payload, server=server)
+        res = self._post_json(url, payload, server=server, op="server_chat")
         return self._extract_chat_text(res)
 
     def _select_server(self, name: Optional[str]) -> ServerLLMConfig:
@@ -202,7 +204,16 @@ class ServerLLMClient:
     def _join(base: str, path: str) -> str:
         return base.rstrip("/") + "/" + path.lstrip("/")
 
-    def _post_json(self, url: str, payload: Dict[str, Any], *, server: ServerLLMConfig) -> Dict[str, Any]:
+    def _post_json(
+        self,
+        url: str,
+        payload: Dict[str, Any],
+        *,
+        server: ServerLLMConfig,
+        op: str,
+    ) -> Dict[str, Any]:
+        timer = LLMCallTimer()
+
         def _do_request() -> Dict[str, Any]:
             data = json.dumps(payload).encode("utf-8")
             req = urllib.request.Request(url, data=data, method="POST")
@@ -215,17 +226,54 @@ class ServerLLMClient:
         try:
             if server.throttling_enabled:
                 throttle = self._get_throttle(server)
-                return throttle.call(_do_request)
-            return _do_request()
+                res = throttle.call(_do_request)
+            else:
+                res = _do_request()
+            log_llm_query(
+                op=op,
+                request={
+                    "url": url,
+                    "server": server.name,
+                    "mode": server.mode,
+                    "payload": payload,
+                },
+                response=res,
+                duration_ms=timer.ms(),
+            )
+            return res
         except urllib.error.HTTPError as e:
             body = ""
             try:
                 body = e.read().decode("utf-8")
             except Exception:
                 body = "<unreadable>"
+            log_llm_query(
+                op=op,
+                request={
+                    "url": url,
+                    "server": server.name,
+                    "mode": server.mode,
+                    "payload": payload,
+                },
+                response=body,
+                error=str(e),
+                duration_ms=timer.ms(),
+            )
             logger.error("ServerLLMClient request failed: %s body=%s", e, body)
             raise
         except Exception as e:
+            log_llm_query(
+                op=op,
+                request={
+                    "url": url,
+                    "server": server.name,
+                    "mode": server.mode,
+                    "payload": payload,
+                },
+                response=None,
+                error=str(e),
+                duration_ms=timer.ms(),
+            )
             logger.error("ServerLLMClient request failed: %s", e)
             raise
 

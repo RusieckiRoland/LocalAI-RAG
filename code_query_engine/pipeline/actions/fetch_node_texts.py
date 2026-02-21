@@ -1,6 +1,7 @@
 # code_query_engine/pipeline/actions/fetch_node_texts.py
 from __future__ import annotations
 
+import json
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 from ..definitions import StepDef
@@ -414,6 +415,18 @@ class FetchNodeTextsAction(PipelineActionBase):
         token_counter = getattr(runtime, "token_counter", None)
         token_strategy = _detect_token_counter_strategy(token_counter)
 
+        include_metadata = bool(raw.get("include_metadata_in_context", False))
+        metadata_fields_raw = raw.get("metadata_fields", None)
+        metadata_fields: Optional[list[str]] = None
+        if metadata_fields_raw is not None:
+            if isinstance(metadata_fields_raw, str):
+                parts = [p.strip() for p in metadata_fields_raw.split(",")]
+                metadata_fields = [p for p in parts if p]
+            elif isinstance(metadata_fields_raw, list):
+                metadata_fields = [str(x).strip() for x in metadata_fields_raw if str(x).strip()]
+            else:
+                raise ValueError("fetch_node_texts: metadata_fields must be a comma-separated string or list")
+
         # ---- Graph enrichment helpers ----
         edges = list(getattr(state, "graph_edges", None) or [])
         depth_map, parent_map = _build_depth_and_parent(seed_nodes=retrieval_seed_nodes, edges=edges)
@@ -611,6 +624,44 @@ class FetchNodeTextsAction(PipelineActionBase):
             item["is_seed"] = node_id in seed_set
             item["depth"] = int(depth_map.get(node_id, 1))
             item["parent_id"] = parent_map.get(node_id, None)
+
+            if include_metadata:
+                ignore_keys = {
+                    "text",
+                    "id",
+                    "node_id",
+                    "is_seed",
+                    "depth",
+                    "parent_id",
+                }
+                meta_lines: list[str] = []
+                if metadata_fields:
+                    keys = metadata_fields
+                else:
+                    keys = [k for k in (node_props or {}).keys() if k not in ignore_keys]
+                for key in keys:
+                    if not key or key in ignore_keys:
+                        continue
+                    val = (node_props or {}).get(key)
+                    if val is None:
+                        continue
+                    if isinstance(val, list) or isinstance(val, set) or isinstance(val, tuple):
+                        flat = [str(x).strip() for x in val if str(x).strip()]
+                        if not flat:
+                            continue
+                        meta_lines.append(f"{key}: {', '.join(flat)}")
+                    elif isinstance(val, dict):
+                        try:
+                            meta_lines.append(f"{key}: {json.dumps(val, ensure_ascii=False, separators=(',', ':'))}")
+                        except Exception:
+                            meta_lines.append(f"{key}: {str(val)}")
+                    else:
+                        s = str(val).strip()
+                        if not s:
+                            continue
+                        meta_lines.append(f"{key}: {s}")
+                if meta_lines:
+                    item["metadata_context"] = meta_lines
             out.append(item)
 
             if first_included_id is None:

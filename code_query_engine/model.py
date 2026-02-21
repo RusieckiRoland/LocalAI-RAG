@@ -5,6 +5,7 @@ from typing import Any, Optional, Callable
 
 from llama_cpp import Llama
 from code_query_engine.pipeline.cancellation import PipelineCancelled
+from code_query_engine.llm_query_logger import log_llm_query, LLMCallTimer
 
 
 logger = logging.getLogger(__name__)
@@ -65,6 +66,8 @@ class Model:
         if temperature is None:
             temperature = 0.1
 
+        timer = LLMCallTimer()
+
         # Optional: prepend system prompt if your renderer doesn't already include it.
         if system_prompt:
             prompt = f"{system_prompt}\n\n{prompt}"
@@ -105,11 +108,38 @@ class Model:
             if self._looks_like_hallucination(output):
                 raise RuntimeError("Detected hallucination or recursive loop in LLM response.")
 
+            log_llm_query(
+                op="local_completion",
+                request={
+                    "prompt": prompt,
+                    "max_tokens": max_tokens,
+                    "temperature": temperature,
+                    "repeat_penalty": repeat_penalty,
+                    "top_k": top_k,
+                    "top_p": top_p,
+                },
+                response=output,
+                duration_ms=timer.ms(),
+            )
             return output
 
         except PipelineCancelled:
             raise
         except Exception as e:
+            log_llm_query(
+                op="local_completion",
+                request={
+                    "prompt": prompt,
+                    "max_tokens": max_tokens,
+                    "temperature": temperature,
+                    "repeat_penalty": repeat_penalty,
+                    "top_k": top_k,
+                    "top_p": top_p,
+                },
+                response=None,
+                error=str(e),
+                duration_ms=timer.ms(),
+            )
             logger.error(f"Model error: {e}")
             return "[MODEL_ERROR]"
 
@@ -137,6 +167,8 @@ class Model:
             max_tokens = self.default_max_tokens
         if temperature is None:
             temperature = 0.1
+
+        timer = LLMCallTimer()
 
         try:
             messages: list[dict[str, str]] = []
@@ -197,11 +229,38 @@ class Model:
             if self._looks_like_hallucination(output):
                 raise RuntimeError("Detected hallucination or recursive loop in LLM response.")
 
+            log_llm_query(
+                op="local_chat",
+                request={
+                    "messages": messages,
+                    "max_tokens": max_tokens,
+                    "temperature": temperature,
+                    "repeat_penalty": repeat_penalty,
+                    "top_k": top_k,
+                    "top_p": top_p,
+                },
+                response=output,
+                duration_ms=timer.ms(),
+            )
             return output
 
         except PipelineCancelled:
             raise
         except Exception as e:
+            log_llm_query(
+                op="local_chat",
+                request={
+                    "messages": messages if "messages" in locals() else [],
+                    "max_tokens": max_tokens,
+                    "temperature": temperature,
+                    "repeat_penalty": repeat_penalty,
+                    "top_k": top_k,
+                    "top_p": top_p,
+                },
+                response=None,
+                error=str(e),
+                duration_ms=timer.ms(),
+            )
             logger.error(f"Model chat error: {e}")
             return "[MODEL_ERROR]"
 

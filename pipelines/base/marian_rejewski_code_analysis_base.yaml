@@ -237,6 +237,9 @@ YAMLpipeline:
       callback_caption: "Generating grounded answer"
       callback_caption_translated: "Generowanie odpowiedzi z kontekstu"
       prompt_key: "rejewski/sure_answer_v1"
+      custom_banner:
+        neutral: "✅ Evidence note: This answer is fully supported by the retrieved context and cited verbatim evidence."
+        translated: "✅ Uwaga: Ta odpowiedź jest w pełni oparta na pobranym kontekście i cytowanych fragmentach."
       use_history: true
       user_parts:
         context:
@@ -253,6 +256,9 @@ YAMLpipeline:
       callback_caption: "Generating direct answer"
       callback_caption_translated: "Generowanie odpowiedzi bez retrieval"
       prompt_key: "rejewski/direct_answer_v1"
+      custom_banner:
+        neutral: "ℹ️ Direct-answer note: This question was classified as general knowledge; no repository search was performed."
+        translated: "ℹ️ Odpowiedź bezpośrednia: To pytanie zostało zaklasyfikowane jako wiedza ogólna; nie wykonano przeszukania repozytorium."
       use_history: true
       user_parts:
         user_question:
@@ -269,6 +275,9 @@ YAMLpipeline:
       callback_caption: "Preparing fallback answer"
       callback_caption_translated: "Przygotowanie odpowiedzi fallback"
       prompt_key: "rejewski/answer_not_sure"
+      custom_banner:
+        neutral: "⚠️ Uncertain answer: This response may be incomplete; no definitive evidence was found in the retrieved context."
+        translated: "⚠️ Odpowiedź niepewna: Ta odpowiedź może być niepełna; nie znaleziono jednoznacznych dowodów w pobranym kontekście."
       user_parts:
          user_question:
           source: user_question_neutral

@@ -677,7 +677,7 @@ def _history_list_sessions(*, tenant_id: str, user_id: str, limit: int, cursor: 
     _history_prune()
     sessions = [
         s for s in _history_sessions.values()
-        if s.get("tenantId") == tenant_id and s.get("userId") == user_id and not s.get("deletedAt")
+        if s.get("tenantId") == tenant_id and s.get("userId") == user_id and not s.get("deletedAt") and not s.get("softDeletedAt")
     ]
     sessions.sort(key=lambda s: s.get("updatedAt") or 0, reverse=True)
 
@@ -1411,6 +1411,8 @@ def chat_history_sessions():
         "updatedAt": now,
         "messageCount": 0,
         "deletedAt": None,
+        "softDeletedAt": None,
+        "status": "active",
     }
     if not _history_is_anon(user_id):
         _history_sessions[session_id] = session
@@ -1429,7 +1431,7 @@ def chat_history_session(session_id: str):
     if _history_is_anon(user_id):
         return jsonify({"error": "not_found"}), 404
     session = _history_sessions.get(session_id)
-    if not session or session.get("tenantId") != tenant_id or session.get("userId") != user_id or session.get("deletedAt"):
+    if not session or session.get("tenantId") != tenant_id or session.get("userId") != user_id or session.get("deletedAt") or session.get("softDeletedAt"):
         return jsonify({"error": "not_found"}), 404
 
     if request.method == "GET":
@@ -1437,7 +1439,8 @@ def chat_history_session(session_id: str):
 
     if request.method == "DELETE":
         now = _history_now_ms()
-        session["deletedAt"] = now
+        session["softDeletedAt"] = now
+        session["status"] = "soft_deleted"
         session["updatedAt"] = now
         return jsonify({"ok": True, "sessionId": session_id})
 
@@ -1446,6 +1449,15 @@ def chat_history_session(session_id: str):
         session["title"] = str(payload["title"])
     if "consultantId" in payload and payload["consultantId"] is not None:
         session["consultantId"] = str(payload["consultantId"])
+    if "important" in payload:
+        session["important"] = bool(payload["important"])
+    if "softDeleted" in payload:
+        if payload["softDeleted"]:
+            session["softDeletedAt"] = _history_now_ms()
+            session["status"] = "soft_deleted"
+        else:
+            session["softDeletedAt"] = None
+            session["status"] = "active"
     session["updatedAt"] = _history_now_ms()
     return jsonify(session)
 

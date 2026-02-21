@@ -19,9 +19,6 @@ Hard rules:
    - otherwise `Source: <node-id>`
 6) Every Evidence snippet MUST be inside a fenced code block.
 
-Required banner (must be the first line):
->✅  Evidence note: This answer is fully supported by the retrieved context and cited verbatim evidence.
-
 Output format (exact sections):
 
 ## Answer

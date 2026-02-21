@@ -51,11 +51,19 @@ class FinalizeAction(PipelineActionBase):
         # NOTE: This action does NOT populate answer_neutral/answer_translated. Upstream steps must do it.
         answer_neutral = (state.answer_neutral or "").strip()
         answer_translated = (state.answer_translated or "").strip()
+        banner_neutral = (getattr(state, "banner_neutral", None) or "").strip()
+        banner_translated = (getattr(state, "banner_translated", None) or "").strip()
 
-        if bool(getattr(state, "translate_chat", False)) and answer_translated:
-            state.final_answer = answer_translated
+        if bool(getattr(state, "translate_chat", False)):
+            if banner_translated:
+                state.final_answer = f"{banner_translated}\n\n{answer_translated}"
+            else:
+                state.final_answer = answer_translated
         else:
-            state.final_answer = answer_neutral
+            if banner_neutral:
+                state.final_answer = f"{banner_neutral}\n\n{answer_neutral}"
+            else:
+                state.final_answer = answer_neutral
 
         if not persist_enabled:
             return None
@@ -103,13 +111,14 @@ class FinalizeAction(PipelineActionBase):
                 except TypeError:
                     pass
 
-        try:
-            runtime.history_manager.set_final_answer(state.answer_neutral or "", state.answer_translated)
-        except Exception:
-            py_logger.exception("soft-failure: history_manager.set_final_answer failed; continuing")
-            pass
+        persist_answer_neutral = (state.answer_neutral or "").strip()
+        persist_answer_translated = (state.answer_translated or "").strip() or None
+        if bool(getattr(state, "translate_chat", False)):
+            persist_answer_translated = answer_out
+        else:
+            persist_answer_neutral = answer_out
 
-        # New contract (best-effort): write question/answer in neutral + translated form.
+        # Write question/answer in neutral + translated form (single current path).
         svc = getattr(runtime, "conversation_history_service", None)
         on_started = getattr(svc, "on_request_started", None) if svc is not None else None
         on_finalized = getattr(svc, "on_request_finalized", None) if svc is not None else None
@@ -139,8 +148,8 @@ class FinalizeAction(PipelineActionBase):
                 )
                 setattr(state, "conversation_turn_id", turn_id)
 
-                answer_neutral = (state.answer_neutral or "").strip()
-                answer_translated = (state.answer_translated or "").strip() or None
+                answer_neutral = persist_answer_neutral
+                answer_translated = persist_answer_translated
                 translated_is_fallback = None
                 if bool(getattr(state, "translate_chat", False)):
                     if answer_translated:

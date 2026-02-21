@@ -275,10 +275,13 @@ class PipelineEngine:
                     f"PIPELINE_INBOX_NOT_EMPTY: remaining={len(remaining)} (set RAG_PIPELINE_INBOX_FAIL_FAST=0 to log-only)"
                 )
 
-            # Resolve final answer (what the caller sees)
-            final_answer = getattr(state, "answer_neutral", None) or ""
-            if bool(getattr(state, "translate_chat", False)) and getattr(state, "answer_translated", None):
-                final_answer = state.answer_translated
+            # Resolve final answer (what the caller sees).
+            # Prefer state.final_answer set by finalize; fallback to answers if missing.
+            final_answer = getattr(state, "final_answer", None) or ""
+            if not final_answer:
+                final_answer = getattr(state, "answer_neutral", None) or ""
+                if bool(getattr(state, "translate_chat", False)) and getattr(state, "answer_translated", None):
+                    final_answer = state.answer_translated
 
             state.final_answer = final_answer
 

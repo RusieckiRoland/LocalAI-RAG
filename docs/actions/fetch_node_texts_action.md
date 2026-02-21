@@ -44,6 +44,8 @@ If **both** `retrieval_seed_nodes` and `graph_expanded_nodes` are empty → the 
 - `max_chars: int` *(optional)*
 - `budget_tokens: int` *(optional)*
 - `budget_tokens_from_settings: str` *(optional)* — key name from pipeline `settings`
+- `include_metadata_in_context: bool` *(optional; default `false`)*
+- `metadata_fields: string | list` *(optional; comma-separated string or list of field names)*
 
 ### Budget rules (important)
 
@@ -148,6 +150,7 @@ Meaning of fields:
 - `is_seed`: whether it came from retrieval seeds
 - `depth`: 0 for seeds, ≥1 for expanded nodes (if edges exist)
 - `parent_id`: parent node ID in the BFS tree (if edges exist)
+- `metadata_context` (optional): list of `key: value` lines added when `include_metadata_in_context: true`
 
 ### `state.graph_debug`
 
@@ -213,6 +216,31 @@ steps:
 ```
 
 ---
+
+## Metadata injection (optional)
+
+If `include_metadata_in_context: true`, `fetch_node_texts` will attach document metadata to each context block.
+
+- If `metadata_fields` is provided, only those fields are included.
+- If `metadata_fields` is **omitted**, all available metadata fields are included (excluding the snippet text itself).
+- List values are joined with commas.
+
+Example:
+
+```yaml
+- id: fetch_texts
+  action: fetch_node_texts
+  include_metadata_in_context: true
+  metadata_fields: "clauses, doc_type, owner"
+```
+
+Example (all metadata fields):
+
+```yaml
+- id: fetch_texts
+  action: fetch_node_texts
+  include_metadata_in_context: true
+```
 
 ## Common failure modes (YAML-level)
 

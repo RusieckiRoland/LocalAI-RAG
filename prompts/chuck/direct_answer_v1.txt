@@ -29,8 +29,6 @@ CONTEXT-FIDELITY (anti-drift):
 
 OUTPUT FORMAT (exact):
 ## Answer
-No search/retrieval was performed.
-
 (Your answer)
 
 ## Notes

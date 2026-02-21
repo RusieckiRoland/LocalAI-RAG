@@ -32,8 +32,11 @@ The action **does not translate**. Upstream steps should set:
 
 `FinalizeAction` can also perform persistence side-effects:
 
-- history write (preferred): `runtime.conversation_history_service` (neutral + translated)
-- history write (legacy): `runtime.history_manager.set_final_answer(state.answer_neutral, state.answer_translated)`
+- history write: `runtime.conversation_history_service` (neutral + translated)
+
+Persistence uses the **user-visible output**:
+- if `translate_chat` is enabled, the stored translated answer is the **final_answer** (including banner).
+- otherwise the stored neutral answer is the **final_answer** (including banner).
 - interaction log: `runtime.logger.log_interaction(...)` (question, consultant, branches, and answer)
 
 You can **disable** persistence via a step flag:

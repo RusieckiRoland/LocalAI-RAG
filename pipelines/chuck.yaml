@@ -24,6 +24,9 @@ YAMLpipeline:
       callback_caption: "Generating direct answer"
       callback_caption_translated: "Generowanie odpowiedzi bez retrieval"
       prompt_key: "chuck/direct_answer_v1"
+      custom_banner:
+        neutral: "ℹ️ Direct-answer note: This question was classified as general knowledge; no repository search was performed."
+        translated: "ℹ️ Odpowiedź bezpośrednia: To pytanie zostało zaklasyfikowane jako wiedza ogólna; nie wykonano przeszukania repozytorium."
       use_history: true             
       user_parts:
         user_question:

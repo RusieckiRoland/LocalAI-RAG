@@ -182,10 +182,32 @@ Meaning:
 - `temperature`
 - `top_k`
 - `top_p`
+- `custom_banner` (object: `neutral`, `translated`)
 
 If a parameter is not provided in YAML, `call_model` **does not override** it.
 
 Notes:
+- `custom_banner` always overwrites the state banner for this step; if omitted, the banner is cleared.
+- `custom_banner` does **not** change `answer_neutral` / `answer_translated`.
+- The banner is applied to **`final_answer`** in `finalize`:
+  - if `translate_chat` is true, `final_answer` is built from `answer_translated` + `custom_banner.translated`
+  - otherwise `final_answer` is built from `answer_neutral` + `custom_banner.neutral`
+
+YAML example:
+
+```yaml
+- id: call_model_direct_answer
+  action: call_model
+  prompt_key: "rejewski/direct_answer_v1"
+  custom_banner:
+    neutral: "ℹ️ Direct-answer note: This question was classified as general knowledge; no repository search was performed."
+    translated: "ℹ️ Odpowiedź bezpośrednia: To pytanie zostało zaklasyfikowane jako wiedza ogólna; nie wykonano przeszukania repozytorium."
+  user_parts:
+    user_question:
+      source: user_question_neutral
+      template: "### User:\n{}\n\n"
+  next: set_answer_from_last_model_response
+```
 - `max_output_tokens` is an explicit alias for the model output length limit. It maps to the model client parameter `max_tokens`.
 - If both `max_output_tokens` and `max_tokens` are provided, `max_output_tokens` **wins**.
 

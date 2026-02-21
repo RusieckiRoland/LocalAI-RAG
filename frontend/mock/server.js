@@ -117,7 +117,7 @@ function getTenantId(req) {
 
 function listSessions({ tenantId, userId, limit, cursor, q }) {
   const all = Array.from(chatHistory.sessions.values())
-    .filter(s => s.tenantId === tenantId && s.userId === userId && !s.deletedAt)
+    .filter(s => s.tenantId === tenantId && s.userId === userId && !s.deletedAt && !s.softDeletedAt)
     .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
 
   const filtered = q
@@ -140,6 +140,23 @@ function buildAppConfig() {
     contractVersion: "1.0",
     defaultConsultantId: "rejewski",
     snapshotPolicy: "single",
+    historyGroups: [
+      {
+        neutral_description: "today",
+        translated_description: "dzisiaj",
+        formula: { type: "today" }
+      },
+      {
+        neutral_description: "last week",
+        translated_description: "ostatni tydzień",
+        formula: { type: "last_n_days", days: 7 }
+      }
+    ],
+    historyImportant: {
+      neutral_description: "important",
+      translated_description: "ważne",
+      show_important_on_the_top: true
+    },
     consultants: [
       {
         id: "rejewski",
@@ -1020,7 +1037,7 @@ const server = http.createServer(async (req, res) => {
     const userId = getAuthUser(req);
     const sessionId = basePath.split("/").pop();
     const session = chatHistory.sessions.get(sessionId);
-    if (!session || session.tenantId !== tenantId || session.userId !== userId || session.deletedAt) {
+    if (!session || session.tenantId !== tenantId || session.userId !== userId || session.deletedAt || session.softDeletedAt) {
       return sendJson(res, 404, { error: "not_found" });
     }
     return sendJson(res, 200, session);
@@ -1065,6 +1082,8 @@ const server = http.createServer(async (req, res) => {
       updatedAt: now,
       messageCount: 0,
       deletedAt: null,
+      softDeletedAt: null,
+      status: "active",
     };
     chatHistory.sessions.set(sessionId, session);
     chatHistory.messages.set(sessionId, []);
@@ -1122,6 +1141,16 @@ const server = http.createServer(async (req, res) => {
     }
     if (payload.title != null) session.title = String(payload.title);
     if (payload.consultantId != null) session.consultantId = String(payload.consultantId);
+    if (payload.important != null) session.important = !!payload.important;
+    if (payload.softDeleted != null) {
+      if (payload.softDeleted) {
+        session.softDeletedAt = nowTs();
+        session.status = "soft_deleted";
+      } else {
+        session.softDeletedAt = null;
+        session.status = "active";
+      }
+    }
     session.updatedAt = nowTs();
     chatHistory.sessions.set(sessionId, session);
     return sendJson(res, 200, session);
@@ -1135,7 +1164,8 @@ const server = http.createServer(async (req, res) => {
     if (!session || session.tenantId !== tenantId || session.userId !== userId || session.deletedAt) {
       return sendJson(res, 404, { error: "not_found" });
     }
-    session.deletedAt = nowTs();
+    session.softDeletedAt = nowTs();
+    session.status = "soft_deleted";
     session.updatedAt = nowTs();
     chatHistory.sessions.set(sessionId, session);
     return sendJson(res, 200, { ok: true, sessionId });

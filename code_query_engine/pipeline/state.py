@@ -59,6 +59,8 @@ class PipelineState:
     # Model outputs
     
     last_model_response: Optional[str] = None
+    banner_neutral: Optional[str] = None
+    banner_translated: Optional[str] = None
 
     # Answer fields expected by multiple actions/engine
     draft_answer_neutral: Optional[str] = None  

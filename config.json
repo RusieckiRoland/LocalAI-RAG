@@ -27,6 +27,23 @@
       "emit_app_log_pointers": true
     }
   },
+  "history_groups": [
+    {
+      "neutral_description": "today",
+      "translated_description": "dzisiaj",
+      "formula": { "type": "today" }
+    },
+    {
+      "neutral_description": "last week",
+      "translated_description": "ostatni tydzień",
+      "formula": { "type": "last_n_days", "days": 7 }
+    }
+  ],
+  "history_important": {
+    "neutral_description": "important",
+    "translated_description": "ważne",
+    "show_important_on_the_top": true
+  },
   "use_gpu": true,
   "developement": true,
   "mockSqlServer": true,

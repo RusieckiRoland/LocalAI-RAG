@@ -703,6 +703,97 @@
     .auth-controls.active .auth-user-select {
       display: inline-flex;
     }
+    .auth-compact {
+      display: flex;
+      position: relative;
+      width: 100%;
+      justify-content: center;
+    }
+    .auth-compact-inline {
+      display: inline-flex;
+      align-items: center;
+    }
+    .auth-compact-btn {
+      border: 1px solid #e2e8f0;
+      background: #f8fafc;
+      border-radius: 999px;
+      width: 32px;
+      height: 32px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      color: #94a3b8;
+      cursor: pointer;
+    }
+    .auth-compact-btn:hover {
+      background: #eef2f7;
+      color: #64748b;
+    }
+    .auth-compact-menu {
+      position: fixed;
+      bottom: 52px;
+      left: 12px;
+      transform: none;
+      background: #ffffff;
+      border: 1px solid #e2e8f0;
+      border-radius: 0.6rem;
+      box-shadow: 0 12px 24px rgba(15, 23, 42, 0.14);
+      min-width: 180px;
+      z-index: 1000;
+      display: none;
+      padding: 0.25rem 0;
+    }
+    .auth-compact-menu.is-open { display: block; }
+    .auth-compact-menu button {
+      width: 100%;
+      border: none;
+      background: transparent;
+      padding: 0.45rem 0.8rem;
+      text-align: left;
+      font-size: 0.85rem;
+      cursor: pointer;
+      color: #111827;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .auth-compact-menu button:hover { background: #f3f4f6; }
+    .auth-compact-menu .icon {
+      width: 16px;
+      height: 16px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      color: #64748b;
+    }
+    .auth-compact-menu svg { width: 16px; height: 16px; fill: currentColor; }
+    body.history-collapsed .auth-controls { display: none; }
+    .history-compact-footer {
+      position: fixed;
+      left: 6px;
+      bottom: 12px;
+      display: flex;
+      justify-content: center;
+      pointer-events: none;
+      z-index: 60;
+    }
+    body.history-collapsed .history-compact-footer { left: -6px; bottom: 12px; }
+    .history-compact-footer { pointer-events: auto; }
+    .history-footer {
+      margin-top: auto;
+      padding-top: 0.75rem;
+      padding-bottom: 48px;
+      border-top: 1px solid #eef2f7;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      justify-content: flex-start;
+      gap: 0.75rem;
+    }
+    .history-footer .auth-controls {
+      width: auto;
+      justify-content: flex-start;
+    }
 
     /* History sidebar */
     .app-shell {
@@ -732,6 +823,11 @@
     }
     body.history-collapsed #history-panel {
       width: var(--history-collapsed-width);
+      overflow: visible;
+      padding-left: 0.4rem;
+    }
+    body.history-collapsed .history-compact-footer {
+      left: 1.1rem;
     }
     .history-expand-btn {
       position: absolute;
@@ -747,6 +843,7 @@
       flex-direction: column;
       gap: 0.75rem;
       min-height: 0;
+      height: 100%;
       transition: opacity 0.12s ease;
     }
     body.history-collapsed .history-panel-content {
@@ -765,28 +862,54 @@
       border: 1px solid #e5e7eb;
       background: #f3f4f6;
       color: #111827;
-      font-weight: 600;
+      font-weight: 500;
       border-radius: 0.6rem;
-      padding: 0.55rem 0.75rem;
+      padding: 0.45rem 0.65rem;
       text-align: left;
       cursor: pointer;
+      font-size: 0.88rem;
     }
     .history-newchat-btn:hover { background: #e5e7eb; }
     .history-search-input {
       width: 100%;
       border: 1px solid #e5e7eb;
       border-radius: 0.6rem;
-      padding: 0.5rem 0.7rem;
-      font-size: 0.9rem;
+      padding: 0.45rem 0.65rem;
+      font-size: 0.86rem;
       background: #f9fafb;
     }
     .history-section-title {
-      font-size: 0.85rem;
-      font-weight: 700;
-      color: #6b7280;
+      font-size: 0.78rem;
+      font-weight: 600;
+      color: #94a3b8;
       text-transform: uppercase;
       letter-spacing: 0.04em;
-      margin-top: 0.25rem;
+      margin-top: 0.35rem;
+    }
+    .history-group-title {
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: #94a3b8;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      margin-top: 0.55rem;
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      cursor: pointer;
+    }
+    .history-group-caret {
+      width: 14px;
+      height: 14px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.7rem;
+      color: #6b7280;
+      transition: transform 0.12s ease;
+    }
+    .history-group-title.is-collapsed .history-group-caret {
+      transform: rotate(-90deg);
     }
     .history-list {
       display: flex;
@@ -795,13 +918,28 @@
       overflow: auto;
       padding-right: 0.25rem;
     }
+    .history-search-btn {
+      width: 100%;
+      border: 1px solid #e2e8f0;
+      background: #f8fafc;
+      color: #0f172a;
+      font-weight: 500;
+      border-radius: 0.6rem;
+      padding: 0.45rem 0.65rem;
+      text-align: left;
+      cursor: pointer;
+      font-size: 0.86rem;
+    }
+    .history-search-btn:hover { background: #eef2f7; }
     .history-item {
       border-radius: 0.6rem;
-      padding: 0.5rem 0.6rem;
+      padding: 0.42rem 0.55rem;
       cursor: pointer;
       color: #111827;
       background: transparent;
       border: 1px solid transparent;
+      position: relative;
+      padding-right: 2.1rem;
     }
     .history-item:hover { background: #f3f4f6; }
     .history-item.active {
@@ -809,22 +947,248 @@
       border-color: #bae6fd;
     }
     .history-item-title {
-      font-size: 0.9rem;
-      font-weight: 600;
+      font-size: 0.85rem;
+      font-weight: 500;
+      display: flex;
+      align-items: center;
+      gap: 0.35rem;
+    }
+    .history-item-title-text {
+      flex: 1 1 auto;
+      min-width: 0;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
     }
     .history-item-meta {
-      font-size: 0.75rem;
-      color: #6b7280;
+      font-size: 0.72rem;
+      color: #94a3b8;
       margin-top: 0.15rem;
+    }
+    .history-item-actions {
+      position: absolute;
+      right: 0.3rem;
+      top: 0.3rem;
+    }
+    .history-item-actions button {
+      border: 1px solid transparent;
+      background: transparent;
+      color: #94a3b8;
+      border-radius: 0.5rem;
+      width: 26px;
+      height: 26px;
+      cursor: pointer;
+    }
+    .history-item-actions button:hover {
+      background: #eef2f7;
+      color: #0f172a;
+    }
+    .history-context-menu {
+      position: fixed;
+      background: #ffffff;
+      border: 1px solid #e2e8f0;
+      border-radius: 0.6rem;
+      box-shadow: 0 12px 24px rgba(15, 23, 42, 0.14);
+      min-width: 180px;
+      z-index: 1000;
+      display: none;
+      padding: 0.25rem 0;
+    }
+    .history-context-menu.is-open {
+      display: block;
+    }
+    .history-context-menu button {
+      width: 100%;
+      border: none;
+      background: transparent;
+      padding: 0.45rem 0.8rem;
+      text-align: left;
+      font-size: 0.85rem;
+      cursor: pointer;
+      color: #111827;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .history-context-menu button:hover {
+      background: #f3f4f6;
+    }
+    .history-context-menu .icon {
+      width: 16px;
+      height: 16px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      color: #64748b;
+    }
+    .history-context-menu svg {
+      width: 16px;
+      height: 16px;
+      fill: currentColor;
+    }
+    .history-item-menu {
+      position: static;
+      margin-top: 0.35rem;
+      background: #ffffff;
+      border: 1px solid #e2e8f0;
+      border-radius: 0.6rem;
+      box-shadow: 0 12px 24px rgba(15, 23, 42, 0.14);
+      width: 100%;
+      z-index: 5;
+      display: none;
+      padding: 0.25rem 0;
+    }
+    .history-item-menu.is-open {
+      display: block;
+    }
+    .history-item-menu button {
+      width: 100%;
+      border: none;
+      background: transparent;
+      padding: 0.45rem 0.8rem;
+      text-align: left;
+      font-size: 0.85rem;
+      cursor: pointer;
+      color: #111827;
+    }
+    .history-item-menu button:hover {
+      background: #f3f4f6;
+    }
+    .history-item-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.2rem;
+      font-size: 0.68rem;
+      color: #b45309;
+      background: #fff7ed;
+      border: 1px solid #fdba74;
+      padding: 0.05rem 0.35rem;
+      border-radius: 999px;
+      margin-left: 0.35rem;
     }
     .history-empty {
       font-size: 0.85rem;
       color: #9ca3af;
       padding: 0.4rem 0.2rem;
       display: none;
+    }
+    .history-empty-group {
+      font-size: 0.8rem;
+      color: #94a3b8;
+      padding: 0.3rem 0.2rem 0.1rem;
+    }
+
+    .history-search-modal {
+      background: #ffffff;
+      border-radius: 0.9rem;
+      width: min(700px, 92vw);
+      max-height: min(80vh, 720px);
+      box-shadow: 0 20px 40px rgba(15, 23, 42, 0.2);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    .history-search-header {
+      padding: 0.9rem 1rem 0.7rem;
+      border-bottom: 1px solid #e5e7eb;
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+    .history-search-title-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.75rem;
+    }
+    .history-search-title {
+      font-weight: 800;
+      color: #111827;
+    }
+    .history-search-close {
+      border: 1px solid #d1d5db;
+      background: #ffffff;
+      color: #111827;
+      border-radius: 0.55rem;
+      width: 32px;
+      height: 32px;
+      font-size: 18px;
+      line-height: 1;
+      font-weight: 800;
+      cursor: pointer;
+    }
+    .history-search-input {
+      width: 100%;
+      border: 1px solid #e5e7eb;
+      border-radius: 0.6rem;
+      padding: 0.6rem 0.75rem;
+      font-size: 0.95rem;
+    }
+    .history-search-results {
+      padding: 0.5rem 0.75rem;
+      overflow: auto;
+      flex: 1 1 auto;
+      display: flex;
+      flex-direction: column;
+      gap: 0.35rem;
+    }
+    .history-search-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 0.75rem;
+      padding: 0.55rem 0.7rem;
+      border-radius: 0.6rem;
+      cursor: pointer;
+      border: 1px solid transparent;
+    }
+    .history-search-item:hover { background: #f3f4f6; }
+    .history-search-item-title {
+      font-weight: 600;
+      color: #111827;
+    }
+    .history-search-item-meta {
+      font-size: 0.8rem;
+      color: #6b7280;
+      white-space: nowrap;
+    }
+    .history-search-mark {
+      border: 1px solid #e2e8f0;
+      background: #f8fafc;
+      color: #0f172a;
+      border-radius: 999px;
+      padding: 0.2rem 0.6rem;
+      font-size: 0.72rem;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    .history-search-mark:hover { background: #eef2f7; }
+    .history-search-empty {
+      font-size: 0.9rem;
+      color: #9ca3af;
+      padding: 0.8rem 0.7rem;
+    }
+    .history-search-footer {
+      padding: 0.6rem 0.75rem 0.9rem;
+      border-top: 1px solid #e5e7eb;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .history-search-filter {
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      font-size: 0.82rem;
+      color: #475569;
+    }
+    .history-search-more {
+      border-radius: 0.6rem;
+      padding: 0.45rem 0.9rem;
+      font-weight: 600;
+      border: 1px solid #d1d5db;
+      background: #ffffff;
+      cursor: pointer;
     }
 
     @media (max-width: 1100px) {
@@ -1318,10 +1682,39 @@
         <div class="history-top">
           <button id="historyNewChatBtn" class="history-newchat-btn" type="button">Nowy chat</button>
           <input id="historySearchInput" class="history-search-input" type="search" placeholder="Wyszukaj czaty" aria-label="Wyszukaj czaty">
+          <button id="historySearchBtn" class="history-search-btn" type="button">Szukaj (Ctrl+K)</button>
         </div>
         <div class="history-section-title" id="historySectionTitle">Twoje czaty</div>
         <div id="historyList" class="history-list"></div>
         <div id="historyEmpty" class="history-empty">Brak historii</div>
+        <div class="history-footer">
+          <div class="auth-controls" id="authControls">
+            <button id="authToggleBtn" class="auth-btn" type="button">Fake Login</button>
+            <select id="authUserSelect" class="auth-user-select" aria-label="Wybierz użytkownika">
+              <option value="dev-user-1">dev-user-1</option>
+              <option value="dev-user-2">dev-user-2</option>
+            </select>
+          </div>
+        </div>
+      </div>
+      <div class="history-compact-footer">
+        <div class="auth-compact" id="authCompact">
+          <button id="authCompactBtn" class="auth-compact-btn" type="button" aria-label="User menu">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 12c2.76 0 5-2.24 5-5S14.76 2 12 2 7 4.24 7 7s2.24 5 5 5zm0 2c-3.33 0-10 1.67-10 5v3h20v-3c0-3.33-6.67-5-10-5z"/></svg>
+          </button>
+          <div class="auth-compact-menu" id="authCompactMenu">
+            <button type="button" id="authCompactAction">
+              <span class="icon" id="authCompactActionIcon" aria-hidden="true"></span>
+              <span id="authCompactActionLabel">Zaloguj</span>
+            </button>
+            <button type="button" id="authCompactClearHistory">
+              <span class="icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><path d="M5 4h14v2H5zm2 4h10l-1 12H8L7 8zm4 2v8h2v-8z"/></svg>
+              </span>
+              <span id="authCompactClearHistoryLabel">Usuń historię</span>
+            </button>
+          </div>
+        </div>
       </div>
     </aside>
 
@@ -1329,13 +1722,6 @@
     <div class="content-shell">
       <div class="topbar">
         <div class="flex gap-2" id="consultants"></div>
-        <div class="auth-controls" id="authControls">
-          <button id="authToggleBtn" class="auth-btn" type="button">Fake Login</button>
-          <select id="authUserSelect" class="auth-user-select" aria-label="Wybierz użytkownika">
-            <option value="dev-user-1">dev-user-1</option>
-            <option value="dev-user-2">dev-user-2</option>
-          </select>
-        </div>
       </div>
 
       <div class="ui-error" id="uiError"></div>
@@ -1429,6 +1815,78 @@
       <div class="trace-doc-modal-body markdown-content" id="traceDocModalBody"></div>
     </div>
   </div>
+
+  <div class="modal-backdrop" id="renameChatModalBackdrop" style="display:none;">
+    <div class="modal">
+      <div class="modal-title" id="renameChatModalTitle">Zmień nazwę</div>
+      <div class="modal-body">
+        <label for="renameChatInput" id="renameChatModalLabel">Nowa nazwa</label>
+        <input id="renameChatInput" class="history-search-input" type="text">
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="modal-btn cancel" id="renameChatModalCancel">Anuluj</button>
+        <button type="button" class="modal-btn confirm" id="renameChatModalConfirm">OK</button>
+      </div>
+    </div>
+  </div>
+  <div class="modal-backdrop" id="clearHistoryModalBackdrop" style="display:none;">
+    <div class="modal">
+      <div class="modal-title" id="clearHistoryModalTitle">Usuń historię</div>
+      <div class="modal-body" id="clearHistoryModalBody">Czy na pewno chcesz usunąć swoją historię?</div>
+      <div class="modal-actions">
+        <button type="button" class="modal-btn cancel" id="clearHistoryModalCancel">Anuluj</button>
+        <button type="button" class="modal-btn confirm" id="clearHistoryModalConfirm">Usuń</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-backdrop" id="historySearchModalBackdrop" style="display:none;">
+    <div class="history-search-modal">
+      <div class="history-search-header">
+        <div class="history-search-title-row">
+          <div class="history-search-title" id="historySearchModalTitle">Wyszukaj czaty</div>
+          <button type="button" class="history-search-close" id="historySearchModalClose" aria-label="Zamknij">×</button>
+        </div>
+        <input id="historySearchModalInput" class="history-search-input" type="search" placeholder="Szukaj..." aria-label="Szukaj czatów">
+      </div>
+      <div class="history-search-results" id="historySearchModalList"></div>
+      <div class="history-search-empty" id="historySearchModalEmpty">Brak wyników</div>
+      <div class="history-search-footer">
+        <label class="history-search-filter">
+          <input type="checkbox" id="historySearchModalImportant">
+          <span id="historySearchModalImportantLabel">Tylko ważne</span>
+        </label>
+        <div class="history-search-meta" id="historySearchModalCount"></div>
+        <button type="button" class="history-search-more" id="historySearchModalMore">Pokaż więcej</button>
+      </div>
+    </div>
+  </div>
+  <div class="history-context-menu" id="historyContextMenu">
+    <button type="button" id="historyContextRename">
+      <span class="icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zm2.92 2.33H5v-.92l8.06-8.06.92.92L5.92 19.58zM20.71 7.04a1.003 1.003 0 0 0 0-1.42l-2.34-2.34a1.003 1.003 0 0 0-1.42 0l-1.83 1.83 3.75 3.75 1.84-1.82z"/></svg>
+      </span>
+      <span id="historyContextRenameLabel">Zmień nazwę</span>
+    </button>
+    <button type="button" id="historyContextImportant">
+      <span class="icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><path d="M12 17.27 18.18 21 16.54 13.97 22 9.24 14.81 8.63 12 2 9.19 8.63 2 9.24 7.46 13.97 5.82 21z"/></svg>
+      </span>
+      <span id="historyContextImportantLabel">Oznacz jako ważne</span>
+    </button>
+    <button type="button" id="historyContextDelete">
+      <span class="icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zm3.46-7.88 1.06-1.06L12 11.54l1.48-1.48 1.06 1.06L13.06 12.6l1.48 1.48-1.06 1.06L12 13.66l-1.48 1.48-1.06-1.06L10.94 12.6l-1.48-1.48zM15.5 4l-1-1h-5l-1 1H5v2h14V4z"/></svg>
+      </span>
+      <span id="historyContextDeleteLabel">Usuń</span>
+    </button>
+    <button type="button" id="historyContextClearAll">
+      <span class="icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><path d="M5 4h14v2H5zm2 4h10l-1 12H8L7 8zm4 2v8h2v-8z"/></svg>
+      </span>
+      <span id="historyContextClearAllLabel">Usuń historię</span>
+    </button>
+  </div>
   <div id="trace-backdrop"></div>
 
 <script>
@@ -1446,6 +1904,23 @@
   const DEFAULT_APP_CONFIG = {
     defaultConsultantId: "rejewski",
     snapshotPolicy: "single",
+    historyGroups: [
+      {
+        neutral_description: "today",
+        translated_description: "dzisiaj",
+        formula: { type: "today" }
+      },
+      {
+        neutral_description: "last week",
+        translated_description: "ostatni tydzień",
+        formula: { type: "last_n_days", days: 7 }
+      }
+    ],
+    historyImportant: {
+      neutral_description: "important",
+      translated_description: "ważne",
+      show_important_on_the_top: true
+    },
     consultants: [
       {
         id: "rejewski",
@@ -1542,6 +2017,17 @@
   let activeHistorySessionId = null;
   let historySearchQuery = "";
   let historyCollapsed = false;
+  let historySearchModalOpen = false;
+  let historySearchModalQuery = "";
+  let historySearchModalCursor = null;
+  let historySearchModalLoading = false;
+  let historySearchModalItems = [];
+  const HISTORY_SEARCH_PAGE_SIZE = 50;
+  const historyGroupCollapsed = {};
+  let historySearchModalOnlyImportant = false;
+  let historyOpenMenu = null;
+  let renameTargetSessionId = null;
+  let historyContextTarget = null;
 
   const form = document.getElementById("queryForm");
   const queryInput = document.getElementById("query");
@@ -1557,11 +2043,20 @@
   const authToggleBtn = document.getElementById("authToggleBtn");
   const authUserSelect = document.getElementById("authUserSelect");
   const authControls = document.getElementById("authControls");
+  const authCompact = document.getElementById("authCompact");
+  const authCompactBtn = document.getElementById("authCompactBtn");
+  const authCompactMenu = document.getElementById("authCompactMenu");
+  const authCompactAction = document.getElementById("authCompactAction");
+  const authCompactActionLabel = document.getElementById("authCompactActionLabel");
+  const authCompactActionIcon = document.getElementById("authCompactActionIcon");
+  const authCompactClearHistory = document.getElementById("authCompactClearHistory");
+  const authCompactClearHistoryLabel = document.getElementById("authCompactClearHistoryLabel");
   const historyPanel = document.getElementById("history-panel");
   const historyCollapseBtn = document.getElementById("historyCollapseBtn");
   const historyExpandBtn = document.getElementById("historyExpandBtn");
   const historyNewChatBtn = document.getElementById("historyNewChatBtn");
   const historySearchInput = document.getElementById("historySearchInput");
+  const historySearchBtn = document.getElementById("historySearchBtn");
   const historySectionTitle = document.getElementById("historySectionTitle");
   const historyList = document.getElementById("historyList");
   const historyEmpty = document.getElementById("historyEmpty");
@@ -1589,6 +2084,36 @@
   const traceDocPrevBtn = document.getElementById("traceDocPrev");
   const traceDocNextBtn = document.getElementById("traceDocNext");
   const traceDocModalClose = document.getElementById("traceDocModalClose");
+  const historySearchModalBackdrop = document.getElementById("historySearchModalBackdrop");
+  const historySearchModalTitle = document.getElementById("historySearchModalTitle");
+  const historySearchModalInput = document.getElementById("historySearchModalInput");
+  const historySearchModalList = document.getElementById("historySearchModalList");
+  const historySearchModalEmpty = document.getElementById("historySearchModalEmpty");
+  const historySearchModalMore = document.getElementById("historySearchModalMore");
+  const historySearchModalClose = document.getElementById("historySearchModalClose");
+  const historySearchModalCount = document.getElementById("historySearchModalCount");
+  const historySearchModalImportant = document.getElementById("historySearchModalImportant");
+  const historySearchModalImportantLabel = document.getElementById("historySearchModalImportantLabel");
+  const renameChatModalBackdrop = document.getElementById("renameChatModalBackdrop");
+  const renameChatModalTitle = document.getElementById("renameChatModalTitle");
+  const renameChatModalLabel = document.getElementById("renameChatModalLabel");
+  const renameChatInput = document.getElementById("renameChatInput");
+  const renameChatModalCancel = document.getElementById("renameChatModalCancel");
+  const renameChatModalConfirm = document.getElementById("renameChatModalConfirm");
+  const clearHistoryModalBackdrop = document.getElementById("clearHistoryModalBackdrop");
+  const clearHistoryModalTitle = document.getElementById("clearHistoryModalTitle");
+  const clearHistoryModalBody = document.getElementById("clearHistoryModalBody");
+  const clearHistoryModalCancel = document.getElementById("clearHistoryModalCancel");
+  const clearHistoryModalConfirm = document.getElementById("clearHistoryModalConfirm");
+  const historyContextMenu = document.getElementById("historyContextMenu");
+  const historyContextRename = document.getElementById("historyContextRename");
+  const historyContextImportant = document.getElementById("historyContextImportant");
+  const historyContextDelete = document.getElementById("historyContextDelete");
+  const historyContextClearAll = document.getElementById("historyContextClearAll");
+  const historyContextRenameLabel = document.getElementById("historyContextRenameLabel");
+  const historyContextImportantLabel = document.getElementById("historyContextImportantLabel");
+  const historyContextDeleteLabel = document.getElementById("historyContextDeleteLabel");
+  const historyContextClearAllLabel = document.getElementById("historyContextClearAllLabel");
 
   // If name is longer than this, we shorten it in CLOSED state.
   // In compare mode we also shorten even if it's below the threshold (to make differences obvious).
@@ -1681,36 +2206,450 @@
     return slugifyTitle(session.title || session.firstQuestion || "New chat") || "New chat";
   }
 
+  function isHistoryImportant(session) {
+    return !!(session && session.important);
+  }
+
+  function getHistoryImportantConfig() {
+    return appConfig?.historyImportant || DEFAULT_APP_CONFIG.historyImportant || {};
+  }
+
+  function getHistoryImportantLabel() {
+    const cfg = getHistoryImportantConfig();
+    const lang = getCurrentLang();
+    if (lang === "pl") return String(cfg.translated_description || cfg.neutral_description || "").trim();
+    return String(cfg.neutral_description || cfg.translated_description || "").trim();
+  }
+
+  function getHistoryGroupsConfig() {
+    const cfg = appConfig?.historyGroups || DEFAULT_APP_CONFIG.historyGroups || [];
+    return Array.isArray(cfg) ? cfg : [];
+  }
+
+  function getHistoryGroupLabel(group) {
+    const lang = getCurrentLang();
+    if (lang === "pl") return String(group?.translated_description || group?.neutral_description || "").trim();
+    return String(group?.neutral_description || group?.translated_description || "").trim();
+  }
+
+  function resolveHistoryGroupRange(formula, nowMs) {
+    if (!formula || !formula.type) return null;
+    const type = String(formula.type || "").trim().toLowerCase();
+    if (type === "today") {
+      const d = new Date(nowMs);
+      d.setHours(0, 0, 0, 0);
+      return { startMs: d.getTime(), endMs: nowMs };
+    }
+    if (type === "last_n_days") {
+      const days = parseInt(formula.days || 0, 10);
+      if (!Number.isFinite(days) || days <= 0) return null;
+      const todayStart = new Date(nowMs);
+      todayStart.setHours(0, 0, 0, 0);
+      return { startMs: todayStart.getTime() - (days * 86400000), endMs: todayStart.getTime() };
+    }
+    return null;
+  }
+
+  function appendHistoryItem(s) {
+    const title = buildHistoryItemTitle(s);
+    const item = document.createElement("div");
+    item.className = "history-item";
+    if (activeHistorySessionId && s.sessionId === activeHistorySessionId) {
+      item.classList.add("active");
+    }
+    const t1 = document.createElement("div");
+    t1.className = "history-item-title";
+    const titleText = document.createElement("span");
+    titleText.className = "history-item-title-text";
+    titleText.textContent = title;
+    t1.appendChild(titleText);
+    if (isHistoryImportant(s)) {
+      const badge = document.createElement("span");
+      badge.className = "history-item-badge";
+      badge.textContent = "!";
+      t1.appendChild(badge);
+    }
+    const t2 = document.createElement("div");
+    t2.className = "history-item-meta";
+    t2.textContent = s.updatedAt ? new Date(s.updatedAt).toLocaleString(getTexts(getCurrentLang()).locale) : "";
+    item.appendChild(t1);
+    item.appendChild(t2);
+    const actionsWrap = document.createElement("div");
+    actionsWrap.className = "history-item-actions";
+    const menuBtn = document.createElement("button");
+    menuBtn.type = "button";
+    menuBtn.setAttribute("aria-label", "Menu");
+    menuBtn.textContent = "⋯";
+    actionsWrap.appendChild(menuBtn);
+    item.appendChild(actionsWrap);
+    item.addEventListener("click", () => {
+      loadHistorySession(s.sessionId);
+    });
+    menuBtn.addEventListener("click", (evt) => {
+      evt.stopPropagation();
+      openHistoryContextMenu({ session: s, anchor: menuBtn });
+    });
+    historyList.appendChild(item);
+  }
+
   function renderHistoryList() {
     if (!historyList || !historyEmpty) return;
-    const sessions = getUserSessions();
+    const sessionsRaw = getUserSessions();
+    const seen = new Set();
+    const sessions = [];
+    sessionsRaw.forEach((s) => {
+      const sid = String(s?.sessionId || "");
+      if (!sid || seen.has(sid)) return;
+      seen.add(sid);
+      sessions.push(s);
+    });
     const q = normalizeTraceFilterQuery(historySearchQuery);
     historyList.innerHTML = "";
     let visible = 0;
-    sessions.forEach((s) => {
+    const groups = getHistoryGroupsConfig();
+    if (!groups.length) {
+      sessions.forEach((s) => {
+        const title = buildHistoryItemTitle(s);
+        const hay = `${title} ${(s.consultantId || "")}`.toLowerCase();
+        if (q && !hay.includes(q)) return;
+        visible += 1;
+        appendHistoryItem(s);
+      });
+      historyEmpty.style.display = visible === 0 ? "block" : "none";
+      return;
+    }
+
+    const assigned = new Set();
+    const now = Date.now();
+    const importantCfg = getHistoryImportantConfig();
+    const showImportantTop = importantCfg && importantCfg.show_important_on_the_top !== false;
+    const importantLabel = getHistoryImportantLabel();
+    const importantItems = sessions.filter((s) => {
+      if (!isHistoryImportant(s)) return false;
       const title = buildHistoryItemTitle(s);
       const hay = `${title} ${(s.consultantId || "")}`.toLowerCase();
-      if (q && !hay.includes(q)) return;
-      visible += 1;
-      const item = document.createElement("div");
-      item.className = "history-item";
-      if (activeHistorySessionId && s.sessionId === activeHistorySessionId) {
-        item.classList.add("active");
-      }
-      const t1 = document.createElement("div");
-      t1.className = "history-item-title";
-      t1.textContent = title;
-      const t2 = document.createElement("div");
-      t2.className = "history-item-meta";
-      t2.textContent = s.updatedAt ? new Date(s.updatedAt).toLocaleString(getTexts(getCurrentLang()).locale) : "";
-      item.appendChild(t1);
-      item.appendChild(t2);
-      item.addEventListener("click", () => {
-        loadHistorySession(s.sessionId);
-      });
-      historyList.appendChild(item);
+      if (q && !hay.includes(q)) return false;
+      return true;
     });
-    historyEmpty.style.display = visible === 0 ? "block" : "none";
+    const renderGroup = (label, groupKey, items, includeEmpty) => {
+      if (label) {
+        const titleEl = document.createElement("div");
+        const collapsed = !!historyGroupCollapsed[groupKey];
+        titleEl.className = `history-group-title${collapsed ? " is-collapsed" : ""}`;
+        titleEl.dataset.groupKey = groupKey;
+        titleEl.addEventListener("click", () => {
+          historyGroupCollapsed[groupKey] = !historyGroupCollapsed[groupKey];
+          renderHistoryList();
+        });
+        const caret = document.createElement("span");
+        caret.className = "history-group-caret";
+        caret.textContent = "▾";
+        const labelEl = document.createElement("span");
+        labelEl.textContent = label;
+        titleEl.appendChild(caret);
+        titleEl.appendChild(labelEl);
+        historyList.appendChild(titleEl);
+      }
+      if (historyGroupCollapsed[groupKey]) return;
+      if (!items.length) {
+        if (!includeEmpty) return;
+        const emptyEl = document.createElement("div");
+        emptyEl.className = "history-empty-group";
+        emptyEl.textContent = getTexts(getCurrentLang()).historyEmpty || "Brak historii";
+        historyList.appendChild(emptyEl);
+        return;
+      }
+      items.forEach((s) => {
+        visible += 1;
+        appendHistoryItem(s);
+      });
+    };
+
+    if (showImportantTop && importantItems.length) {
+      renderGroup(importantLabel, "important", importantItems, false);
+    }
+
+    groups.forEach((group, idx) => {
+      const range = resolveHistoryGroupRange(group?.formula, now);
+      if (!range) return;
+      const label = getHistoryGroupLabel(group);
+      const groupKey = String(group?.neutral_description || label || idx);
+      const items = sessions.filter((s) => {
+        if (!s || assigned.has(s.sessionId)) return false;
+        const ts = Number(s.updatedAt || 0);
+        if (!ts || ts < range.startMs || ts > range.endMs) return false;
+        const title = buildHistoryItemTitle(s);
+        const hay = `${title} ${(s.consultantId || "")}`.toLowerCase();
+        if (q && !hay.includes(q)) return false;
+        return true;
+      });
+      items.forEach((s) => assigned.add(s.sessionId));
+      renderGroup(label, groupKey, items, true);
+    });
+    historyEmpty.style.display = groups.length ? "none" : (visible === 0 ? "block" : "none");
+  }
+
+  function setHistorySearchModalVisible(show) {
+    historySearchModalOpen = !!show;
+    if (!historySearchModalBackdrop) return;
+    historySearchModalBackdrop.style.display = historySearchModalOpen ? "flex" : "none";
+    if (historySearchModalOpen) {
+      if (historySearchModalInput) {
+        historySearchModalInput.focus();
+        historySearchModalInput.select();
+      }
+    }
+  }
+
+  function resetHistorySearchModal() {
+    historySearchModalItems = [];
+    historySearchModalCursor = null;
+    historySearchModalQuery = "";
+    historySearchModalLoading = false;
+    if (historySearchModalInput) historySearchModalInput.value = "";
+    renderHistorySearchResults();
+  }
+
+  function renderHistorySearchResults() {
+    if (!historySearchModalList || !historySearchModalEmpty) return;
+    historySearchModalList.innerHTML = "";
+    const filtered = historySearchModalOnlyImportant
+      ? historySearchModalItems.filter((s) => isHistoryImportant(s))
+      : historySearchModalItems;
+    filtered.forEach((s) => {
+      const row = document.createElement("div");
+      row.className = "history-search-item";
+      const left = document.createElement("div");
+      left.className = "history-search-item-title";
+      left.textContent = buildHistoryItemTitle(s);
+      const right = document.createElement("div");
+      right.className = "history-search-item-meta";
+      right.textContent = s.updatedAt ? new Date(s.updatedAt).toLocaleString(getTexts(getCurrentLang()).locale) : "";
+      row.appendChild(left);
+      row.appendChild(right);
+      row.addEventListener("click", () => {
+        loadHistorySession(s.sessionId);
+        setHistorySearchModalVisible(false);
+      });
+      const actions = document.createElement("button");
+      actions.type = "button";
+      actions.className = "history-search-mark";
+      actions.textContent = isHistoryImportant(s)
+        ? (getTexts(getCurrentLang()).historyUnmarkImportant || "Usuń z ważnych")
+        : (getTexts(getCurrentLang()).historyMarkImportant || "Oznacz jako ważne");
+      actions.addEventListener("click", (evt) => {
+        evt.stopPropagation();
+        updateHistorySessionMeta(s.sessionId, { important: !isHistoryImportant(s) });
+        renderHistorySearchResults();
+      });
+      row.appendChild(actions);
+      historySearchModalList.appendChild(row);
+    });
+    const empty = filtered.length === 0;
+    historySearchModalEmpty.style.display = empty ? "block" : "none";
+    if (historySearchModalMore) {
+      historySearchModalMore.style.display = historySearchModalCursor ? "inline-flex" : "none";
+      historySearchModalMore.disabled = historySearchModalLoading;
+    }
+    if (historySearchModalCount) {
+      historySearchModalCount.textContent = filtered.length ? `${filtered.length}` : "";
+    }
+  }
+
+  async function fetchHistorySearchPage({ query, cursor }) {
+    if (historySearchModalLoading) return;
+    historySearchModalLoading = true;
+    renderHistorySearchResults();
+    const q = String(query || "").trim();
+    if (historyBackendAvailable) {
+      const authHeaders = {};
+      if (fakeAuthEnabled) {
+        authHeaders["Authorization"] = `Bearer dev-user:${activeDevUserId}`;
+      }
+      const params = new URLSearchParams();
+      params.set("limit", String(HISTORY_SEARCH_PAGE_SIZE));
+      if (q) params.set("q", q);
+      if (cursor) params.set("cursor", cursor);
+      try {
+        const res = await fetch(`${API_BASE}/chat-history/sessions?${params.toString()}`, { headers: authHeaders });
+        if (!res.ok) throw new Error("history search failed");
+        const json = await res.json();
+        const items = Array.isArray(json.items) ? json.items : [];
+        historySearchModalItems = historySearchModalItems.concat(items);
+        historySearchModalCursor = json.next_cursor || null;
+      } catch (e) {
+        historyBackendAvailable = false;
+      }
+    }
+
+    if (!historyBackendAvailable) {
+      const sessions = getUserSessions();
+      const all = q
+        ? sessions.filter((s) => (buildHistoryItemTitle(s) || "").toLowerCase().includes(q.toLowerCase()))
+        : sessions.slice();
+      const start = cursor ? parseInt(cursor, 10) : 0;
+      const slice = all.slice(start, start + HISTORY_SEARCH_PAGE_SIZE);
+      historySearchModalItems = historySearchModalItems.concat(slice);
+      historySearchModalCursor = (start + slice.length) < all.length ? String(start + slice.length) : null;
+    }
+
+    historySearchModalLoading = false;
+    renderHistorySearchResults();
+  }
+
+  function openHistorySearchModal() {
+    resetHistorySearchModal();
+    setHistorySearchModalVisible(true);
+  }
+
+  function closeHistoryContextMenu() {
+    if (!historyContextMenu) return;
+    historyContextMenu.classList.remove("is-open");
+    historyContextTarget = null;
+  }
+
+  function openHistoryContextMenu({ session, anchor }) {
+    if (!historyContextMenu || !anchor) return;
+    historyContextTarget = session;
+    const rect = anchor.getBoundingClientRect();
+    historyContextMenu.style.top = `${Math.min(window.innerHeight - 10, rect.bottom + 6)}px`;
+    historyContextMenu.style.left = `${Math.min(window.innerWidth - 200, rect.left - 140)}px`;
+    historyContextMenu.classList.add("is-open");
+    if (historyContextImportantLabel) {
+      historyContextImportantLabel.textContent = isHistoryImportant(session)
+        ? (getTexts(getCurrentLang()).historyUnmarkImportant || "Usuń z ważnych")
+        : (getTexts(getCurrentLang()).historyMarkImportant || "Oznacz jako ważne");
+    }
+  }
+
+  function setRenameChatModalVisible(show) {
+    if (!renameChatModalBackdrop) return;
+    renameChatModalBackdrop.style.display = show ? "flex" : "none";
+    if (show && renameChatInput) {
+      renameChatInput.focus();
+      renameChatInput.select();
+    }
+  }
+
+  function openRenameChatModal(sessionId, currentTitle) {
+    renameTargetSessionId = sessionId;
+    if (renameChatInput) {
+      renameChatInput.value = currentTitle || "";
+    }
+    setRenameChatModalVisible(true);
+  }
+
+  function setClearHistoryModalVisible(show) {
+    if (!clearHistoryModalBackdrop) return;
+    clearHistoryModalBackdrop.style.display = show ? "flex" : "none";
+  }
+
+  function openClearHistoryModal() {
+    const t = getTexts(getCurrentLang());
+    if (clearHistoryModalTitle) {
+      clearHistoryModalTitle.textContent = t.historyClearModalTitle || t.historyClear;
+    }
+    if (clearHistoryModalBody) {
+      clearHistoryModalBody.textContent = t.historyClearConfirm || "Czy na pewno chcesz usunąć swoją historię?";
+    }
+    if (clearHistoryModalConfirm) {
+      clearHistoryModalConfirm.textContent = t.historyClearModalConfirm || t.historyClear;
+    }
+    if (clearHistoryModalCancel) {
+      clearHistoryModalCancel.textContent = t.historyClearModalCancel || t.modalCancel || "Anuluj";
+    }
+    setClearHistoryModalVisible(true);
+  }
+
+  function updateHistorySessionMeta(sessionId, patch) {
+    const now = Date.now();
+    const sessions = getUserSessions();
+    const next = sessions.map((s) => {
+      if (s.sessionId !== sessionId) return s;
+      const updated = { ...s, ...patch, updatedAt: now };
+      return updated;
+    });
+    setUserSessions(next);
+    renderHistoryList();
+    if (!historyBackendAvailable) return;
+    const authHeaders = {};
+    if (fakeAuthEnabled) {
+      authHeaders["Authorization"] = `Bearer dev-user:${activeDevUserId}`;
+    }
+    fetch(`${API_BASE}/chat-history/sessions/${encodeURIComponent(sessionId)}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", ...authHeaders },
+      body: JSON.stringify(patch)
+    }).catch(() => {});
+  }
+
+  function updateAuthUi() {
+    const t = getTexts(getCurrentLang());
+    if (authToggleBtn) {
+      authToggleBtn.classList.toggle("active", fakeAuthEnabled);
+      authToggleBtn.textContent = fakeAuthEnabled ? t.authLogout : t.authLogin;
+    }
+    if (authControls) {
+      authControls.classList.toggle("active", fakeAuthEnabled);
+    }
+    if (authCompactActionLabel) {
+      authCompactActionLabel.textContent = fakeAuthEnabled ? t.authLogout : t.authLogin;
+    }
+    if (authCompactActionIcon) {
+      authCompactActionIcon.innerHTML = fakeAuthEnabled
+        ? '<svg viewBox="0 0 24 24"><path d="M14 7v-2H5v14h9v-2h2v4H3V3h13v4zM16 13v3l5-4-5-4v3H9v2h7z"/></svg>'
+        : '<svg viewBox="0 0 24 24"><path d="M10 17v-2h7V9h-7V7h9v10h-9zm-2-4V9l-5 4 5 4z"/></svg>';
+    }
+  }
+  function deleteHistorySession(sessionId) {
+    const now = Date.now();
+    const sessions = getUserSessions().map((s) => {
+      if (s.sessionId !== sessionId) return s;
+      return { ...s, softDeletedAt: now, status: "soft_deleted", updatedAt: now };
+    }).filter((s) => !s.softDeletedAt);
+    setUserSessions(sessions);
+    if (activeHistorySessionId === sessionId) {
+      activeHistorySessionId = null;
+    }
+    renderHistoryList();
+    if (!historyBackendAvailable) return;
+    const authHeaders = {};
+    if (fakeAuthEnabled) {
+      authHeaders["Authorization"] = `Bearer dev-user:${activeDevUserId}`;
+    }
+    fetch(`${API_BASE}/chat-history/sessions/${encodeURIComponent(sessionId)}`, {
+      method: "DELETE",
+      headers: { ...authHeaders }
+    }).catch(() => {});
+  }
+
+  function clearAllHistoryConfirmed() {
+    const now = Date.now();
+    const sessions = getUserSessions().map((s) => ({
+      ...s,
+      softDeletedAt: now,
+      status: "soft_deleted",
+      updatedAt: now,
+    }));
+    setUserSessions([]);
+    activeHistorySessionId = null;
+    renderHistoryList();
+    if (!historyBackendAvailable) return;
+    const authHeaders = {};
+    if (fakeAuthEnabled) {
+      authHeaders["Authorization"] = `Bearer dev-user:${activeDevUserId}`;
+    }
+    sessions.forEach((s) => {
+      fetch(`${API_BASE}/chat-history/sessions/${encodeURIComponent(s.sessionId)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", ...authHeaders },
+        body: JSON.stringify({ softDeleted: true })
+      }).catch(() => {});
+    });
+  }
+
+  function clearAllHistory() {
+    openClearHistoryModal();
   }
 
   function setHistoryCollapsed(next) {
@@ -1927,6 +2866,29 @@
         findInDocs: "Szukaj w dok.",
         historyTitle: "Twoje czaty",
         historySearchPlaceholder: "Wyszukaj czaty",
+        historySearchButton: "Szukaj (Ctrl+K)",
+        historySearchModalTitle: "Wyszukaj czaty",
+        historySearchModalPlaceholder: "Szukaj...",
+        historySearchModalEmpty: "Brak wyników",
+        historySearchModalMore: "Pokaż więcej",
+        historySearchImportantOnly: "Tylko ważne",
+        historyRename: "Zmień nazwę",
+      historyRenamePrompt: "Nowa nazwa",
+      historyDelete: "Usuń",
+        historyDeleteConfirm: "Usunąć czat?",
+        historyClear: "Usuń historię",
+        historyClearConfirm: "Czy na pewno chcesz usunąć swoją historię?",
+        historyClearModalTitle: "Usuń historię",
+        historyClearModalConfirm: "Usuń",
+        historyClearModalCancel: "Anuluj",
+        historyMarkImportant: "Oznacz jako ważne",
+      historyUnmarkImportant: "Usuń z ważnych",
+      historyRenameModalTitle: "Zmień nazwę",
+      historyRenameModalLabel: "Nowa nazwa",
+      historyRenameModalConfirm: "Zapisz",
+      historyRenameModalCancel: "Anuluj",
+      authLogin: "Zaloguj",
+      authLogout: "Wyloguj",
         historyEmpty: "Brak historii",
         historyNewChat: "Nowy czat",
         queryProgressText: "Zapytanie w toku",
@@ -1982,6 +2944,29 @@
       findInDocs: "Search docs",
       historyTitle: "Your chats",
       historySearchPlaceholder: "Search chats",
+      historySearchButton: "Search (Ctrl+K)",
+      historySearchModalTitle: "Search chats",
+      historySearchModalPlaceholder: "Search...",
+      historySearchModalEmpty: "No results",
+      historySearchModalMore: "Show more",
+      historySearchImportantOnly: "Important only",
+      historyRename: "Rename",
+      historyRenamePrompt: "New name",
+      historyDelete: "Delete",
+      historyDeleteConfirm: "Delete chat?",
+      historyClear: "Clear history",
+      historyClearConfirm: "Are you sure you want to delete your history?",
+      historyClearModalTitle: "Delete history",
+      historyClearModalConfirm: "Delete",
+      historyClearModalCancel: "Cancel",
+      historyMarkImportant: "Mark as important",
+      historyUnmarkImportant: "Remove from important",
+      historyRenameModalTitle: "Rename chat",
+      historyRenameModalLabel: "New name",
+      historyRenameModalConfirm: "Save",
+      historyRenameModalCancel: "Cancel",
+      authLogin: "Log in",
+      authLogout: "Log out",
       historyEmpty: "No history",
       historyNewChat: "New chat",
         queryProgressText: "Query in progress",
@@ -3168,19 +4153,47 @@
     }
     if (traceFilterEmpty) traceFilterEmpty.textContent = t.traceFilterNoMatch;
     if (authToggleBtn) {
-      authToggleBtn.textContent = fakeAuthEnabled ? "Fake Logout" : "Fake Login";
+      authToggleBtn.textContent = fakeAuthEnabled ? t.authLogout : t.authLogin;
     }
     if (historySectionTitle) historySectionTitle.textContent = t.historyTitle;
     if (historySearchInput) {
       historySearchInput.placeholder = t.historySearchPlaceholder;
       historySearchInput.setAttribute("aria-label", t.historySearchPlaceholder);
     }
+    if (historySearchBtn) historySearchBtn.textContent = t.historySearchButton;
+    if (historySearchModalTitle) historySearchModalTitle.textContent = t.historySearchModalTitle;
+    if (historySearchModalInput) {
+      historySearchModalInput.placeholder = t.historySearchModalPlaceholder;
+      historySearchModalInput.setAttribute("aria-label", t.historySearchModalPlaceholder);
+    }
+    if (historySearchModalEmpty) historySearchModalEmpty.textContent = t.historySearchModalEmpty;
+    if (historySearchModalMore) historySearchModalMore.textContent = t.historySearchModalMore;
+    if (historySearchModalImportantLabel) historySearchModalImportantLabel.textContent = t.historySearchImportantOnly;
+    if (historyContextRenameLabel) historyContextRenameLabel.textContent = t.historyRename;
+    if (historyContextImportantLabel) {
+      historyContextImportantLabel.textContent = t.historyMarkImportant;
+    }
+    if (historyContextDeleteLabel) historyContextDeleteLabel.textContent = t.historyDelete;
+    if (historyContextClearAllLabel) historyContextClearAllLabel.textContent = t.historyClear;
+    if (authCompactClearHistoryLabel) authCompactClearHistoryLabel.textContent = t.historyClear;
+    if (authCompactActionLabel) {
+      authCompactActionLabel.textContent = fakeAuthEnabled ? t.authLogout : t.authLogin;
+    }
+    if (renameChatModalTitle) renameChatModalTitle.textContent = t.historyRenameModalTitle;
+    if (renameChatModalLabel) renameChatModalLabel.textContent = t.historyRenameModalLabel;
+    if (renameChatModalConfirm) renameChatModalConfirm.textContent = t.historyRenameModalConfirm;
+    if (renameChatModalCancel) renameChatModalCancel.textContent = t.historyRenameModalCancel;
+    if (clearHistoryModalTitle) clearHistoryModalTitle.textContent = t.historyClearModalTitle || t.historyClear;
+    if (clearHistoryModalBody) clearHistoryModalBody.textContent = t.historyClearConfirm || "Czy na pewno chcesz usunąć swoją historię?";
+    if (clearHistoryModalConfirm) clearHistoryModalConfirm.textContent = t.historyClearModalConfirm || t.historyClear;
+    if (clearHistoryModalCancel) clearHistoryModalCancel.textContent = t.historyClearModalCancel || t.modalCancel || "Anuluj";
     if (historyNewChatBtn) historyNewChatBtn.textContent = t.historyNewChat;
     if (historyEmpty) historyEmpty.textContent = t.historyEmpty;
     if (queryProgress && queryProgress.classList.contains("active")) {
       queryProgress.textContent = t.queryProgressText;
     }
     updateTraceDocNav();
+    updateAuthUi();
 
     localStorage.setItem("lang", lang);
     if (langSelect && langSelect.value !== lang) langSelect.value = lang;
@@ -3596,13 +4609,7 @@
 
     // Auth state must be set before fetching /app-config.
     fakeAuthEnabled = localStorage.getItem("fakeAuthEnabled") === "1";
-    if (authToggleBtn) {
-      authToggleBtn.classList.toggle("active", fakeAuthEnabled);
-      authToggleBtn.textContent = fakeAuthEnabled ? "Fake Logout" : "Fake Login";
-    }
-    if (authControls) {
-      authControls.classList.toggle("active", fakeAuthEnabled);
-    }
+    updateAuthUi();
     if (authUserSelect) {
       const savedUser = localStorage.getItem("fakeAuthUserId");
       if (savedUser) activeDevUserId = savedUser;
@@ -3686,9 +4693,7 @@
       authToggleBtn.addEventListener("click", () => {
         fakeAuthEnabled = !fakeAuthEnabled;
         localStorage.setItem("fakeAuthEnabled", fakeAuthEnabled ? "1" : "0");
-        authToggleBtn.classList.toggle("active", fakeAuthEnabled);
-        authToggleBtn.textContent = fakeAuthEnabled ? "Fake Logout" : "Fake Login";
-        if (authControls) authControls.classList.toggle("active", fakeAuthEnabled);
+        updateAuthUi();
         if (!fakeAuthEnabled) {
           historySearchQuery = "";
           if (historySearchInput) historySearchInput.value = "";
@@ -3725,6 +4730,156 @@
         renderHistoryList();
       });
     }
+    if (historySearchBtn) {
+      historySearchBtn.addEventListener("click", () => openHistorySearchModal());
+    }
+    if (historySearchModalClose) {
+      historySearchModalClose.addEventListener("click", () => setHistorySearchModalVisible(false));
+    }
+    if (historySearchModalBackdrop) {
+      historySearchModalBackdrop.addEventListener("click", (evt) => {
+        if (evt.target === historySearchModalBackdrop) setHistorySearchModalVisible(false);
+      });
+    }
+    if (historySearchModalInput) {
+      historySearchModalInput.addEventListener("input", (evt) => {
+        historySearchModalQuery = String(evt.target.value || "");
+        historySearchModalItems = [];
+        historySearchModalCursor = null;
+        fetchHistorySearchPage({ query: historySearchModalQuery, cursor: null });
+      });
+    }
+    if (historySearchModalImportant) {
+      historySearchModalImportant.addEventListener("change", (evt) => {
+        historySearchModalOnlyImportant = !!evt.target.checked;
+        renderHistorySearchResults();
+      });
+    }
+    const toggleAuthCompactMenu = (btn, evt) => {
+      if (!btn || !authCompactMenu) return;
+      evt.stopPropagation();
+      const rect = btn.getBoundingClientRect();
+      authCompactMenu.style.left = `${Math.max(8, rect.left)}px`;
+      authCompactMenu.style.bottom = `${Math.max(8, window.innerHeight - rect.top + 8)}px`;
+      authCompactMenu.classList.toggle("is-open");
+    };
+    if (authCompactBtn) {
+      authCompactBtn.addEventListener("click", (evt) => toggleAuthCompactMenu(authCompactBtn, evt));
+    }
+    if (authCompactAction) {
+      authCompactAction.addEventListener("click", () => {
+        fakeAuthEnabled = !fakeAuthEnabled;
+        localStorage.setItem("fakeAuthEnabled", fakeAuthEnabled ? "1" : "0");
+        updateAuthUi();
+        if (authCompactMenu) authCompactMenu.classList.remove("is-open");
+        if (!fakeAuthEnabled) {
+          historySearchQuery = "";
+          if (historySearchInput) historySearchInput.value = "";
+          if (queryInput) {
+            queryInput.value = "";
+            resetQueryInputHeight();
+          }
+          newChat();
+        }
+        bootstrapUi();
+      });
+    }
+    if (authCompactClearHistory) {
+      authCompactClearHistory.addEventListener("click", () => {
+        clearAllHistory();
+        if (authCompactMenu) authCompactMenu.classList.remove("is-open");
+      });
+    }
+    if (historyContextRename) {
+      historyContextRename.addEventListener("click", () => {
+        if (historyContextTarget) {
+          openRenameChatModal(historyContextTarget.sessionId, buildHistoryItemTitle(historyContextTarget));
+        }
+        closeHistoryContextMenu();
+      });
+    }
+    if (historyContextImportant) {
+      historyContextImportant.addEventListener("click", () => {
+        if (historyContextTarget) {
+          updateHistorySessionMeta(historyContextTarget.sessionId, { important: !isHistoryImportant(historyContextTarget) });
+        }
+        closeHistoryContextMenu();
+      });
+    }
+    if (historyContextDelete) {
+      historyContextDelete.addEventListener("click", () => {
+        if (historyContextTarget) {
+          if (confirm(getTexts(getCurrentLang()).historyDeleteConfirm || "Usunąć czat?")) {
+            deleteHistorySession(historyContextTarget.sessionId);
+          }
+        }
+        closeHistoryContextMenu();
+      });
+    }
+    if (historyContextClearAll) {
+      historyContextClearAll.addEventListener("click", () => {
+        clearAllHistory();
+        closeHistoryContextMenu();
+      });
+    }
+    if (renameChatModalCancel) {
+      renameChatModalCancel.addEventListener("click", () => {
+        setRenameChatModalVisible(false);
+      });
+    }
+    if (renameChatModalConfirm) {
+      renameChatModalConfirm.addEventListener("click", () => {
+        const next = (renameChatInput && renameChatInput.value || "").trim();
+        if (renameTargetSessionId && next) {
+          updateHistorySessionMeta(renameTargetSessionId, { title: next });
+        }
+        setRenameChatModalVisible(false);
+      });
+    }
+    if (clearHistoryModalCancel) {
+      clearHistoryModalCancel.addEventListener("click", () => {
+        setClearHistoryModalVisible(false);
+      });
+    }
+    if (clearHistoryModalConfirm) {
+      clearHistoryModalConfirm.addEventListener("click", () => {
+        setClearHistoryModalVisible(false);
+        clearAllHistoryConfirmed();
+      });
+    }
+    if (renameChatModalBackdrop) {
+      renameChatModalBackdrop.addEventListener("click", (evt) => {
+        if (evt.target === renameChatModalBackdrop) setRenameChatModalVisible(false);
+      });
+    }
+    if (clearHistoryModalBackdrop) {
+      clearHistoryModalBackdrop.addEventListener("click", (evt) => {
+        if (evt.target === clearHistoryModalBackdrop) setClearHistoryModalVisible(false);
+      });
+    }
+    if (historySearchModalMore) {
+      historySearchModalMore.addEventListener("click", () => {
+        fetchHistorySearchPage({ query: historySearchModalQuery, cursor: historySearchModalCursor });
+      });
+    }
+    document.addEventListener("keydown", (evt) => {
+      const key = String(evt.key || "").toLowerCase();
+      if ((evt.ctrlKey || evt.metaKey) && key === "k") {
+        evt.preventDefault();
+        openHistorySearchModal();
+      }
+      if (key === "escape" && historySearchModalOpen) {
+        setHistorySearchModalVisible(false);
+      }
+    });
+    document.addEventListener("click", (evt) => {
+      if (historyContextMenu && historyContextMenu.classList.contains("is-open") && !historyContextMenu.contains(evt.target)) {
+        closeHistoryContextMenu();
+      }
+      if (authCompactMenu && authCompactMenu.classList.contains("is-open") && !authCompactMenu.contains(evt.target) && evt.target !== authCompactBtn) {
+        authCompactMenu.classList.remove("is-open");
+      }
+    });
 
     if (traceHandle) {
       traceHandle.addEventListener("click", () => setTraceOpen(true));
