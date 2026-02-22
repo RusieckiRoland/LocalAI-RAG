@@ -1,0 +1,25 @@
+@media (max-width: 1100px) {
+      #trace-panel {
+        top: 0;
+        right: 0;
+        bottom: 0;
+        width: min(380px, 88vw);
+        border-radius: 1rem 0 0 1rem;
+        transform: translateX(105%);
+        transition: transform 0.2s ease, opacity 0.2s ease;
+        z-index: 50;
+      }
+      body.trace-available:not(.trace-open) #trace-panel {
+        transform: translateX(0);
+        width: var(--trace-collapsed-width);
+        right: 0.35rem;
+        border-radius: 1rem;
+      }
+      body.trace-open #trace-panel {
+        transform: translateX(0);
+        width: min(380px, 88vw);
+        right: 0;
+        border-radius: 1rem 0 0 1rem;
+      }
+      body.trace-open #trace-backdrop { display: block; }
+    }

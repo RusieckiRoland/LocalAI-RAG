@@ -1,0 +1,53 @@
+/* History toggle button */
+    .history-collapse-btn,
+    .history-expand-btn {
+      border: 1px solid var(--border);
+      background: var(--surface-2);
+      color: var(--text);
+      border-radius: 0.6rem;
+      padding: 0.35rem 0.45rem;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .history-collapse-btn:hover,
+    .history-expand-btn:hover { background: var(--border); }
+
+    .history-expand-btn {
+      display: none;
+    }
+
+    .topbar-spacer { width: 1px; height: 1px; }
+
+    /* Auth controls (dev only) */
+    .auth-controls {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      justify-content: flex-end;
+      flex-wrap: wrap;
+    }
+
+    .auth-btn {
+      border: 1px solid var(--border);
+      border-radius: 0.75rem;
+      padding: 0 0.85rem;
+      height: 36px;
+      font-weight: 700;
+      background: var(--surface-1);
+      color: var(--text);
+      transition: background-color 0.15s, border-color 0.15s, color 0.15s;
+      white-space: nowrap;
+    }
+    .auth-btn:hover { background: var(--surface-2); }
+    .auth-btn:disabled {
+      opacity: 0.55;
+      cursor: not-allowed;
+    }
+    .auth-btn.active {
+      background: #16a34a;
+      border-color: #16a34a;
+      color: var(--surface-1);
+      box-shadow: 0 0 0 3px rgba(22, 163, 74, 0.12);
+    }

@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Aplikacja do zapytań RAG z konsultantami.">
+  <title>Zapytanie RAG</title>
+
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.6/dist/purify.min.js"></script>
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans:wght@400;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/styles/github.min.css">
+  <link rel="stylesheet" href="./assets/css/theme.css">
+  <link rel="stylesheet" href="./assets/css/layout.css">
+  <link rel="stylesheet" href="./assets/css/forms.css">
+  <link rel="stylesheet" href="./assets/css/history.css">
+  <link rel="stylesheet" href="./assets/css/trace.css">
+  <link rel="stylesheet" href="./assets/css/responsive.css">
+  <link rel="stylesheet" href="./assets/css/ui.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/highlight.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/languages/csharp.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/languages/python.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/languages/sql.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/languages/javascript.min.js"></script>
+  <script src="./assets/js/core/theme.js"></script>
+  <script src="./assets/js/core/resize-controller.js"></script>
+</head>
+
+<body>
+    <div class="app-shell">
+    <aside id="history-panel">
+      <button id="historyExpandBtn" class="history-expand-btn" type="button" aria-label="Expand history">
+        <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M9 6l6 6-6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </button>
+      <div class="history-panel-content">
+        <div class="history-collapse-row">
+          <button id="historyCollapseBtn" class="history-collapse-btn" type="button" aria-label="Collapse history">
+            <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M15 6l-6 6 6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </button>
+        </div>
+        <div class="history-top">
+          <button id="historyNewChatBtn" class="history-newchat-btn" type="button">Nowy chat</button>
+          <input id="historySearchInput" class="history-search-input" type="search" placeholder="Wyszukaj czaty" aria-label="Wyszukaj czaty">
+          <button id="historySearchBtn" class="history-search-btn" type="button">Szukaj (Ctrl+K)</button>
+        </div>
+        <div class="history-section-title" id="historySectionTitle">Twoje czaty</div>
+        <div id="historyList" class="history-list"></div>
+        <div id="historyEmpty" class="history-empty">Brak historii</div>
+        <div class="history-footer">
+          <div class="auth-controls" id="authControls">
+            <button id="authToggleBtn" class="auth-btn" type="button">Fake Login</button>
+            <select id="authUserSelect" class="auth-user-select" aria-label="Wybierz użytkownika">
+              <option value="dev-user-1">dev-user-1</option>
+              <option value="dev-user-2">dev-user-2</option>
+            </select>
+          </div>
+        </div>
+      </div>
+      <div class="history-compact-footer">
+        <div class="auth-compact" id="authCompact">
+          <button id="authCompactBtn" class="auth-compact-btn" type="button" aria-label="User menu">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 12c2.76 0 5-2.24 5-5S14.76 2 12 2 7 4.24 7 7s2.24 5 5 5zm0 2c-3.33 0-10 1.67-10 5v3h20v-3c0-3.33-6.67-5-10-5z"/></svg>
+          </button>
+          <div class="auth-compact-menu" id="authCompactMenu">
+            <button type="button" id="authCompactAction">
+              <span class="icon" id="authCompactActionIcon" aria-hidden="true"></span>
+              <span id="authCompactActionLabel">Zaloguj</span>
+            </button>
+            <button type="button" id="authCompactClearHistory">
+              <span class="icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><path d="M5 4h14v2H5zm2 4h10l-1 12H8L7 8zm4 2v8h2v-8z"/></svg>
+              </span>
+              <span id="authCompactClearHistoryLabel">Usuń historię</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <div id="chat-container">
+    <div class="content-shell">
+      <div class="topbar">
+        <div class="flex gap-2" id="consultants"></div>
+        <div class="topbar-actions">
+          <button id="themeToggleBtn" class="theme-toggle-btn theme-toggle-min" type="button" title="Zmień tryb"><span class="theme-icon" aria-hidden="true">🌙</span></button>
+        </div>
+      </div>
+
+      <div class="ui-error" id="uiError"></div>
+
+      <div id="main-area">
+        <div id="response"></div>
+
+      <aside id="trace-panel" aria-live="polite">
+        <div class="trace-handle" id="traceHandle" role="button" aria-label="Otwórz etapy" tabindex="0">Etapy</div>
+        <div class="trace-header">
+          <div class="trace-header-top">
+            <div class="trace-title" id="traceTitle">Etapy pipeline</div>
+            <button id="traceCloseBtn" class="trace-close-btn" type="button" aria-label="Zamknij panel etapów">×</button>
+          </div>
+          <div class="trace-status" id="traceStatus">Brak aktywnego zadania</div>
+          <div class="trace-filter-wrap">
+            <div class="trace-filter-row">
+              <input id="traceFilterInput" class="trace-filter-input" type="search" placeholder="Filtruj etapy..." aria-label="Filtruj etapy">
+              <button id="traceFilterClearBtn" class="trace-filter-clear-btn" type="button">Wyczyść filtr</button>
+            </div>
+            <div class="trace-filter-row trace-doc-filter" id="traceDocFilterWrap">
+              <input id="traceDocFilterInput" class="trace-filter-input" type="search" placeholder="Szukaj w dokumentach..." aria-label="Szukaj w dokumentach">
+            </div>
+          </div>
+        </div>
+        <div class="trace-list" id="traceList"></div>
+        <div class="trace-filter-empty" id="traceFilterEmpty">Brak dopasowań.</div>
+      </aside>
+    </div>
+
+      <form id="queryForm">
+        <div class="welcome-message" id="welcomeMessage"></div>
+
+        <textarea id="query" placeholder="Wpisz pytanie..." class="input-field w-full"></textarea>
+
+        <div class="controls-row">
+          <div class="branch-controls" id="branchControls">
+            <!-- Rendered by JS -->
+          </div>
+          <div class="controls-spacer" id="controlsSpacer"></div>
+
+          <div class="actions-controls">
+            <select id="lang" class="select-field lang-select">
+              <option value="pl">PL Rozmawiaj po polsku</option>
+              <option value="en">EN English (no translation)</option>
+            </select>
+
+            <div class="send-wrap">
+              <div class="query-progress" id="queryProgress"></div>
+              <button type="submit" class="send-btn" id="sendBtn">
+                <span class="send-label">Wyślij</span>
+                <span class="send-stop" aria-hidden="true"></span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </form>
+    </div>
+    </div>
+  </div>
+
+  <div class="modal-backdrop" id="snapshotModalBackdrop" style="display:none;">
+    <div class="modal">
+      <div class="modal-title" id="snapshotModalTitle">Potwierdzenie</div>
+      <div class="modal-body" id="snapshotModalBody"></div>
+      <div class="modal-actions">
+        <button type="button" class="modal-btn cancel" id="snapshotModalCancel">Anuluj</button>
+        <button type="button" class="modal-btn confirm" id="snapshotModalConfirm">OK</button>
+      </div>
+    </div>
+  </div>
+  <div class="modal-backdrop" id="traceDocModalBackdrop" style="display:none;">
+    <div class="trace-doc-modal">
+      <div class="trace-doc-modal-header">
+        <div class="trace-doc-modal-title" id="traceDocModalTitle"></div>
+        <div class="trace-doc-modal-count" id="traceDocModalCount"></div>
+        <button type="button" class="trace-doc-modal-close" id="traceDocModalClose" aria-label="Zamknij">×</button>
+      </div>
+      <div class="trace-doc-modal-nav" aria-hidden="false">
+        <button type="button" class="trace-doc-nav-btn prev" id="traceDocPrev" aria-label="Poprzedni dokument">
+          <svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M15.41 7.41 14 6l-6 6 6 6 1.41-1.41L10.83 12z"></path>
+          </svg>
+        </button>
+        <button type="button" class="trace-doc-nav-btn next" id="traceDocNext" aria-label="Następny dokument">
+          <svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="m8.59 16.59 1.41 1.41 6-6-6-6-1.41 1.41L13.17 12z"></path>
+          </svg>
+        </button>
+      </div>
+      <div class="trace-doc-modal-body markdown-content" id="traceDocModalBody"></div>
+    </div>
+  </div>
+
+  <div class="modal-backdrop" id="renameChatModalBackdrop" style="display:none;">
+    <div class="modal">
+      <div class="modal-title" id="renameChatModalTitle">Zmień nazwę</div>
+      <div class="modal-body">
+        <label for="renameChatInput" id="renameChatModalLabel">Nowa nazwa</label>
+        <input id="renameChatInput" class="history-search-input" type="text">
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="modal-btn cancel" id="renameChatModalCancel">Anuluj</button>
+        <button type="button" class="modal-btn confirm" id="renameChatModalConfirm">OK</button>
+      </div>
+    </div>
+  </div>
+  <div class="modal-backdrop" id="clearHistoryModalBackdrop" style="display:none;">
+    <div class="modal">
+      <div class="modal-title" id="clearHistoryModalTitle">Usuń historię</div>
+      <div class="modal-body" id="clearHistoryModalBody">Czy na pewno chcesz usunąć swoją historię?</div>
+      <div class="modal-actions">
+        <button type="button" class="modal-btn cancel" id="clearHistoryModalCancel">Anuluj</button>
+        <button type="button" class="modal-btn confirm" id="clearHistoryModalConfirm">Usuń</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-backdrop" id="historySearchModalBackdrop" style="display:none;">
+    <div class="history-search-modal">
+      <div class="history-search-header">
+        <div class="history-search-title-row">
+          <div class="history-search-title" id="historySearchModalTitle">Wyszukaj czaty</div>
+          <button type="button" class="history-search-close" id="historySearchModalClose" aria-label="Zamknij">×</button>
+        </div>
+        <input id="historySearchModalInput" class="history-search-input" type="search" placeholder="Szukaj..." aria-label="Szukaj czatów">
+      </div>
+      <div class="history-search-results" id="historySearchModalList"></div>
+      <div class="history-search-empty" id="historySearchModalEmpty">Brak wyników</div>
+      <div class="history-search-footer">
+        <label class="history-search-filter">
+          <input type="checkbox" id="historySearchModalImportant">
+          <span id="historySearchModalImportantLabel">Tylko ważne</span>
+        </label>
+        <div class="history-search-meta" id="historySearchModalCount"></div>
+        <button type="button" class="history-search-more" id="historySearchModalMore">Pokaż więcej</button>
+      </div>
+    </div>
+  </div>
+  <div class="history-context-menu" id="historyContextMenu">
+    <button type="button" id="historyContextRename">
+      <span class="icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zm2.92 2.33H5v-.92l8.06-8.06.92.92L5.92 19.58zM20.71 7.04a1.003 1.003 0 0 0 0-1.42l-2.34-2.34a1.003 1.003 0 0 0-1.42 0l-1.83 1.83 3.75 3.75 1.84-1.82z"/></svg>
+      </span>
+      <span id="historyContextRenameLabel">Zmień nazwę</span>
+    </button>
+    <button type="button" id="historyContextImportant">
+      <span class="icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><path d="M12 17.27 18.18 21 16.54 13.97 22 9.24 14.81 8.63 12 2 9.19 8.63 2 9.24 7.46 13.97 5.82 21z"/></svg>
+      </span>
+      <span id="historyContextImportantLabel">Oznacz jako ważne</span>
+    </button>
+    <button type="button" id="historyContextDelete">
+      <span class="icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zm3.46-7.88 1.06-1.06L12 11.54l1.48-1.48 1.06 1.06L13.06 12.6l1.48 1.48-1.06 1.06L12 13.66l-1.48 1.48-1.06-1.06L10.94 12.6l-1.48-1.48zM15.5 4l-1-1h-5l-1 1H5v2h14V4z"/></svg>
+      </span>
+      <span id="historyContextDeleteLabel">Usuń</span>
+    </button>
+    <button type="button" id="historyContextClearAll">
+      <span class="icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><path d="M5 4h14v2H5zm2 4h10l-1 12H8L7 8zm4 2v8h2v-8z"/></svg>
+      </span>
+      <span id="historyContextClearAllLabel">Usuń historię</span>
+    </button>
+  </div>
+  <div id="trace-backdrop"></div>
+  <script src="./assets/js/main.js"></script>
+</body>
+</html>

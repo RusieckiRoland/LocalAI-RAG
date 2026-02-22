@@ -70,20 +70,13 @@
     "ready_timeout_seconds": 30
   },
   "identity_provider": {
-    "enabled": true,
-    "issuer": "https://idp.example.com/realms/localai-rag",
-    "jwks_url": "https://idp.example.com/realms/localai-rag/protocol/openid-connect/certs",
-    "audience": "localai-rag-api",
-    "algorithms": [
-      "RS256"
-    ],
-    "required_claims": [
-      "sub",
-      "exp",
-      "iss",
-      "aud"
-    ]
-  },
+  "enabled": true,
+  "issuer": "http://127.0.0.1:18090/realms/localai-rag",
+  "jwks_url": "http://127.0.0.1:18090/realms/localai-rag/protocol/openid-connect/certs",
+  "audience": "localai-rag-api",
+  "algorithms": ["RS256"],
+  "required_claims": ["sub","exp","iss","aud"]
+},
   "vector_indexes_root": "repositories/nopCommerce/indexes",
   "repo_name": "nopCommerce",
   "callback": "allowed",
