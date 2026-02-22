@@ -20,6 +20,8 @@ def test_loader_can_load_single_pipeline_file_and_multi_pipeline_file(tmp_path: 
               name: single_one
               settings:
                 entry_step_id: a
+                behavior_version: "0.2.0"
+                compat_mode: latest
                 top_k: 1
               steps:
                 - id: a
@@ -39,6 +41,8 @@ def test_loader_can_load_single_pipeline_file_and_multi_pipeline_file(tmp_path: 
               - name: multi_a
                 settings:
                   entry_step_id: a
+                  behavior_version: "0.2.0"
+                  compat_mode: latest
                   top_k: 2
                 steps:
                   - id: a
@@ -48,6 +52,8 @@ def test_loader_can_load_single_pipeline_file_and_multi_pipeline_file(tmp_path: 
               - name: multi_b
                 settings:
                   entry_step_id: b
+                  behavior_version: "0.2.0"
+                  compat_mode: latest
                   top_k: 3
                 steps:
                   - id: b

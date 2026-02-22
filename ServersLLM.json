@@ -10,6 +10,11 @@
       "model": "",
       "completions_path": "/v1/completions",
       "chat_completions_path": "/v1/chat/completions",
+      "allowed_doc_level": null,
+      "allowed_acl_labels": [],
+      "allowed_classification_labels": [],
+      "is_trusted_server": true,
+      "is_trusted_for_all_acl": true,
       "throttling": {
         "enabled": false
       }
@@ -24,6 +29,11 @@
       "model": "gpt-4.1",
       "completions_path": "/v1/completions",
       "chat_completions_path": "/v1/chat/completions",
+      "allowed_doc_level": null,
+      "allowed_acl_labels": [],
+      "allowed_classification_labels": [],
+      "is_trusted_server": false,
+      "is_trusted_for_all_acl": false,
       "throttling": {
         "enabled": true
       }
@@ -37,6 +47,11 @@
   "model": "deepseek-coder",
   "completions_path": "/v1/completions",
   "chat_completions_path": "/v1/chat/completions",
+  "allowed_doc_level": null,
+  "allowed_acl_labels": [],
+  "allowed_classification_labels": [],
+  "is_trusted_server": false,
+  "is_trusted_for_all_acl": false,
   "throttling": {
     "enabled": true
   }

@@ -54,6 +54,8 @@ YAMLpipeline:
   settings:
     entry_step_id: call_model
     prompts_dir: "{str(prompts_dir)}"
+    behavior_version: "0.2.0"
+    compat_mode: latest
 
   steps:
     - id: call_model

@@ -407,10 +407,11 @@ def _resolve_env_var(raw: str) -> str:
     return (os.getenv(m.group(1)) or "").strip()
 
 
-_server_llm = bool(_runtime_cfg.get("serverLLM"))
+_server_llm_enabled = bool(_runtime_cfg.get("serverLLM"))
+_local_model_enabled = bool(_runtime_cfg.get("enable_model_path_analysis", True))
 
 
-def _load_llm_servers() -> tuple[dict[str, "ServerLLMConfig"], str]:
+def _load_llm_servers() -> tuple[dict[str, "ServerLLMConfig"], str, list[str]]:
     path = os.path.join(PROJECT_ROOT, "ServersLLM.json")
     if not os.path.isfile(path):
         raise ValueError(f"ServersLLM.json not found: {path}")
@@ -420,6 +421,7 @@ def _load_llm_servers() -> tuple[dict[str, "ServerLLMConfig"], str]:
     if not isinstance(servers_raw, list) or not servers_raw:
         raise ValueError("ServersLLM.json: 'servers' must be a non-empty list")
     servers: dict[str, ServerLLMConfig] = {}
+    ordered_names: list[str] = []
     default_candidates: list[str] = []
     for item in servers_raw:
         if not isinstance(item, dict):
@@ -428,6 +430,7 @@ def _load_llm_servers() -> tuple[dict[str, "ServerLLMConfig"], str]:
         base_url = str(item.get("base_url") or "").strip()
         if not name or not base_url:
             continue
+        ordered_names.append(name)
         if bool(item.get("default")):
             default_candidates.append(name)
         throttling_raw = item.get("throttling")
@@ -452,6 +455,19 @@ def _load_llm_servers() -> tuple[dict[str, "ServerLLMConfig"], str]:
                 retry_on_status=retry_on_status or ThrottleConfig().retry_on_status,
             )
 
+        allowed_doc_level = item.get("allowed_doc_level")
+        if allowed_doc_level is not None:
+            try:
+                allowed_doc_level = int(allowed_doc_level)
+            except Exception:
+                allowed_doc_level = None
+        allowed_acl_labels = item.get("allowed_acl_labels")
+        if not isinstance(allowed_acl_labels, list):
+            allowed_acl_labels = []
+        allowed_classification_labels = item.get("allowed_classification_labels")
+        if not isinstance(allowed_classification_labels, list):
+            allowed_classification_labels = []
+
         servers[name] = ServerLLMConfig(
             name=name,
             base_url=base_url,
@@ -463,6 +479,11 @@ def _load_llm_servers() -> tuple[dict[str, "ServerLLMConfig"], str]:
             chat_completions_path=str(item.get("chat_completions_path") or "/v1/chat/completions").strip(),
             throttling_enabled=throttling_enabled,
             throttling=throttling_cfg,
+            allowed_doc_level=allowed_doc_level,
+            allowed_acl_labels=tuple(str(x) for x in allowed_acl_labels if str(x).strip()),
+            allowed_classification_labels=tuple(str(x) for x in allowed_classification_labels if str(x).strip()),
+            is_trusted_server=bool(item.get("is_trusted_server", False)),
+            is_trusted_for_all_acl=bool(item.get("is_trusted_for_all_acl", False)),
         )
     if not servers:
         raise ValueError("ServersLLM.json: no valid servers found")
@@ -475,14 +496,17 @@ def _load_llm_servers() -> tuple[dict[str, "ServerLLMConfig"], str]:
         )
         py_logger.warning(msg)
         print(f"WARNING: {msg}")
-    return servers, default_candidates[0]
+    return servers, default_candidates[0], ordered_names
 
 _model = None
-if not _server_llm:
+_local_model = None
+_server_client = None
+
+if _local_model_enabled:
     # NOTE: your Model wrapper is outside the uploaded set; keep as-is in repo.
     from .model import Model  # noqa: E402
 
-    _model = Model(
+    _local_model = Model(
         _resolve_cfg_path(str(_runtime_cfg.get("model_path_analysis") or "")),
         default_max_tokens=int(_runtime_cfg.get("model_max_tokens", 1500) or 1500),
         n_ctx=int(_runtime_cfg.get("model_context_window", 4096) or 4096),
@@ -490,16 +514,39 @@ if not _server_llm:
         n_gpu_layers=_runtime_cfg.get("model_n_gpu_layers", _runtime_cfg.get("n_gpu_layers")),
     )
 else:
-    from .llm_server_client import ServerLLMClient, ServerLLMConfig, ThrottleConfig  # noqa: E402
+    py_logger.warning("local model disabled: enable_model_path_analysis=false")
+
+if _server_llm_enabled:
+    from .llm_server_client import (  # noqa: E402
+        ServerLLMClient,
+        ServerLLMConfig,
+        ThrottleConfig,
+        HybridLLMClient,
+    )
 
     try:
-        servers, default_name = _load_llm_servers()
-        _model = ServerLLMClient(servers=servers, default_name=default_name)
-        py_logger.warning("serverLLM=true: local model initialization skipped (using server '%s').", default_name)
+        servers, default_name, ordered_names = _load_llm_servers()
+        _server_client = ServerLLMClient(
+            servers=servers,
+            default_name=default_name,
+            ordered_names=ordered_names,
+        )
     except Exception as e:
         py_logger.error("serverLLM=true but failed to load ServersLLM.json: %s", e)
         print(f"ERROR: serverLLM=true but failed to load ServersLLM.json: {e}")
         raise
+
+if _server_client is not None and _local_model is not None:
+    _model = HybridLLMClient(local_model=_local_model, server_client=_server_client)
+    py_logger.info("LLM routing: hybrid (server-first, local fallback).")
+elif _server_client is not None:
+    _model = _server_client
+    py_logger.info("LLM routing: server-only.")
+elif _local_model is not None:
+    _model = _local_model
+    py_logger.info("LLM routing: local-only.")
+else:
+    raise RuntimeError("No LLM configured: both serverLLM and enable_model_path_analysis are disabled.")
 
 try:
     _llm = getattr(_model, "llm", None) if _model is not None else None
@@ -1146,6 +1193,10 @@ def _handle_query_request(*, require_bearer_auth: bool):
             pipeline_name = ""
 
     pipeline_settings = dict(_pipeline_settings_by_name.get(pipeline_name) or {})
+    if "llm_server_security_messages_default" not in pipeline_settings:
+        defaults = _runtime_cfg.get("llm_server_security_messages_default")
+        if isinstance(defaults, dict):
+            pipeline_settings["llm_server_security_messages_default"] = defaults
     callback_policy = resolve_callback_policy(runtime_cfg=_runtime_cfg, pipeline_settings=pipeline_settings)
     effective_trace_enabled = bool(enable_trace and callback_policy.enabled)
 

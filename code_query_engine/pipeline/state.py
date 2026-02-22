@@ -61,6 +61,7 @@ class PipelineState:
     last_model_response: Optional[str] = None
     banner_neutral: Optional[str] = None
     banner_translated: Optional[str] = None
+    llm_server_security_override_notice: Optional[str] = None
 
     # Answer fields expected by multiple actions/engine
     draft_answer_neutral: Optional[str] = None  

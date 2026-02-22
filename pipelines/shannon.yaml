@@ -3,6 +3,8 @@ YAMLpipeline:
 
   settings:
     entry_step_id: translate_in
+    behavior_version: "0.2.0"
+    compat_mode: locked
     snapshot_set_id: "nopCommerce_4-60_4-90"
     max_context_tokens: 5000
     retrieval_budget_tokens: 2000

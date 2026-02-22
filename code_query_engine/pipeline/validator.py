@@ -3,6 +3,8 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Tuple
 
+from .lockfile import ALLOWED_COMPAT_MODES
+
 
 # NOTE: This validator is intentionally "DbC + backward-compatible":
 # - hard errors for broken references / missing required fields
@@ -47,6 +49,19 @@ class PipelineValidator:
         settings = getattr(pipeline, "settings", None)
         if settings is None or not isinstance(settings, dict):
             raise ValueError("pipeline.settings must be a dict")
+
+        behavior_version = settings.get("behavior_version")
+        if not (isinstance(behavior_version, str) and behavior_version.strip()):
+            raise ValueError("pipeline.settings.behavior_version is required")
+
+        compat_mode = settings.get("compat_mode")
+        if not (isinstance(compat_mode, str) and compat_mode.strip()):
+            raise ValueError("pipeline.settings.compat_mode is required")
+        compat_mode_norm = str(compat_mode).strip().lower()
+        if compat_mode_norm not in ALLOWED_COMPAT_MODES:
+            raise ValueError(
+                f"pipeline.settings.compat_mode must be one of {sorted(ALLOWED_COMPAT_MODES)}"
+            )
 
         # IMPORTANT: validate entry_step_id before steps (tests expect this)
         entry_step_id = settings.get("entry_step_id")

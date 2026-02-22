@@ -49,6 +49,8 @@ YAMLpipeline:
   name: t
   settings:
     entry_step_id: translate_out
+    behavior_version: "0.2.0"
+    compat_mode: latest
   steps:
     - id: translate_out
       action: translate_out_if_needed
@@ -104,6 +106,8 @@ YAMLpipeline:
   settings:
     entry_step_id: translate_out
     prompts_dir: "{str(prompts_dir)}"
+    behavior_version: "0.2.0"
+    compat_mode: latest
   steps:
     - id: translate_out
       action: translate_out_if_needed

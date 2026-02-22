@@ -19,6 +19,8 @@ YAMLpipeline:
   name: marian_rejewski_code_analysis_base
   settings:
     entry_step_id: a
+    behavior_version: "0.2.0"
+    compat_mode: latest
     max_history_tokens: 100
     nested:
       x: 1
@@ -40,6 +42,8 @@ YAMLpipeline:
   name: marian_rejewski_code_analysis_nopCommerce_develop
   extends: ./base/marian_rejewski_code_analysis_base.yaml
   settings:
+    behavior_version: "0.2.0"
+    compat_mode: latest
     max_history_tokens: 250
     nested:
       y: 999

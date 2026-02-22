@@ -3,6 +3,8 @@ YAMLpipeline:
 
   settings:
     entry_step_id: translate_in
+    behavior_version: "0.2.0"
+    compat_mode: latest
     top_k: 2
     max_turn_loops: 2
     test: true

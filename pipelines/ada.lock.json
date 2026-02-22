@@ -1,0 +1,118 @@
+{
+  "actions": {
+    "add_command_action": {
+      "allowed_keys": [
+        "action",
+        "callback_caption",
+        "callback_caption_translated",
+        "commands",
+        "end",
+        "id",
+        "next",
+        "stages_visible"
+      ],
+      "behavior": "0.2.0",
+      "defaults": {}
+    },
+    "call_model": {
+      "allowed_keys": [
+        "action",
+        "callback_caption",
+        "callback_caption_translated",
+        "end",
+        "id",
+        "next",
+        "prompt_key",
+        "stages_visible",
+        "use_history",
+        "user_parts"
+      ],
+      "behavior": "0.2.0",
+      "defaults": {}
+    },
+    "finalize": {
+      "allowed_keys": [
+        "action",
+        "callback_caption",
+        "callback_caption_translated",
+        "end",
+        "id",
+        "next",
+        "stages_visible"
+      ],
+      "behavior": "0.2.0",
+      "defaults": {}
+    },
+    "load_conversation_history": {
+      "allowed_keys": [
+        "action",
+        "callback_caption",
+        "callback_caption_translated",
+        "end",
+        "id",
+        "next",
+        "stages_visible"
+      ],
+      "behavior": "0.2.0",
+      "defaults": {}
+    },
+    "prefix_router": {
+      "allowed_keys": [
+        "action",
+        "callback_caption",
+        "callback_caption_translated",
+        "end",
+        "id",
+        "next",
+        "on_other",
+        "routes",
+        "stages_visible"
+      ],
+      "behavior": "0.2.0",
+      "defaults": {}
+    },
+    "set_variables": {
+      "allowed_keys": [
+        "action",
+        "callback_caption",
+        "callback_caption_translated",
+        "end",
+        "id",
+        "next",
+        "rules",
+        "stages_visible"
+      ],
+      "behavior": "0.2.0",
+      "defaults": {}
+    },
+    "translate_in_if_needed": {
+      "allowed_keys": [
+        "action",
+        "callback_caption",
+        "callback_caption_translated",
+        "end",
+        "id",
+        "next",
+        "stages_visible"
+      ],
+      "behavior": "0.2.0",
+      "defaults": {}
+    },
+    "translate_out_if_needed": {
+      "allowed_keys": [
+        "action",
+        "callback_caption",
+        "callback_caption_translated",
+        "end",
+        "id",
+        "next",
+        "stages_visible"
+      ],
+      "behavior": "0.2.0",
+      "defaults": {}
+    }
+  },
+  "behavior_version": "0.2.0",
+  "lock_version": 1,
+  "pipeline_name": "ada"
+}

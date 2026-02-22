@@ -9,7 +9,7 @@ from code_query_engine.pipeline.validator import PipelineValidator
 def test_validator_requires_entry_step_id() -> None:
     p = PipelineDef(
         name="x",
-        settings={},
+        settings={"behavior_version": "0.2.0", "compat_mode": "latest"},
         steps=[StepDef(id="a", action="finalize", raw={"id": "a", "action": "finalize", "end": True})],
     )
     with pytest.raises(ValueError):
@@ -19,7 +19,7 @@ def test_validator_requires_entry_step_id() -> None:
 def test_validator_entry_step_must_exist() -> None:
     p = PipelineDef(
         name="x",
-        settings={"entry_step_id": "missing"},
+        settings={"entry_step_id": "missing", "behavior_version": "0.2.0", "compat_mode": "latest"},
         steps=[StepDef(id="a", action="finalize", raw={"id": "a", "action": "finalize", "end": True})],
     )
     with pytest.raises(ValueError):
@@ -29,7 +29,7 @@ def test_validator_entry_step_must_exist() -> None:
 def test_validator_transition_target_must_exist() -> None:
     p = PipelineDef(
         name="x",
-        settings={"entry_step_id": "a"},
+        settings={"entry_step_id": "a", "behavior_version": "0.2.0", "compat_mode": "latest"},
         steps=[
             StepDef(id="a", action="translate_in_if_needed", raw={"id": "a", "action": "translate_in_if_needed", "next": "missing"}),
         ],
@@ -41,7 +41,7 @@ def test_validator_transition_target_must_exist() -> None:
 def test_validator_translate_out_requires_translate_prompt_key_when_using_main_model() -> None:
     p = PipelineDef(
         name="x",
-        settings={"entry_step_id": "t"},
+        settings={"entry_step_id": "t", "behavior_version": "0.2.0", "compat_mode": "latest"},
         steps=[
             StepDef(
                 id="t",

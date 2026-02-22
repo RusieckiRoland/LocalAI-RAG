@@ -149,7 +149,7 @@ def test_run_end_inbox_empty(monkeypatch: pytest.MonkeyPatch):
 
     pipe = PipelineDef(
         name="inbox",
-        settings={"entry_step_id": "producer"},
+        settings={"entry_step_id": "producer", "behavior_version": "0.2.0", "compat_mode": "latest"},
         steps=[
             StepDef(id="producer", action="producer", raw={"next": "consumer"}),
             StepDef(id="consumer", action="consumer", raw={"end": True}),
@@ -178,7 +178,7 @@ def test_run_end_inbox_fail_fast(monkeypatch: pytest.MonkeyPatch):
 
     pipe = PipelineDef(
         name="inbox",
-        settings={"entry_step_id": "producer"},
+        settings={"entry_step_id": "producer", "behavior_version": "0.2.0", "compat_mode": "latest"},
         steps=[
             StepDef(id="producer", action="producer", raw={"next": "noop"}),
             StepDef(id="noop", action="noop", raw={"end": True}),

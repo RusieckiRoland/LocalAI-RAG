@@ -4,6 +4,8 @@ YAMLpipeline:
   settings:
     test: true
     entry_step_id: translate_in
+    behavior_version: "0.2.0"
+    compat_mode: latest
     top_k: 3
     prompts_dir: "tests/e2e/data/prompts"
 

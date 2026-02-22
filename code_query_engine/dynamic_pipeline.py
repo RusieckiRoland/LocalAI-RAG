@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import os
+from pathlib import Path
 from typing import Any, Optional
 
 from code_query_engine.pipeline.providers.ports import IRetrievalBackend
@@ -12,6 +13,7 @@ from integrations.plant_uml.plantuml_check import add_plant_link
 from .pipeline.action_registry import build_default_action_registry
 from .pipeline.engine import PipelineEngine, PipelineRuntime
 from .pipeline.loader import PipelineLoader
+from .pipeline.lockfile import apply_lockfile, load_lockfile, lockfile_path_for_yaml
 from .pipeline.providers.retrieval import RetrievalDispatcher
 from .pipeline.state import PipelineState
 from .pipeline.validator import PipelineValidator
@@ -125,6 +127,35 @@ class DynamicPipelineRunner:
         effective_settings = dict(pipeline.settings or {})
         if overrides:
             effective_settings.update(dict(overrides))
+
+        compat_mode = str(effective_settings.get("compat_mode") or "").strip().lower()
+        behavior_version = str(effective_settings.get("behavior_version") or "").strip()
+
+        if compat_mode in ("locked", "strict"):
+            lockfile_path = None
+            resolve_fn = getattr(self._loader, "resolve_files_by_name", None)
+            if callable(resolve_fn):
+                try:
+                    files = resolve_fn(pipe_name)
+                except Exception:
+                    files = []
+                if files:
+                    lockfile_path = lockfile_path_for_yaml(Path(files[0]))
+
+            if lockfile_path is None:
+                raise ValueError("compat_mode locked requires lockfile path resolution")
+            if not lockfile_path.exists():
+                raise ValueError(f"compat_mode locked requires lockfile: {lockfile_path}")
+
+            lock = load_lockfile(lockfile_path)
+            if lock.behavior_version != behavior_version:
+                raise ValueError(
+                    "lockfile.behavior_version does not match pipeline.settings.behavior_version"
+                )
+            if lock.pipeline_name != pipeline.name:
+                raise ValueError("lockfile.pipeline_name does not match pipeline.name")
+
+            pipeline = apply_lockfile(pipeline, lock)
 
         # Budget contract requires some numeric settings to be present even for pipelines
         # with no call_model steps (e.g., unit-test pipelines). Provide safe defaults.

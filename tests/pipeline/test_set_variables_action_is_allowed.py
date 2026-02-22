@@ -21,6 +21,8 @@ YAMLpipeline:
 
   settings:
     entry_step_id: set_vars
+    behavior_version: "0.2.0"
+    compat_mode: latest
 
   steps:
     - id: set_vars

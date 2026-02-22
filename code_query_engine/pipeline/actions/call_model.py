@@ -93,6 +93,7 @@ class CallModelAction(PipelineActionBase):
             setattr(state, _TRACE_RENDERED_PROMPT_ATTR, None)
             setattr(state, _TRACE_RENDERED_CHAT_MESSAGES_ATTR, None)
             setattr(state, _TRACE_HISTORY_TRIM_ATTR, None)
+            setattr(state, "llm_server_security_override_notice", None)
         except Exception:
             pass
 
@@ -158,6 +159,16 @@ class CallModelAction(PipelineActionBase):
             model_kwargs["top_p"] = top_p
         if server_name and bool(getattr(model, "supports_server_name", False)):
             model_kwargs["server_name"] = server_name
+        if bool(getattr(model, "supports_security_context", False)):
+            model_kwargs["security_context"] = {
+                "doc_level_max": getattr(state, "doc_level_max", None),
+                "acl_labels_union": list(getattr(state, "acl_labels_union", []) or []),
+                "classification_labels_union": list(getattr(state, "classification_labels_union", []) or []),
+                "translate_chat": bool(getattr(state, "translate_chat", False)),
+                "preferred_server_name": server_name or None,
+                "pipeline_settings": dict(getattr(runtime, "pipeline_settings", {}) or {}),
+                "state": state,
+            }
 
         setattr(state, _TRACE_PROMPT_NAME_ATTR, prompt_key)
 

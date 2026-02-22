@@ -48,8 +48,14 @@ More details, diagrams, and examples are available here:
 ### Minimal pipeline example (YAML)
 
 ```yaml
-pipeline:
-  id: "rejewski"
+YAMLpipeline:
+  name: "rejewski"
+
+  settings:
+    entry_step_id: "translate"
+    behavior_version: "0.2.0"
+    compat_mode: locked
+
   steps:
     - id: "translate"
       action: "translate_in_if_needed"
@@ -63,7 +69,7 @@ pipeline:
       action: "search_nodes"
       search_type: "hybrid"
       top_k: 8
-      next: "expand"    
+      next: "expand"
 
     - id: "fetch"
       action: "fetch_node_texts"
@@ -78,6 +84,18 @@ pipeline:
     - id: "finalize"
       action: "finalize"
       end: true
+```
+
+### Pipeline compat/lockfile (required for `compat_mode: locked`)
+
+- `settings.behavior_version` and `settings.compat_mode` are **mandatory**.
+- `compat_mode: locked` requires a lockfile next to the YAML:
+  - `<pipeline_basename>.lock.json`
+
+Generate the lockfile:
+
+```bash
+python -m code_query_engine.pipeline.pipeline_cli lock pipelines/rejewski.yaml
 ```
 
 **Hardware target.** Optimized for a **single NVIDIA RTX 4090** (CUDA 12.x). Defaults (e.g., full llama.cpp CUDA offload) are tuned to comfortably fit 24–32 GB VRAM.

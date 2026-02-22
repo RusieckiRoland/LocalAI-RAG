@@ -1,0 +1,185 @@
+{
+  "actions": {
+    "call_model": {
+      "allowed_keys": [
+        "action",
+        "callback_caption",
+        "callback_caption_translated",
+        "end",
+        "id",
+        "max_output_tokens",
+        "next",
+        "prompt_key",
+        "stages_visible",
+        "temperature",
+        "top_p",
+        "user_parts"
+      ],
+      "behavior": "0.2.0",
+      "defaults": {}
+    },
+    "fetch_node_texts": {
+      "allowed_keys": [
+        "action",
+        "budget_tokens_from_settings",
+        "callback_caption",
+        "callback_caption_translated",
+        "end",
+        "id",
+        "next",
+        "stages_visible"
+      ],
+      "behavior": "0.2.0",
+      "defaults": {}
+    },
+    "finalize": {
+      "allowed_keys": [
+        "action",
+        "callback_caption",
+        "callback_caption_translated",
+        "end",
+        "id",
+        "next",
+        "stages_visible"
+      ],
+      "behavior": "0.2.0",
+      "defaults": {}
+    },
+    "fork_action": {
+      "allowed_keys": [
+        "action",
+        "callback_caption",
+        "callback_caption_translated",
+        "end",
+        "id",
+        "next",
+        "search_action",
+        "snapshots",
+        "stages_visible"
+      ],
+      "behavior": "0.2.0",
+      "defaults": {}
+    },
+    "json_decision_router": {
+      "allowed_keys": [
+        "action",
+        "callback_caption",
+        "callback_caption_translated",
+        "end",
+        "id",
+        "next",
+        "on_other",
+        "routes",
+        "stages_visible"
+      ],
+      "behavior": "0.2.0",
+      "defaults": {}
+    },
+    "loop_guard": {
+      "allowed_keys": [
+        "action",
+        "callback_caption",
+        "callback_caption_translated",
+        "end",
+        "id",
+        "max_turn_loops_from_settings",
+        "next",
+        "on_allow",
+        "on_deny",
+        "stages_visible"
+      ],
+      "behavior": "0.2.0",
+      "defaults": {}
+    },
+    "merge_action": {
+      "allowed_keys": [
+        "action",
+        "callback_caption",
+        "callback_caption_translated",
+        "end",
+        "id",
+        "next",
+        "snapshots",
+        "stages_visible"
+      ],
+      "behavior": "0.2.0",
+      "defaults": {}
+    },
+    "parallel_roads_action": {
+      "allowed_keys": [
+        "action",
+        "callback_caption",
+        "callback_caption_translated",
+        "end",
+        "id",
+        "next",
+        "stages_visible"
+      ],
+      "behavior": "0.2.0",
+      "defaults": {}
+    },
+    "search_nodes": {
+      "allowed_keys": [
+        "action",
+        "callback_caption",
+        "callback_caption_translated",
+        "end",
+        "id",
+        "next",
+        "search_type",
+        "stages_visible",
+        "top_k"
+      ],
+      "behavior": "0.2.0",
+      "defaults": {
+        "rerank": "none",
+        "snapshot_source": "primary"
+      }
+    },
+    "set_variables": {
+      "allowed_keys": [
+        "action",
+        "callback_caption",
+        "callback_caption_translated",
+        "end",
+        "id",
+        "next",
+        "rules",
+        "stages_visible"
+      ],
+      "behavior": "0.2.0",
+      "defaults": {}
+    },
+    "translate_in_if_needed": {
+      "allowed_keys": [
+        "action",
+        "callback_caption",
+        "callback_caption_translated",
+        "end",
+        "id",
+        "next",
+        "stages_visible"
+      ],
+      "behavior": "0.2.0",
+      "defaults": {}
+    },
+    "translate_out_if_needed": {
+      "allowed_keys": [
+        "action",
+        "callback_caption",
+        "callback_caption_translated",
+        "end",
+        "id",
+        "next",
+        "stages_visible",
+        "translate_prompt_key",
+        "use_main_model"
+      ],
+      "behavior": "0.2.0",
+      "defaults": {}
+    }
+  },
+  "behavior_version": "0.2.0",
+  "lock_version": 1,
+  "pipeline_name": "shannon"
+}

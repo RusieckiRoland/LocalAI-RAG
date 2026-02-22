@@ -53,6 +53,7 @@ class FinalizeAction(PipelineActionBase):
         answer_translated = (state.answer_translated or "").strip()
         banner_neutral = (getattr(state, "banner_neutral", None) or "").strip()
         banner_translated = (getattr(state, "banner_translated", None) or "").strip()
+        security_notice = (getattr(state, "llm_server_security_override_notice", None) or "").strip()
 
         if bool(getattr(state, "translate_chat", False)):
             if banner_translated:
@@ -64,6 +65,9 @@ class FinalizeAction(PipelineActionBase):
                 state.final_answer = f"{banner_neutral}\n\n{answer_neutral}"
             else:
                 state.final_answer = answer_neutral
+
+        if security_notice:
+            state.final_answer = f"{security_notice}\n\n{state.final_answer or ''}".strip()
 
         if not persist_enabled:
             return None
