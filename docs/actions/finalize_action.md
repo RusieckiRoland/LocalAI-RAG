@@ -1,81 +1,63 @@
-# FinalizeAction — purpose and usage
+# `finalize`
 
-## What it is for
+## Purpose
+`finalize` materializes the user-visible answer into `state.final_answer` and optionally persists/logs the turn.
 
-`FinalizeAction` is a pipeline action that **finalizes a turn’s answer**:
+This action is the only place that should decide the final output shown to the user.
 
-1) **Materializes the user-visible output** into `state.final_answer`.
-2) Produces the final user-visible answer (`final_answer`) from `answer_neutral`/`answer_translated`.
-3) (Optionally) performs **persist/logging** side-effects: writes to history and emits an interaction log.
+## Final answer selection (exact behavior)
+`finalize` reads:
+- `state.answer_neutral`
+- `state.answer_translated`
+- `state.banner_neutral`
+- `state.banner_translated`
+- `state.translate_chat`
 
-Key rule: `FinalizeAction` is the single place that **sets `state.final_answer`** as the answer shown to the user.
+Rules:
+- if `translate_chat == true`:
+  - with banner: `final_answer = banner_translated + "\\n\\n" + answer_translated`
+  - without banner: `final_answer = answer_translated`
+- if `translate_chat == false`:
+  - with banner: `final_answer = banner_neutral + "\\n\\n" + answer_neutral`
+  - without banner: `final_answer = answer_neutral`
 
-## Where the answer text comes from
+`finalize` does not translate and does not fall back to `last_model_response`.
 
-`FinalizeAction` is deterministic and follows this priority:
+## Persistence/logging side effects
+By default `finalize` persists the turn (`persist_turn: true`).
 
-- if `state.translate_chat` is enabled and `state.answer_translated` is non-empty → `state.final_answer = state.answer_translated`
-- otherwise → `state.final_answer = state.answer_neutral`
-(`FinalizeAction` does not fall back to `last_model_response` — upstream steps should set `state.answer_neutral`.)
+When persistence is enabled:
+- logs interaction via `runtime.logger.log_interaction(...)` (best effort),
+- writes conversation turn via `runtime.conversation_history_service` (best effort).
 
-## What it writes to state
+History write uses the user-visible output:
+- when `translate_chat == true`, persisted `answer_translated` is `final_answer`,
+- when `translate_chat == false`, persisted `answer_neutral` is `final_answer`.
 
-Always:
-
-- `state.final_answer` — set by priority: translated if present (and `translate_chat=true`), otherwise neutral.
-
-The action **does not translate**. Upstream steps should set:
-- `state.answer_neutral` (neutral)
-- (optionally) `state.answer_translated` (translated)
-
-## Persist / logging — optional
-
-`FinalizeAction` can also perform persistence side-effects:
-
-- history write: `runtime.conversation_history_service` (neutral + translated)
-
-Persistence uses the **user-visible output**:
-- if `translate_chat` is enabled, the stored translated answer is the **final_answer** (including banner).
-- otherwise the stored neutral answer is the **final_answer** (including banner).
-- interaction log: `runtime.logger.log_interaction(...)` (question, consultant, branches, and answer)
-
-You can **disable** persistence via a step flag:
-
-- `persist_turn: false`
-
-By default, `persist_turn` is enabled (`true`).
-
-## Step contract (StepDef.raw)
-
+## Step config
 Supported `raw` fields:
+- `persist_turn: bool` (optional, default `true`)
 
-- `persist_turn` (bool, optional)
-  - `true` (default): write history and emit logs,
-  - `false`: skip persistence (useful for tests or dry-runs).
-
-## How to use it in a YAML pipeline
-
-Typical layout:
-
-1) `call_model` produces the output (in `state.last_model_response`).
-2) (Optional) `translate_out_if_needed` sets `state.answer_translated`.
-3) `finalize` sets `state.final_answer` and (optionally) persists.
-
-Minimal example:
-
+## Typical YAML usage
 ```yaml
-- id: call_answer
-  action: call_model
-  prompt_key: "rejewski/answer_v1"
+- id: set_answer
+  action: set_variables
+  variables:
+    answer_neutral:
+      from: last_model_response
+  next: translate_out
+
+- id: translate_out
+  action: translate_out_if_needed
   next: finalize
 
 - id: finalize
   action: finalize
+  persist_turn: true
   end: true
 ```
 
-Example without persistence (e.g., in tests):
-
+Example without persistence:
 ```yaml
 - id: finalize
   action: finalize
@@ -83,19 +65,7 @@ Example without persistence (e.g., in tests):
   end: true
 ```
 
-### Note about `end: true`
-
-`end: true` marks the step as terminal: the pipeline stops after finalize and the validator does not require `next`.
-
-## Common failure modes
-
-- Running `finalize` when `state.last_model_response` is not the final answer (e.g., it still contains routing or a retrieval query).
-- Expecting finalize to translate — it **does not translate**.
-- Mismatch between what UI shows (`final_answer`) and what gets logged — hence finalize should be the place that sets `final_answer` and (optionally) persists.
-
-## Minimal checklist when adding finalize to a pipeline
-
-1) Ensure `state.last_model_response` contains the final answer right before finalize.
-2) If you want a translated answer, add a translation step earlier to populate `state.answer_translated`.
-3) End the turn with `end: true` (or provide `next` if the pipeline continues).
-4) In tests, set `persist_turn: false` to avoid side-effects.
+## Minimal checklist
+1. Ensure upstream steps set `answer_neutral`.
+2. If `translate_chat` is enabled, ensure upstream steps set `answer_translated`.
+3. If you use `custom_banner` in `call_model`, confirm the matching banner field is present before `finalize`.

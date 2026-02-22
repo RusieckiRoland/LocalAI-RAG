@@ -16,8 +16,10 @@ class _FakeQuery:
         self.bm25_calls: List[Dict[str, Any]] = []
         self.hybrid_calls: List[Dict[str, Any]] = []
         self.near_vector_calls: List[Dict[str, Any]] = []
+        self.fetch_objects_calls: List[Dict[str, Any]] = []
         self.bm25_objects: List[Any] = []
         self.hybrid_objects: List[Any] = []
+        self.fetch_objects_objects: List[Any] = []
         self.raise_on_query_props = False
 
     def bm25(self, **kwargs: Any) -> Any:
@@ -33,6 +35,10 @@ class _FakeQuery:
     def near_vector(self, **kwargs: Any) -> Any:
         self.near_vector_calls.append(dict(kwargs))
         return SimpleNamespace(objects=[])
+
+    def fetch_objects(self, **kwargs: Any) -> Any:
+        self.fetch_objects_calls.append(dict(kwargs))
+        return SimpleNamespace(objects=list(self.fetch_objects_objects))
 
 
 class _FakeCollection:
@@ -220,3 +226,55 @@ def test_weaviate_bm25_operator_factory_missing_raises(monkeypatch) -> None:
 
     with pytest.raises(RuntimeError, match="BM25OperatorFactory is unavailable"):
         backend.search(req)
+
+
+def test_weaviate_fetch_nodes_maps_security_fields(monkeypatch) -> None:
+    query = _FakeQuery()
+    query.fetch_objects_objects = [
+        SimpleNamespace(
+            properties={
+                "canonical_id": "N1",
+                "text": "class Category {}",
+                "repo_relative_path": "src/Category.cs",
+                "source_file": "Category.cs",
+                "project_name": "Nop.Core",
+                "class_name": "Category",
+                "member_name": "Category",
+                "symbol_type": "TypeRollup",
+                "signature": "Nop.Core.Domain.Catalog.Category#TYPE_ROLLUP",
+                "data_type": "regular_code",
+                "file_type": "cs",
+                "domain": "code",
+                "acl_allow": ["dev", "ops"],
+                "classification_labels": ["internal", "restricted"],
+                "doc_level": 4,
+            }
+        )
+    ]
+    collection = _FakeCollection(query)
+    client = _FakeClient(collection)
+    backend = WeaviateRetrievalBackend(client=client, query_embed_model="models/embedding/e5-base-v2")
+
+    monkeypatch.setattr(backend, "_build_in_filter", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(backend, "_build_where_filter", lambda **_kwargs: None)
+
+    out = backend.fetch_nodes(
+        node_ids=["N1"],
+        repository="Repo",
+        snapshot_id="snap",
+        retrieval_filters={},
+    )
+
+    assert "N1" in out
+    row = out["N1"]
+    assert row["text"] == "class Category {}"
+    assert row["repo_relative_path"] == "src/Category.cs"
+    assert row["acl_allow"] == ["dev", "ops"]
+    assert row["classification_labels"] == ["internal", "restricted"]
+    assert row["doc_level"] == 4
+
+    assert query.fetch_objects_calls
+    props = list(query.fetch_objects_calls[0].get("return_properties") or [])
+    assert "acl_allow" in props
+    assert "classification_labels" in props
+    assert "doc_level" in props

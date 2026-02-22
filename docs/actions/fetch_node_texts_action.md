@@ -12,7 +12,7 @@ Use `fetch_node_texts` when your pipeline needs **evidence snippets** (code/text
 
 Most common placement:
 
-`search_nodes → expand_dependency_tree (optional) → fetch_node_texts → render_context_blocks → call_model`
+`search_nodes → expand_dependency_tree (optional) → fetch_node_texts → manage_context_budget → call_model`
 
 ---
 
@@ -62,6 +62,8 @@ You must choose **exactly one** budget mode:
 ✅ **Option C — implicit token budget**
 If you do not provide any explicit budget (`max_chars` / `budget_tokens` / `budget_tokens_from_settings`), then:
 - the action uses **70% of** `settings.max_context_tokens`
+
+Token budget counts the same block shape that later enters context (`--- NODE ---`, headers, optional `metadata:`, and `text:`), not only raw snippet text.
 
 ❌ Forbidden combination  
 - `max_chars` **cannot** be used together with **any** token budget option.
@@ -135,7 +137,7 @@ A list of dictionaries in the final selected order:
 ```json
 [
   {
-    "node_id": "A",
+    "id": "A",
     "text": "…",
     "is_seed": true,
     "depth": 0,
@@ -145,12 +147,17 @@ A list of dictionaries in the final selected order:
 ```
 
 Meaning of fields:
-- `node_id`: the ID used through the pipeline
+- `id`: the node ID used through the pipeline
 - `text`: materialized snippet (code/text)
 - `is_seed`: whether it came from retrieval seeds
 - `depth`: 0 for seeds, ≥1 for expanded nodes (if edges exist)
 - `parent_id`: parent node ID in the BFS tree (if edges exist)
 - `metadata_context` (optional): list of `key: value` lines added when `include_metadata_in_context: true`
+
+Also updated per run:
+- `state.classification_labels_union`: unique union of observed `classification_labels` across fetched chunks
+- `state.acl_labels_union`: unique union of observed `acl_allow` across fetched chunks
+- `state.doc_level_max`: maximum observed `doc_level` across fetched chunks
 
 ### `state.graph_debug`
 
@@ -174,7 +181,7 @@ Useful run metadata:
   action: fetch_node_texts
   prioritization_mode: seed_first
   max_chars: 12000
-  next: render_context
+  next: manage_budget
 ```
 
 ### Example 2 — explicit token budget
@@ -184,7 +191,7 @@ Useful run metadata:
   action: fetch_node_texts
   prioritization_mode: balanced
   budget_tokens: 900
-  next: render_context
+  next: manage_budget
 ```
 
 ### Example 3 — token budget read from pipeline settings
@@ -198,7 +205,7 @@ steps:
     action: fetch_node_texts
     prioritization_mode: graph_first
     budget_tokens_from_settings: "evidence_budget_tokens"
-    next: render_context
+    next: manage_budget
 ```
 
 ### Example 4 — implicit token budget from `max_context_tokens`
@@ -212,7 +219,7 @@ steps:
     action: fetch_node_texts
     # no budget configured -> uses 70% of max_context_tokens
     prioritization_mode: balanced
-    next: render_context
+    next: manage_budget
 ```
 
 ---

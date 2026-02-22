@@ -508,6 +508,9 @@ class WeaviateRetrievalBackend(IRetrievalBackend):
             "sql_kind",
             "sql_schema",
             "sql_name",
+            "acl_allow",
+            "classification_labels",
+            "doc_level",
         ]
 
         t0 = time.time()
@@ -567,6 +570,9 @@ class WeaviateRetrievalBackend(IRetrievalBackend):
                 "sql_kind": str(props.get("sql_kind") or ""),
                 "sql_schema": str(props.get("sql_schema") or ""),
                 "sql_name": str(props.get("sql_name") or ""),
+                "acl_allow": props.get("acl_allow"),
+                "classification_labels": props.get("classification_labels"),
+                "doc_level": props.get("doc_level"),
             }
 
         return out

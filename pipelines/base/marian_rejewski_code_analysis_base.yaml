@@ -115,6 +115,7 @@ YAMLpipeline:
 
     - id: fetch_node_texts
       action: fetch_node_texts
+      include_metadata_in_context: true
       stages_visible: true
       callback_caption: "Materializing context"
       callback_caption_translated: "Budowanie kontekstu"

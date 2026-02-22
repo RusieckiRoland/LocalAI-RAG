@@ -45,8 +45,8 @@ class FinalizeAction(PipelineActionBase):
         persist_enabled = bool(raw.get("persist_turn", True))
 
         # Finalize materializes the user-visible answer:
-        # - If translate_chat is enabled and answer_translated is present -> final_answer = answer_translated.
-        # - Otherwise -> final_answer = answer_neutral.
+        # - If translate_chat is enabled -> final_answer is built from answer_translated (+ translated banner when present).
+        # - Otherwise -> final_answer is built from answer_neutral (+ neutral banner when present).
         #
         # NOTE: This action does NOT populate answer_neutral/answer_translated. Upstream steps must do it.
         answer_neutral = (state.answer_neutral or "").strip()

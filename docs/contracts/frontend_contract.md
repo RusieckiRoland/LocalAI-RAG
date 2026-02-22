@@ -1,138 +1,104 @@
-# Frontend contract: consultants, pipelines, snapshots, `ui_contracts` (EN)
+# Frontend Integration Contract (HTTP + UI)
 
-## Scope
-This document specifies the backend↔frontend contract for:
-- dynamic loading of “consultants” (UI cards),
-- consultant → pipeline mapping,
-- UI visibility control for snapshot selection,
-- trace panel stream + cancel behavior,
-- a shared contract for Python backend and a JS mock server.
+## 1. Purpose
+This document defines the complete contract needed to build any web frontend that works with this server:
+- startup configuration,
+- consultant and snapshot selection,
+- query execution,
+- trace streaming and cancellation,
+- chat history,
+- multilingual behavior.
 
-It is framework-agnostic so a team can build the UI in Angular (or any other framework) without reading backend code.
-
----
-
-## Repository layout (agreed)
-```
-ui_contracts/
-  frontend_requirements/
-    base_frontend_requirements.json
-    templates.json
-```
-
-### `base_frontend_requirements.json`
-Base contract: shared fields, contract version, minimum frontend expectations.
-
-Recommended fields:
-- `contractVersion` (e.g., `"1.0"`)
-- JSON schema notes (as descriptive fields / comments)
-- optional defaults (if needed)
-
-### `templates.json`
-Single source of truth for consultant UI templates.
-
-Each template:
-- defines the consultant card visuals and texts,
-- references `pipelineName`,
-- defines the snapshot UI mode (`snapshotPickerMode`).
+The server is the source of truth.
 
 ---
 
-## Glossary (UI vs backend naming)
-- **Pipeline**: backend execution unit (YAML). Permissions are assigned to pipelines.
-- **Consultant**: UI presentation of a pipeline (card, texts, icon). Currently 1:1 with a pipeline.
-- **SnapshotSet** (backend) ↔ **Project** (UX label)
-- **Snapshot** (backend) ↔ **Version** (UX label)
-
-UI should show “Project / Version”, but must send `snapshot_set_id` and `snapshot_id` to the backend.
-
----
-
-## Template → pipeline mapping
-In `templates.json`, `pipelineName` selects which pipeline to execute after choosing a consultant.
-
-Example:
-```json
-{
-  "id": "shannon",
-  "pipelineName": "shannon"
-}
-```
-
-Frontend does not know YAML details; it only sends the pipeline name.
-Current assumption: `consultant.id` equals `pipelineName` (1:1 mapping). If this changes, the backend must expose a distinct `pipelineName` and the frontend must send it explicitly.
+## 2. Terminology
+- Consultant: UI card selected by user. It maps to a backend pipeline.
+- Pipeline: backend execution flow.
+- Snapshot set: a named set of snapshots for one pipeline/repository.
+- Snapshot: one concrete version inside snapshot set.
+- Neutral language: canonical model language used by pipeline internals.
+- Translated language: UI language that can trigger in/out translation.
 
 ---
 
-## UI control: `snapshotPickerMode`
-Minimal UI control mechanism for snapshot selection.
+## 3. Environment and endpoint matrix
 
-Values:
-- `none` — show no version selectors (assume no retrieval)
-- `single` — show 1 version selector
-- `compare` — show 2 version selectors + “vs” separator
-If the value is missing/unknown, the frontend should treat it as `single`.
+### 3.1 Runtime modes
+- Development endpoints are available only when `APP_DEVELOPMENT=true` (or `config.json: developement=true`).
+- Production endpoints are always mounted, but require bearer auth.
 
-Templates must include `snapshotPickerMode`.
-
-Examples:
-```json
-{
-  "id": "rejewski",
-  "pipelineName": "rejewski",
-  "snapshotPickerMode": "single"
-}
-```
-
-```json
-{
-  "id": "shannon",
-  "pipelineName": "shannon",
-  "snapshotPickerMode": "compare"
-}
-```
-
-```json
-{
-  "id": "ada",
-  "pipelineName": "ada",
-  "snapshotPickerMode": "none"
-}
-```
+### 3.2 Endpoint matrix
+- `GET /health`
+- `GET /app-config/dev`
+- `GET /app-config/prod`
+- `POST /search/dev`
+- `POST /search/prod`
+- `POST /query/dev` (same behavior as `/search/dev`)
+- `POST /query/prod` (same behavior as `/search/prod`)
+- `GET /pipeline/stream/dev?run_id=<id>`
+- `GET /pipeline/stream/prod?run_id=<id>`
+- `POST /pipeline/cancel/dev`
+- `POST /pipeline/cancel/prod`
+- `GET /auth-check/prod`
+- `GET /chat-history/sessions`
+- `POST /chat-history/sessions`
+- `GET /chat-history/sessions/{sessionId}`
+- `PATCH /chat-history/sessions/{sessionId}`
+- `DELETE /chat-history/sessions/{sessionId}`
+- `GET /chat-history/sessions/{sessionId}/messages`
+- `POST /chat-history/sessions/{sessionId}/messages`
 
 ---
 
-## Backend → frontend startup contract: `GET /app-config*`
-Frontend bootstraps via:
-- `GET /app-config/dev` in development mode
-- `GET /app-config/prod` in production mode
+## 4. Authentication and headers
 
-Compatibility:
-- There is no legacy `/app-config` alias in strict mode.
-- Use explicit mode endpoints only: `/app-config/dev` or `/app-config/prod`.
+### 4.1 Production endpoints (`/prod`)
+- Require `Authorization: Bearer <token>`.
+- Validation mode:
+  - Identity Provider JWT (if enabled), or
+  - static API token (`API_TOKEN`).
 
-Minimum response fields:
-- `contractVersion`
-- `defaultConsultantId`
-- `consultants[]` — consultant templates filtered by permissions
-- `snapshotPolicy` — how to confirm snapshot set changes
+### 4.2 Development endpoints (`/dev`)
+- Do not require bearer token.
+- Optional dev identity simulation:
+  - `Authorization: Bearer dev-user:<userId>`
 
-Each consultant includes:
-- `pipelineName`
-- `snapshotSetId` (empty if no retrieval)
-- `snapshots[]` (empty if no retrieval)
-  - each snapshot has `id` and `label`
-Additional consultant fields:
-- `cardDescription`, `welcomeTemplate`, `welcomeLinkText`, `wikiUrl` are localized objects: `{ "pl": "...", "en": "..." }`.
-  - If a key is missing for the current UI language, the frontend should fall back to another language (e.g., `en`) or the first available value.
-- `icon` is a plain text string (emoji recommended). The UI treats it as text.
+### 4.3 Headers used by frontend clients
+- `Authorization`: optional in dev, required in prod.
+- `X-Session-ID`: optional; if valid, server uses it.
+- `X-Request-ID`: optional idempotency/correlation key for one request.
+- `X-Run-ID`: optional alternative for trace/cancel routes.
+- `X-Tenant-ID`: optional for history API (`tenant-default` fallback).
+- `X-User-ID`: optional fallback user id for history API when no bearer token.
 
-Logical structure:
+---
+
+## 5. Global request constraints and normalization
+- Max query length: `APP_MAX_QUERY_LEN` (default `8000`).
+- Max length for most scalar fields: `APP_MAX_FIELD_LEN` (default `128`).
+- `session_id` accepted pattern: `^[a-zA-Z0-9_-]+$`.
+  - invalid value -> server generates a new session id.
+- trace run id accepted pattern: `^[a-zA-Z0-9_.-]+$`.
+  - invalid value -> ignored.
+
+---
+
+## 6. Startup contract: `GET /app-config/{mode}`
+
+### 6.1 Request
+- Method: `GET`
+- Path: `/app-config/dev` or `/app-config/prod`
+- Headers:
+  - `Authorization` required only for `/prod`
+  - optional `X-Session-ID`
+
+### 6.2 Response (200)
 ```json
 {
-  "contractVersion": "1.0",
-  "defaultConsultantId": "rejewski",
-  "snapshotPolicy": "single",
+  "repositories": ["nopCommerce"],
+  "defaultRepository": "nopCommerce",
   "consultants": [
     {
       "id": "rejewski",
@@ -150,136 +116,287 @@ Logical structure:
       "welcomeLinkText": { "pl": "Mariana Rejewskiego", "en": "Marian Rejewski" },
       "wikiUrl": { "pl": "...", "en": "..." }
     }
+  ],
+  "defaultConsultantId": "rejewski",
+  "templates": { "consultants": [] },
+  "translateChat": true,
+  "isMultilingualProject": true,
+  "neutralLanguage": "en",
+  "translatedLanguage": "pl",
+  "snapshotPolicy": "single",
+  "historyGroups": [
+    {
+      "neutral_description": "today",
+      "translated_description": "dzisiaj",
+      "formula": { "type": "today" }
+    },
+    {
+      "neutral_description": "last week",
+      "translated_description": "ostatni tydzien",
+      "formula": { "type": "last_n_days", "days": 7 }
+    }
+  ],
+  "historyImportant": {
+    "neutral_description": "important",
+    "translated_description": "wazne",
+    "show_important_on_the_top": true
+  }
+}
+```
+
+### 6.3 Semantics
+- `consultants` are already filtered by user permissions.
+- Localized consultant fields (`cardDescription`, `welcomeTemplate`, `welcomeLinkText`, `wikiUrl`) are maps keyed by language code.
+  - Frontend should use current UI language key first, then fallback to another available key.
+- `snapshotPickerMode` values:
+  - `none`: no snapshot selector,
+  - `single`: one selector,
+  - `compare`: two selectors.
+- `snapshotSetId` and `snapshots` are resolved server-side.
+- `neutralLanguage` and `translatedLanguage` are normalized to short codes (`en`, `pl`, etc.).
+- `isMultilingualProject=false` means UI should hide language selector and operate in neutral mode only.
+
+### 6.4 Errors
+- `401` unauthorized (`/prod` without valid bearer).
+- `503` auth not configured in prod.
+- `404` for `/dev` if dev mode disabled.
+
+---
+
+## 7. Query contract: `POST /search/{mode}` and `POST /query/{mode}`
+
+Both routes are equivalent.
+
+### 7.1 Canonical request body
+```json
+{
+  "query": "Do czego sluzy encja Category.cs?",
+  "consultant": "rejewski",
+  "pipelineName": "rejewski",
+  "translateChat": true,
+  "enableTrace": true,
+  "pipeline_run_id": "client_generated_run_id",
+  "repository": "nopCommerce",
+  "snapshot_set_id": "nopCommerce_4-60_4-90",
+  "snapshots": ["48440Ahh", "585959595"]
+}
+```
+
+### 7.2 Accepted aliases / additional fields
+- query text: `query` (recommended), `question`, `text`
+- trace flag: `enableTrace` or `enable_trace`
+- run id: `pipeline_run_id` or `run_id`
+- snapshot ids: `snapshot_id`, `snapshotId`, `snapshot_id_b`, `snapshotIdB`
+- snapshot set: `snapshot_set_id` or `snapshotSetId`
+- branch compare: `branches` or `branchA` + `branchB` (or single `branch`)
+- optional: `source_system_id`, `user_id`, `session_id`
+
+### 7.3 Snapshot and compare rules
+- `snapshots` may contain 0..2 values.
+- if 2 values are provided, they must be different.
+- if `snapshot_set_id` is present, each selected snapshot must belong to this set.
+- if pipeline has fixed snapshot set in YAML, request set must match it.
+
+### 7.4 Response (200, success)
+```json
+{
+  "ok": true,
+  "session_id": "747fc839b80046f288dfd8e1c697e8cb",
+  "consultant": "rejewski",
+  "pipelineName": "rejewski",
+  "repository": "nopCommerce",
+  "trace_enabled": true,
+  "pipeline_run_id": "1771704709712_...",
+  "results": "<markdown>",
+  "query_type": "DIRECT",
+  "steps_used": 9,
+  "translated": "<diagnostic text>",
+  "branches": ["A", "B"],
+  "branchA": "A",
+  "branchB": "B"
+}
+```
+
+### 7.5 Cancellation response from query route
+If run is cancelled while executing, query route can return:
+```json
+{
+  "ok": false,
+  "cancelled": true,
+  "error": "cancelled",
+  "pipeline_run_id": "..."
+}
+```
+HTTP status is still `200`.
+
+### 7.6 Error responses
+- `400`: invalid payload (missing required field, too many snapshots/branches, mismatch).
+- `401`: unauthorized on prod route.
+- `403`: pipeline not allowed for user.
+- `500`: unhandled server/runtime error.
+
+---
+
+## 8. Trace stream contract
+
+### 8.1 Open SSE stream
+- `GET /pipeline/stream/{mode}?run_id=<pipeline_run_id>`
+- `run_id` can also be sent in `X-Run-ID`.
+- Content type: `text/event-stream`.
+
+### 8.2 Events emitted
+Server sends JSON lines as `data: <json>`.
+
+Done event:
+```json
+{ "type": "done", "reason": "done" }
+```
+or
+```json
+{ "type": "done", "reason": "cancelled" }
+```
+
+Step event shape:
+```json
+{
+  "type": "step",
+  "ts": "2026-02-22T10:12:13Z",
+  "run_id": "...",
+  "step_id": "fetch_node_texts",
+  "action_id": "fetch_node_texts",
+  "summary": "Context materialization",
+  "summary_translated": "Budowanie kontekstu",
+  "caption": "Materializing context",
+  "caption_translated": "Budowanie kontekstu",
+  "details": {
+    "node_texts_count": 8
+  },
+  "docs": [
+    {
+      "id": "doc:123",
+      "depth": 1,
+      "text_len": 420,
+      "preview": "...",
+      "markdown": "..."
+    }
   ]
 }
 ```
 
-Notes:
-- `snapshots[].label` is what UI should display as “Version”.
-- `snapshots[].id` is what UI sends in `snapshots[]`.
-  Backend mapping:
-  - first item → `snapshot_id` (primary)
-  - second item (if present) → `snapshot_id_b` (secondary)
-- When `snapshotPickerMode` is `none`, both `snapshotSetId` and `snapshots[]` are empty.
-`snapshotPolicy` values:
-- `single` — if snapshot set changes, require starting a new chat.
-- `multi_confirm` — allow switching with confirmation and log a system message.
-- `multi_silent` — allow switching without confirmation.
+Other event types can appear (`enqueue`, `consume`) depending on callback policy.
+
+### 8.3 Keep-alive
+Server may emit comment keep-alive lines:
+```text
+: keep-alive
+```
+
+### 8.4 Cancel endpoint
+- `POST /pipeline/cancel/{mode}`
+- body:
+```json
+{ "pipeline_run_id": "..." }
+```
+(also accepts `run_id`)
+
+Response:
+```json
+{ "ok": true, "run_id": "...", "cancelled": true }
+```
 
 ---
 
-## Frontend: request payload (`POST /search*`)
-Frontend sends:
-- `pipelineName` (or `consultant`) from the selected consultant
-- `snapshot_set_id` from consultant (if present)
-- `snapshots[]` as a list of 0..2 snapshot IDs
-- `X-Session-ID` (if present; otherwise backend generates and returns it)
+## 9. Chat history API contract
 
-Rules for `snapshots[]`:
-- missing or empty list = no retrieval
-- 1 item = single version
-- 2 items = compare mode; items must be different
-For compare mode, the frontend must disable “Send” until 2 different snapshot IDs are selected.
+### 9.1 Availability
+History endpoints are available only when mock SQL history is enabled:
+- `config.json: mockSqlServer=true`
+- and development mode enabled
 
-Backend validation rule:
-- when `snapshot_set_id` is present, both selected snapshots (primary + optional secondary) must belong to that set.
-
-Logical payload (no retrieval / `snapshotPickerMode: none`):
+Otherwise all history endpoints return `503` with:
 ```json
 {
-  "query": "...",
-  "consultant": "ada",
-  "translateChat": true,
-  "snapshots": []
+  "error": "history_persistence_unavailable",
+  "message": "History persistence is not available. Enable development mode and mockSqlServer in config."
 }
 ```
 
-Logical payload (single version):
-```json
-{
-  "query": "...",
-  "consultant": "rejewski",
-  "snapshot_set_id": "nopCommerce_4-60_4-90",
-  "snapshots": ["48440Ahh"],
-  "translateChat": true
-}
-```
+### 9.2 User resolution for history
+- With `Authorization: Bearer dev-user:<id>` -> that user id.
+- Without it -> `anon`.
 
-Logical payload (compare):
-```json
-{
-  "query": "...",
-  "consultant": "shannon",
-  "snapshot_set_id": "fakeSnapSet",
-  "snapshots": ["aaa111", "bbb222"],
-  "translateChat": true
-}
-```
+Behavior for `anon`:
+- list sessions: empty,
+- get messages: empty,
+- create session/message: accepted response but not persisted,
+- session get/patch/delete: not found.
 
-Notes:
-- The current UI sends `consultant` (not `pipelineName`) and it is expected to be the consultant `id`.
-- `translateChat: true` means the UI language is Polish; `false` means English. Backend may use it to control prompts or translation behavior.
+### 9.3 Sessions list
+`GET /chat-history/sessions?limit=<1..200>&cursor=<updatedAt>&q=<title_substring>`
 
----
-
-## UX rules (framework-agnostic)
-- Show **Project** and **Version** in the UI, but send `snapshot_set_id` and `snapshot_id`.
-- Hide the version selectors when `snapshotPickerMode` is `none` or `snapshots[]` is empty.
-- In compare mode, require two different versions before enabling “Send”.
-- One chat must not mix different `snapshot_set_id` values.
-  - If the user switches to a consultant with a different `snapshotSetId` and the conversation already used a non-empty set, show a confirmation and start a new chat if accepted.
-- Trace filter highlight is visual-only; it does not change the contract or request payloads.
-
-Endpoint selection:
-- development: `POST /search/dev`
-- production: `POST /search/prod`
-
-When development endpoints are disabled (`developement=false`), `/dev` endpoints return `404`.
-
-## Response contract (`POST /search*`)
-Minimum response fields:
-- `results` — markdown string; frontend renders it as markdown
-- `session_id` — may be returned on every response or only once; frontend should update session id if present
-
-Optional fields:
-- `pipeline_run_id` — identifier used to attach trace stream and to cancel the request.
-- `cancelled: true` — when the backend acknowledges cancellation; `results` may be empty.
-
-If the backend returns `cancelled: true`, frontend should:
-- keep the last user question in the conversation,
-- show a "Cancelled" status in trace panel.
-
----
-
-## Chat history API contract
-
-Frontend uses a dedicated history API for listing sessions and loading messages.
-
-Endpoints:
-- `GET /chat-history/sessions?limit=50&cursor=...&q=...`
-- `GET /chat-history/sessions/{sessionId}`
-- `GET /chat-history/sessions/{sessionId}/messages?limit=100&before=...`
-- `POST /chat-history/sessions`
-- `POST /chat-history/sessions/{sessionId}/messages`
-- `PATCH /chat-history/sessions/{sessionId}`
-- `DELETE /chat-history/sessions/{sessionId}`
-
-Session list response shape:
+Response:
 ```json
 {
   "items": [
     {
       "sessionId": "s_123",
-      "title": "Pytanie o UML",
-      "consultantId": "ada",
+      "tenantId": "tenant-default",
+      "userId": "dev-user-1",
+      "title": "Category in Nop",
+      "consultantId": "rejewski",
       "createdAt": 1719140000000,
       "updatedAt": 1719140300000,
-      "messageCount": 6
+      "messageCount": 6,
+      "important": true,
+      "status": "active",
+      "deletedAt": null,
+      "softDeletedAt": null
     }
   ],
-  "next_cursor": "1719140000000"
+  "next_cursor": "1719140300000"
 }
 ```
+
+Rules:
+- sorted by `updatedAt` descending,
+- excludes `deletedAt` and `softDeletedAt` sessions,
+- `q` searches in `title` (case-insensitive),
+- `next_cursor` is last returned `updatedAt` when page is full.
+
+### 9.4 Create session
+`POST /chat-history/sessions`
+
+Accepted body fields:
+- `sessionId` or `session_id` (optional)
+- `title` or `firstQuestion` (optional)
+- `consultantId` or `consultant` (optional)
+
+Response returns created session object.
+
+### 9.5 Session details and updates
+- `GET /chat-history/sessions/{sessionId}`
+- `PATCH /chat-history/sessions/{sessionId}`
+- `DELETE /chat-history/sessions/{sessionId}`
+
+PATCH body fields:
+- `title`
+- `consultantId`
+- `important` (boolean)
+- `softDeleted` (boolean)
+
+DELETE behavior:
+- soft-delete only (`softDeletedAt` + `status=soft_deleted`).
+- Soft-deleted sessions are hidden from session list and should be treated by frontend as no longer accessible.
+
+### 9.6 Messages API
+- `GET /chat-history/sessions/{sessionId}/messages?limit=<1..200>&before=<ts_ms>`
+- `POST /chat-history/sessions/{sessionId}/messages`
+
+POST body:
+- `messageId` or `message_id` (optional)
+- `q` (string)
+- `a` (string)
+- `meta` (object, optional)
 
 Messages response shape:
 ```json
@@ -287,89 +404,94 @@ Messages response shape:
   "items": [
     {
       "messageId": "m_1",
+      "sessionId": "s_123",
       "ts": 1719140000000,
-      "q": "Zrób diagram klas",
-      "a": "..."
+      "q": "...",
+      "a": "...",
+      "meta": null,
+      "deletedAt": null
     }
   ],
   "next_cursor": "1719140000000"
 }
 ```
 
-If history persistence is unavailable, the UI shows:
-`Brak uruchomionego serwera persystencji historii (chat-history).`
+Pagination:
+- returns newest window constrained by `limit`,
+- with `before`, returns messages with `ts < before`,
+- `next_cursor` equals first returned `ts` when page is full.
 
 ---
 
-## Trace stream + cancel contract
+## 10. Optional auth probe endpoint
 
-### Trace stream endpoint
-Frontend opens a Server-Sent Events stream:
-- development: `GET /pipeline/stream/dev?run_id=<pipeline_run_id>`
-- production: `GET /pipeline/stream/prod?run_id=<pipeline_run_id>`
-
-Stream emits:
-- `type: "step"` events (see UI trace panel)
-- `type: "done"` when the run finishes
-- `type: "done", reason: "cancelled"` when the run is cancelled
-
-### Stage visibility policy (config + pipeline)
-Stage visibility is controlled server-side and affects which events are sent to the UI.
-
-Global (`config.json`):
-- `stages_visibility: "allowed" | "forbidden" | "explicit" | "pipeline_driven"`
-
-Pipeline (`pipeline.settings` in YAML):
-- `stages_visibility: "allowed" | "forbidden" | "explicit"`
-
-Precedence:
-- Global config wins, unless `stages_visibility: "pipeline_driven"`.
-- In `explicit` mode, a step must declare `stages_visible: true` to be emitted.
-
-Note:
-- `captioned` filtering was removed. There is no caption-based filtering anymore.
-
-### Cancel endpoint
-Frontend can cancel an in-flight query:
-- development: `POST /pipeline/cancel/dev`
-- production: `POST /pipeline/cancel/prod`
-
-Payload:
+- `GET /auth-check/prod`
+- Requires valid production bearer token.
+- Success:
 ```json
-{ "pipeline_run_id": "<id>" }
+{ "ok": true, "mode": "prod", "auth": "bearer" }
 ```
-
-Backend should:
-- mark the run as cancelled,
-- close the trace stream with `reason: "cancelled"`,
-- return `{ ok: true, cancelled: true }`.
-
-Frontend behavior:
-- the single "Send" button toggles to cancel state during an in-flight request,
-- clicking it sends the cancel request and aborts the client fetch,
-- trace panel should show a "Cancelled" status.
+- Errors: same auth errors as other `/prod` endpoints (`401`, `503`).
 
 ---
 
-## Backend: building `/app-config*`
-Minimal flow:
-1. Identify user
-2. Create session
-3. Resolve allowed pipelines for the user
-4. Select templates (from `templates.json`) only for allowed pipelines
-5. For each pipeline, resolve `snapshot_set_id` from YAML
-6. Resolve `snapshots[]` from Weaviate (labels + ids)
-7. Return `/app-config/dev` or `/app-config/prod` depending on mode
+## 11. UI behavior rules required by contract
+
+### 11.1 Consultant and pipeline selection
+- UI displays consultants from `app-config.consultants`.
+- Query request must include `consultant`.
+- `pipelineName` may also be sent; if omitted server resolves from templates.
+
+### 11.2 Snapshot controls
+- mode `none`: hide selectors, send `snapshots: []`.
+- mode `single`: send one snapshot id.
+- mode `compare`: send exactly two different ids.
+
+### 11.3 Snapshot policy
+`app-config.snapshotPolicy`:
+- `single`: switching consultant to another snapshot set should start a new chat.
+- `multi_confirm`: switch allowed after explicit confirmation.
+- `multi_silent`: switch allowed without confirmation.
+
+### 11.4 Multilingual toggle
+- If `isMultilingualProject=true`:
+  - show language selector,
+  - offer `translatedLanguage` and `neutralLanguage`,
+  - set `translateChat=true` only when selected language equals `translatedLanguage`.
+- If `isMultilingualProject=false`:
+  - hide language selector,
+  - force neutral language UI behavior,
+  - always send `translateChat=false`.
+
+### 11.5 Session continuity
+- Reuse `session_id` for subsequent turns in same chat.
+- Accept server-generated `session_id` and store it client-side.
+
+### 11.6 Rendering
+- Render `results` as markdown.
+- Trace panel should attach to `pipeline_run_id` when `trace_enabled=true`.
+
+### 11.7 History interactions
+- Rename -> `PATCH { title }`
+- Mark/unmark important -> `PATCH { important }`
+- Delete one chat -> `DELETE /sessions/{id}` (soft delete)
+- Clear all -> iterate sessions and send `PATCH { softDeleted: true }`
 
 ---
 
-## JS mock server
-The mock server should expose `/app-config/dev` and `/search/dev` as canonical development endpoints.
-It should also expose `/pipeline/stream/dev` and `/pipeline/cancel/dev` to keep UI behavior consistent.
-Goal: allow testing UI without Python, then switch to Python backend without UI changes.
+## 12. Mock server parity requirements
+`frontend/mock/server.js` should mirror this contract for local frontend work:
+- app-config structure,
+- search/query response shape,
+- trace stream done/step events,
+- cancel response,
+- chat-history endpoints and pagination fields.
+
+Goal: frontend can switch from mock to Python backend without protocol changes.
 
 ---
 
-## Out of scope (this sprint)
-- fine-grained UI permissions for special buttons (e.g. “Save to EA”)
-- for now such special features are returned as links in the response only for authorized users
+## 13. Contract evolution rules
+- Additive changes are preferred.
+- Do not remove or rename existing fields without a versioned migration plan.
+- If new frontend behavior requires server fields, document them here first.

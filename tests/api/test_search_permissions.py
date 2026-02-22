@@ -67,6 +67,34 @@ def test_search_denies_pipeline_not_allowed(monkeypatch):
     assert res.status_code == 403
 
 
+def test_search_response_uses_runner_final_output_as_results(monkeypatch):
+    qsd = _import_query_server_dynamic(monkeypatch)
+
+    class _Provider:
+        def resolve(self, *, user_id, token, session_id, claims=None):
+            return UserAccessContext(
+                user_id=None,
+                is_anonymous=True,
+                group_ids=["anonymous"],
+                allowed_pipelines=[],
+                allowed_commands=[],
+                acl_tags_any=[],
+            )
+
+    qsd._user_access_provider = _Provider()
+    qsd._pipeline_snapshot_store = None
+    qsd._snapshot_registry = None
+
+    client = qsd.app.test_client()
+    res = client.post("/search/dev", json={"consultant": "rejewski", "query": "hi"})
+
+    assert res.status_code == 200
+    payload = res.get_json()
+    assert payload["ok"] is True
+    assert payload["results"] == "OK"
+    assert payload["translated"] == "stub"
+
+
 def test_search_returns_400_for_unknown_snapshot_set(monkeypatch):
     qsd = _import_query_server_dynamic(monkeypatch)
 

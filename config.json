@@ -44,6 +44,9 @@
     "translated_description": "ważne",
     "show_important_on_the_top": true
   },
+  "is_multilingual_project": false,
+  "neutral_language": "en",
+  "translated_language": "pl",
   "use_gpu": true,
   "developement": true,
   "mockSqlServer": true,

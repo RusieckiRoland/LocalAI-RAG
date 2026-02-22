@@ -1903,6 +1903,9 @@
   const CANCEL_PATH = IS_FILE_MODE ? "/pipeline/cancel" : `/pipeline/cancel/${APP_MODE}`;
   const DEFAULT_APP_CONFIG = {
     defaultConsultantId: "rejewski",
+    isMultilingualProject: true,
+    neutralLanguage: "en",
+    translatedLanguage: "pl",
     snapshotPolicy: "single",
     historyGroups: [
       {
@@ -2010,6 +2013,9 @@
 
   let fakeAuthEnabled = false;
   let activeDevUserId = "dev-user-1";
+  let isMultilingualProject = true;
+  let neutralLanguageCode = "en";
+  let translatedLanguageCode = "pl";
 
   const HISTORY_STORAGE_KEY = "chatHistoryByUser_v1";
   let historyStore = null;
@@ -3555,12 +3561,86 @@
     traceDocModalIndex = -1;
   }
 
+  function normalizeLanguageCode(value, fallback = "en") {
+    const raw = String(value || "").trim().toLowerCase();
+    if (!raw) return fallback;
+    const normalized = raw.replace("_", "-").split("-", 1)[0].trim();
+    return normalized || fallback;
+  }
+
+  function getSupportedUiLang(value) {
+    const normalized = normalizeLanguageCode(value, "en");
+    if (uiTexts[normalized]) return normalized;
+    return uiTexts[neutralLanguageCode] ? neutralLanguageCode : "en";
+  }
+
+  function getLanguageOptionLabel(code) {
+    const normalized = normalizeLanguageCode(code, "en");
+    if (normalized === "pl") return "PL Rozmawiaj po polsku";
+    if (normalized === "en") return "EN English";
+    return normalized.toUpperCase();
+  }
+
+  function renderLanguageSelector(selectedLang) {
+    if (!langSelect) return;
+
+    if (!isMultilingualProject) {
+      langSelect.style.display = "none";
+      return;
+    }
+
+    langSelect.style.display = "";
+    const preferred = getSupportedUiLang(selectedLang || translatedLanguageCode);
+    const options = [
+      { value: translatedLanguageCode, label: getLanguageOptionLabel(translatedLanguageCode) },
+      { value: neutralLanguageCode, label: getLanguageOptionLabel(neutralLanguageCode) },
+    ];
+
+    langSelect.innerHTML = "";
+    const used = new Set();
+    for (const opt of options) {
+      const value = getSupportedUiLang(opt.value);
+      if (used.has(value)) continue;
+      used.add(value);
+      const node = document.createElement("option");
+      node.value = value;
+      node.textContent = opt.label;
+      langSelect.appendChild(node);
+    }
+
+    if (!used.has(preferred) && langSelect.options.length > 0) {
+      langSelect.value = langSelect.options[0].value;
+    } else {
+      langSelect.value = preferred;
+    }
+  }
+
+  function configureLanguageSettings(cfg) {
+    const source = cfg || {};
+    const enabled = source.isMultilingualProject;
+    isMultilingualProject = (typeof enabled === "boolean") ? enabled : true;
+    neutralLanguageCode = getSupportedUiLang(source.neutralLanguage || "en");
+    translatedLanguageCode = getSupportedUiLang(source.translatedLanguage || "pl");
+
+    if (neutralLanguageCode === translatedLanguageCode) {
+      translatedLanguageCode = neutralLanguageCode === "pl" ? "en" : "pl";
+    }
+  }
+
   function getCurrentLang() {
-    return localStorage.getItem("lang") || (langSelect?.value || "pl");
+    const saved = localStorage.getItem("lang");
+    const selected = langSelect?.value || "";
+    const resolved = getSupportedUiLang(saved || selected || translatedLanguageCode);
+    return isMultilingualProject ? resolved : neutralLanguageCode;
+  }
+
+  function shouldTranslateChatForLang(lang) {
+    if (!isMultilingualProject) return false;
+    return getSupportedUiLang(lang) === translatedLanguageCode;
   }
 
   function getTexts(lang) {
-    return uiTexts[lang] || uiTexts.pl;
+    return uiTexts[getSupportedUiLang(lang)] || uiTexts.en;
   }
 
   async function fetchAppConfig() {
@@ -4129,7 +4209,9 @@
   }
 
   function applyLang(lang) {
-    const t = getTexts(lang);
+    const effectiveLang = isMultilingualProject ? getSupportedUiLang(lang) : neutralLanguageCode;
+    renderLanguageSelector(effectiveLang);
+    const t = getTexts(effectiveLang);
 
     if (submitButton) {
       const label = submitButton.querySelector(".send-label");
@@ -4195,16 +4277,16 @@
     updateTraceDocNav();
     updateAuthUi();
 
-    localStorage.setItem("lang", lang);
-    if (langSelect && langSelect.value !== lang) langSelect.value = lang;
+    localStorage.setItem("lang", effectiveLang);
+    if (langSelect && langSelect.value !== effectiveLang) langSelect.value = effectiveLang;
 
-    buildConsultantsBar(lang);
-    renderWelcomeMessage(lang);
+    buildConsultantsBar(effectiveLang);
+    renderWelcomeMessage(effectiveLang);
     renderBranchControls();
 
     // Fix: existing copy buttons must update when language changes.
-    refreshCopyButtonsText(lang);
-    refreshFindButtonsText(lang);
+    refreshCopyButtonsText(effectiveLang);
+    refreshFindButtonsText(effectiveLang);
     setTraceStatusByKey(traceStatusKey, traceStatusArg);
     applyTraceFilters();
     renderHistoryList();
@@ -4476,7 +4558,7 @@
     const body = {
       query: query,
       consultant: selectedConsultant,
-      translateChat: (lang === "pl"),
+      translateChat: shouldTranslateChatForLang(lang),
       enableTrace: true,
       pipeline_run_id: traceRunId,
     };
@@ -4648,6 +4730,7 @@
       }
     }
 
+    configureLanguageSettings(appConfig);
     rebuildConsultantsIndex();
     selectedConsultant =
       appConfig.defaultConsultantId ||
@@ -4676,8 +4759,7 @@
 
   document.addEventListener("DOMContentLoaded", () => {
     if (langSelect) {
-      const savedLang = getCurrentLang();
-      langSelect.value = savedLang;
+      renderLanguageSelector(getCurrentLang());
       langSelect.addEventListener("change", e => applyLang(e.target.value));
     }
 

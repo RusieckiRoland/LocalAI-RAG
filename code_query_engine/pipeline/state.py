@@ -66,6 +66,9 @@ class PipelineState:
     draft_answer_neutral: Optional[str] = None  
     answer_neutral: Optional[str] = None
     answer_translated: Optional[str] = None
+    classification_labels_union: List[str] = field(default_factory=list)
+    acl_labels_union: List[str] = field(default_factory=list)
+    doc_level_max: Optional[int] = None
 
     # Translation artifacts
     user_question_neutral: Optional[str] = None

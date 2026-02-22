@@ -26,6 +26,7 @@ class AppConfigService:
         auth_header: str,
     ) -> Dict[str, Any]:
         templates = self.templates_store.load()
+        multilingual_enabled, neutral_language, translated_language = self._resolve_language_config(runtime_cfg)
 
         access_ctx = self.access_provider.resolve(
             user_id=None,
@@ -49,7 +50,10 @@ class AppConfigService:
             "consultants": consultants,
             "defaultConsultantId": default_consultant_id,
             "templates": templates,
-            "translateChat": True,
+            "translateChat": multilingual_enabled,
+            "isMultilingualProject": multilingual_enabled,
+            "neutralLanguage": neutral_language,
+            "translatedLanguage": translated_language,
             "snapshotPolicy": self.snapshot_policy,
             "historyGroups": runtime_cfg.get("history_groups") or [],
             "historyImportant": runtime_cfg.get("history_important") or {},
@@ -101,6 +105,38 @@ class AppConfigService:
                 out.append(self._with_snapshot_fields(c, snapshot_set_id=None, snapshots=[]))
 
         return out
+
+    def _resolve_language_config(self, runtime_cfg: Dict[str, Any]) -> tuple[bool, str, str]:
+        multilingual_enabled = self._coerce_bool(runtime_cfg.get("is_multilingual_project"), default=True)
+        neutral_language = self._normalize_language_code(runtime_cfg.get("neutral_language"), default="en")
+        translated_language = self._normalize_language_code(runtime_cfg.get("translated_language"), default="pl")
+        return multilingual_enabled, neutral_language, translated_language
+
+    @staticmethod
+    def _coerce_bool(value: Any, *, default: bool) -> bool:
+        if value is None:
+            return default
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, (int, float)):
+            return bool(value)
+        if isinstance(value, str):
+            v = value.strip().lower()
+            if v in {"1", "true", "yes", "y", "on"}:
+                return True
+            if v in {"0", "false", "no", "n", "off"}:
+                return False
+            return default
+        return default
+
+    @staticmethod
+    def _normalize_language_code(value: Any, *, default: str) -> str:
+        raw = str(value or "").strip().lower()
+        if not raw:
+            return default
+        # Normalize tags like "en-US" / "pt_BR" to a simple language code.
+        norm = raw.replace("_", "-").split("-", 1)[0].strip()
+        return norm or default
 
     def _with_snapshot_fields(
         self,

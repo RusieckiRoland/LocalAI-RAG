@@ -46,3 +46,35 @@ def test_app_config_filters_consultants_by_allowed_pipelines():
     assert cfg.get("defaultConsultantId") == "ada"
     assert consultants[0].get("snapshotSetId") is None
     assert consultants[0].get("snapshots") == []
+    assert cfg.get("isMultilingualProject") is True
+    assert cfg.get("neutralLanguage") == "en"
+    assert cfg.get("translatedLanguage") == "pl"
+    assert cfg.get("translateChat") is True
+
+
+def test_app_config_uses_runtime_language_settings() -> None:
+    service = AppConfigService(
+        templates_store=FakeTemplatesStore(),
+        access_provider=FakeAccessProvider(["rejewski"]),
+        pipeline_access=PipelineAccessService(),
+        snapshot_registry=None,
+        pipeline_snapshot_store=None,
+        snapshot_policy="single",
+    )
+
+    cfg = service.build_app_config(
+        runtime_cfg={
+            "repo_name": "nopCommerce",
+            "project_root": ".",
+            "is_multilingual_project": False,
+            "neutral_language": "EN-US",
+            "translated_language": "PL",
+        },
+        session_id="s",
+        auth_header="",
+    )
+
+    assert cfg.get("isMultilingualProject") is False
+    assert cfg.get("neutralLanguage") == "en"
+    assert cfg.get("translatedLanguage") == "pl"
+    assert cfg.get("translateChat") is False

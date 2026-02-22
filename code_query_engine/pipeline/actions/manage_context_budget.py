@@ -407,7 +407,7 @@ class ManageContextBudgetAction(PipelineActionBase):
             f"language: {lang}\n"
             f"compact: {c}\n"
             + ("metadata:\n" + "\n".join(meta_lines) + "\n" if meta_lines else "")
-            "text:\n"
+            + "text:\n"
             f"{text}\n"
         )
 

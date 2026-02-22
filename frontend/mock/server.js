@@ -139,6 +139,9 @@ function buildAppConfig() {
   return {
     contractVersion: "1.0",
     defaultConsultantId: "rejewski",
+    isMultilingualProject: true,
+    neutralLanguage: "en",
+    translatedLanguage: "pl",
     snapshotPolicy: "single",
     historyGroups: [
       {

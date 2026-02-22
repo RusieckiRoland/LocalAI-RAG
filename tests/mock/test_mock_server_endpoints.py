@@ -78,6 +78,9 @@ def test_app_config_dev_and_prod(mock_server) -> None:
         data = _get_json(f"http://127.0.0.1:{port}/app-config/{mode}")
         assert "consultants" in data
         assert "defaultConsultantId" in data
+        assert data.get("isMultilingualProject") is True
+        assert data.get("neutralLanguage") == "en"
+        assert data.get("translatedLanguage") == "pl"
 
 
 def test_search_and_query_dev_and_prod(mock_server) -> None:

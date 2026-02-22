@@ -13,8 +13,8 @@ The system must preserve language pairing and identity mapping:
   - `question_translated` / `answer_translated` (optional)
 
 Current project mapping (today):
-- neutral = English (`*_en`)
-- translated = Polish (`*_pl`)
+- neutral = English (`question_neutral` / `answer_neutral`)
+- translated = Polish (`question_translated` / `answer_translated`)
 - For authenticated users:
   - `identity_id` must be linked with `session_id`.
 
@@ -34,11 +34,11 @@ Each user request produces exactly one **turn**:
 - `created_at`, `finalized_at`
 - `pipeline_name`, `consultant`, `repository` (optional metadata)
 - `translate_chat` (bool)
-- `question_en` (string, required)
+- `question_neutral` (string, required)
 - `answer_neutral` (string, required once finalized)
-- `question_pl` (string, optional)
-- `answer_pl` (string, optional)
-- `answer_pl_is_fallback` (bool, optional; true if `answer_pl` was not translated but copied from EN)
+- `question_translated` (string, optional)
+- `answer_translated` (string, optional)
+- `answer_translated_is_fallback` (bool, optional; true if `answer_translated` was not translated but copied from neutral)
 - `metadata` (object; recommended to persist as JSONB in SQL)
 - `record_version` (int, optional)
 - `replaced_by_turn_id` (UUID, optional)
@@ -49,17 +49,17 @@ Each user request produces exactly one **turn**:
 - `request_id` must be unique per session:
   - unique by `(session_id, request_id)` in the session store
   - for authenticated storage, unique by `(identity_id, session_id, request_id)`
-- `question_en` must always be stored (English-neutral).
+- `question_neutral` must always be stored (English-neutral).
 - `answer_neutral` must always be stored for finalized turns.
 - For authenticated users: `identity_id` is stored and linked to `session_id`.
-- If translation is not performed, `question_pl` / `answer_pl` may be empty.
-- If `translate_chat=true`, `answer_pl` should be present; if not, the system should set `answer_pl_is_fallback=true` when falling back.
+- If translation is not performed, `question_translated` / `answer_translated` may be empty.
+- If `translate_chat=true`, `answer_translated` should be present; if not, the system should set `answer_translated_is_fallback=true` when falling back.
 
 **Neutral (EN) generation rules**
-- `question_en` must be produced at request start.
+- `question_neutral` must be produced at request start.
 - If EN translation is unavailable or fails:
-  - store the original question text in `question_en` (fallback copy), and
-  - record the fallback in `metadata` (e.g. `question_en_is_fallback=true`).
+  - store the original question text in `question_neutral` (fallback copy), and
+  - record the fallback in `metadata` (e.g. `question_neutral_is_fallback=true`).
 
 **request_id vs turn_id (idempotent start)**
 - `request_id` is the idempotency key; `turn_id` is the canonical identifier of the stored turn.
@@ -96,7 +96,7 @@ Purpose:
 
 Characteristics:
 - keyed by `identity_id` with index on `session_id` and time
-- stores canonical “Turn” records (English always; Polish optional)
+- stores canonical “Turn” records (`neutral` always; `translated` optional)
 - persist `metadata` as JSONB for forward-compatible auditing (IP hash, user-agent, channel, etc.)
 
 **Metadata safety (recommended)**
@@ -115,44 +115,41 @@ This component is also responsible for linking:
 
 ### 1) Session conversation store (ephemeral)
 `ISessionConversationStore`
-- `start_turn(*, session_id: str, request_id: str, identity_id: str | None, question_en: str, question_pl: str | None, meta: dict) -> str turn_id`
-- `finalize_turn(*, session_id: str, turn_id: str, answer_neutral: str, answer_pl: str | None, answer_pl_is_fallback: bool | None, meta: dict) -> None`
-- `get_recent_turns_en(*, session_id: str, limit: int, finalized_only: bool = True) -> list[dict{turn_id, question_en, answer_neutral}]`
-- `get_session_meta(*, session_id: str) -> dict`
-- `set_session_meta(*, session_id: str, identity_id: str | None, meta: dict) -> None`
+- `start_turn(*, session_id: str, request_id: str, identity_id: str | None, question_neutral: str, question_translated: str | None, translate_chat: bool, meta: dict | None) -> str turn_id`
+- `finalize_turn(*, session_id: str, request_id: str, turn_id: str, answer_neutral: str, answer_translated: str | None, answer_translated_is_fallback: bool | None, meta: dict | None) -> None`
+- `list_recent_finalized_turns(*, session_id: str, limit: int) -> list[ConversationTurn]`
 
 Implementation examples:
 - Redis list/stream per session (recommended) rather than rewriting one large JSON blob.
 - `finalize_turn` must be idempotent: repeated calls for the same `(session_id, turn_id)` must not corrupt data.
 
-**finalized_only semantics**
-- When `finalized_only=True`, return only turns where `answer_neutral` is present (finalized).
-
 **Finalize without start**
-- If finalization is called for a missing `(session_id, turn_id)` the system MUST fail fast and log an error
-  (this indicates a bug/race/restart and should not silently create “ghost turns”).
+- `ConversationHistoryService` currently supports a best-effort fallback:
+  - if `turn_id` is missing on finalize, it first calls `start_turn(...)`,
+  - then finalizes the returned turn.
+- Store implementations should still treat explicit `(session_id, turn_id)` mismatches as errors.
 
 ### 2) User conversation store (durable)
 `IUserConversationStore`
 - `upsert_session_link(*, identity_id: str, session_id: str) -> None`
 - `insert_turn(*, turn: Turn) -> None`
-- `upsert_turn_final(*, identity_id: str, session_id: str, turn_id: str, answer_neutral: str, answer_pl: str | None, answer_pl_is_fallback: bool | None, finalized_at: str | None, meta: dict | None) -> None`
+- `upsert_turn_final(*, identity_id: str, session_id: str, turn_id: str, answer_neutral: str, answer_translated: str | None, answer_translated_is_fallback: bool | None, finalized_at_utc: str | None, meta: dict | None) -> None`
 
 Notes:
 - Writes should be idempotent by natural keys (e.g. `(identity_id, session_id, turn_id)`).
 - Prefer upsert semantics for finalization to handle retries/races safely.
-- `finalized_at` should be treated as UTC and preferably set server-side by the storage layer (authoritative timestamps).
+- `finalized_at_utc` should be treated as UTC and preferably set server-side by the storage layer (authoritative timestamps).
 - A finalized turn is expected to already exist (created by `insert_turn`); `upsert_turn_final` updates final fields.
 
 ### 3) ConversationHistoryService (server-level)
 `IConversationHistoryService`
 - `on_request_started(...) -> turn_id`
   - called once per HTTP request before pipeline execution
-  - ensures `question_en` is written
+  - ensures `question_neutral` is written
   - ensures `session_id ⇔ identity_id` link for authenticated users
 - `on_request_finalized(...) -> None`
   - called from `finalize` when `final_answer` is determined
-  - writes `answer_neutral` + optional `answer_pl`
+  - writes `answer_neutral` + optional `answer_translated`
 
 **Metadata forwarding (recommended)**
 - `IConversationHistoryService` should forward an allowlisted subset of `meta` into SQL `metadata` (e.g. `channel`, `device_type`, `ip_hash`).
@@ -181,15 +178,15 @@ Orphan sessions:
 
 ### Where history is written
 1) **Request start (server layer)**:
-   - Create a new turn and write `question_en` (and `question_pl` if present).
+   - Create a new turn and write `question_neutral` (and `question_translated` if present).
    - Store `turn_id` on pipeline state so `finalize` can update the same turn.
 
 2) **Finalize action**:
-   - Calls history service with `answer_neutral` and `answer_pl` (if present).
+   - Calls history service with `answer_neutral` and `answer_translated` (if present).
 
 ### Where history is read
 `load_conversation_history` should load **English Q/A pairs** (neutral language) into the pipeline state:
-- `Dict(question_en, answer_neutral)` or a list of such dicts.
+- `Dict(question_neutral, answer_neutral)` or a list of such dicts.
 - The prompt composition layer decides how to render it.
 
 ## Record updates / redaction
@@ -228,4 +225,4 @@ This contract supports later additions without breaking writes:
 - user/session replay
 - semantic history retrieval (Weaviate index)
 - analytics and retention policies
-- conversation summarization (e.g. `summary_en`, `summary_pl`) to reduce token consumption in long sessions
+- conversation summarization (e.g. `summary_neutral`, `summary_translated`) to reduce token consumption in long sessions

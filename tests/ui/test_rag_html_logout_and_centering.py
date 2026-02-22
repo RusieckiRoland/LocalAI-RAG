@@ -28,3 +28,14 @@ def test_query_form_is_centered_in_normal_and_mobile() -> None:
         r"@media\s*\(max-width:\s*1100px\)[\s\S]*#queryForm\.centered\s*\{[\s\S]*left:\s*50%;",
         html,
     )
+
+
+def test_language_selector_obeys_multilingual_project_flag() -> None:
+    html = _read_rag_html()
+
+    assert "isMultilingualProject" in html
+    assert "neutralLanguage" in html
+    assert "translatedLanguage" in html
+    assert "function renderLanguageSelector(selectedLang)" in html
+    assert "langSelect.style.display = \"none\"" in html
+    assert "translateChat: shouldTranslateChatForLang(lang)" in html

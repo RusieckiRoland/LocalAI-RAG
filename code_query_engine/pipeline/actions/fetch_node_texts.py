@@ -4,6 +4,8 @@ from __future__ import annotations
 import json
 from typing import Any, Dict, List, Optional, Set, Tuple
 
+from classifiers.code_classifier import CodeKind, classify_text
+
 from ..definitions import StepDef
 from ..engine import PipelineRuntime
 from ..state import PipelineState
@@ -56,6 +58,38 @@ def _token_count(token_counter: Any, text: str) -> int:
     if callable(fn):
         return int(fn(text))
     raise ValueError("fetch_node_texts: token_counter must provide count_tokens(...) or count(...).")
+
+
+def _normalize_language(kind: CodeKind) -> str:
+    if kind == CodeKind.SQL:
+        return "sql"
+    if kind in (CodeKind.DOTNET, CodeKind.DOTNET_WITH_SQL):
+        return "dotnet"
+    return "unknown"
+
+
+def _format_context_block(
+    *,
+    node_id: str,
+    path: str,
+    language: str,
+    text: str,
+    metadata_lines: Optional[List[str]] = None,
+) -> str:
+    nid = node_id or ""
+    p = path or ""
+    lang = language or "unknown"
+    meta_lines = [str(x) for x in (metadata_lines or []) if str(x or "").strip()]
+    return (
+        "--- NODE ---\n"
+        f"id: {nid}\n"
+        f"path: {p}\n"
+        f"language: {lang}\n"
+        "compact: false\n"
+        + ("metadata:\n" + "\n".join(meta_lines) + "\n" if meta_lines else "")
+        + "text:\n"
+        f"{text}\n"
+    )
 
 
 def _resolve_prioritization_mode(step_raw: Dict[str, Any]) -> str:
@@ -505,6 +539,9 @@ class FetchNodeTextsAction(PipelineActionBase):
 
         # ---- Budget enforcement (atomic snippets: skip, do not break) ----
         out: List[Dict[str, Any]] = []
+        classification_union = set(getattr(state, "classification_labels_union", []) or [])
+        acl_union = set(getattr(state, "acl_labels_union", []) or [])
+        doc_level_max = getattr(state, "doc_level_max", None)
         used_tokens = 0
         used_chars = 0
 
@@ -548,6 +585,38 @@ class FetchNodeTextsAction(PipelineActionBase):
                     )
                 continue
 
+            # Aggregate permission-related metadata across retrieved chunks.
+            cls_labels = (node_props or {}).get("classification_labels")
+            if isinstance(cls_labels, list):
+                for lbl in cls_labels:
+                    s = str(lbl or "").strip()
+                    if s:
+                        classification_union.add(s)
+            elif cls_labels is not None:
+                s = str(cls_labels or "").strip()
+                if s:
+                    classification_union.add(s)
+
+            acl_labels = (node_props or {}).get("acl_allow")
+            if isinstance(acl_labels, list):
+                for lbl in acl_labels:
+                    s = str(lbl or "").strip()
+                    if s:
+                        acl_union.add(s)
+            elif acl_labels is not None:
+                s = str(acl_labels or "").strip()
+                if s:
+                    acl_union.add(s)
+
+            doc_level_val = (node_props or {}).get("doc_level")
+            try:
+                if doc_level_val is not None:
+                    dl = int(doc_level_val)
+                    if doc_level_max is None or dl > doc_level_max:
+                        doc_level_max = dl
+            except Exception:
+                pass
+
             text = str((node_props or {}).get("text") or "")
 
             # Backend returned empty string -> empty
@@ -578,8 +647,59 @@ class FetchNodeTextsAction(PipelineActionBase):
                         )
                     continue
 
-            # token budget gate
-            tok = _token_count(token_counter, text) if budget_tokens is not None else 0
+            meta_lines: list[str] = []
+            if include_metadata:
+                ignore_keys = {
+                    "text",
+                    "id",
+                    "node_id",
+                    "is_seed",
+                    "depth",
+                    "parent_id",
+                }
+                if metadata_fields:
+                    keys = metadata_fields
+                else:
+                    keys = [k for k in (node_props or {}).keys() if k not in ignore_keys]
+                for key in keys:
+                    if not key or key in ignore_keys:
+                        continue
+                    val = (node_props or {}).get(key)
+                    if val is None:
+                        continue
+                    if isinstance(val, list) or isinstance(val, set) or isinstance(val, tuple):
+                        flat = [str(x).strip() for x in val if str(x).strip()]
+                        if not flat:
+                            continue
+                        meta_lines.append(f"{key}: {', '.join(flat)}")
+                    elif isinstance(val, dict):
+                        try:
+                            meta_lines.append(f"{key}: {json.dumps(val, ensure_ascii=False, separators=(',', ':'))}")
+                        except Exception:
+                            meta_lines.append(f"{key}: {str(val)}")
+                    else:
+                        s = str(val).strip()
+                        if not s:
+                            continue
+                        meta_lines.append(f"{key}: {s}")
+
+            # token budget gate (count full context block, not raw text)
+            tok = 0
+            if budget_tokens is not None:
+                lang = _normalize_language(classify_text(str(text or "")).kind)
+                path_for_budget = (
+                    str((node_props or {}).get("path") or "")
+                    or str((node_props or {}).get("repo_relative_path") or "")
+                    or str((node_props or {}).get("source_file") or "")
+                )
+                block_text = _format_context_block(
+                    node_id=str(node_id),
+                    path=path_for_budget,
+                    language=lang,
+                    text=str(text or ""),
+                    metadata_lines=meta_lines if meta_lines else None,
+                )
+                tok = _token_count(token_counter, block_text)
             if budget_tokens is not None:
                 if used_tokens + tok > budget_tokens:
                     skipped_due_budget += 1
@@ -615,6 +735,9 @@ class FetchNodeTextsAction(PipelineActionBase):
                 "sql_kind",
                 "sql_schema",
                 "sql_name",
+                "acl_allow",
+                "classification_labels",
+                "doc_level",
             ):
                 v = (node_props or {}).get(k, None)
                 if v is None:
@@ -626,40 +749,6 @@ class FetchNodeTextsAction(PipelineActionBase):
             item["parent_id"] = parent_map.get(node_id, None)
 
             if include_metadata:
-                ignore_keys = {
-                    "text",
-                    "id",
-                    "node_id",
-                    "is_seed",
-                    "depth",
-                    "parent_id",
-                }
-                meta_lines: list[str] = []
-                if metadata_fields:
-                    keys = metadata_fields
-                else:
-                    keys = [k for k in (node_props or {}).keys() if k not in ignore_keys]
-                for key in keys:
-                    if not key or key in ignore_keys:
-                        continue
-                    val = (node_props or {}).get(key)
-                    if val is None:
-                        continue
-                    if isinstance(val, list) or isinstance(val, set) or isinstance(val, tuple):
-                        flat = [str(x).strip() for x in val if str(x).strip()]
-                        if not flat:
-                            continue
-                        meta_lines.append(f"{key}: {', '.join(flat)}")
-                    elif isinstance(val, dict):
-                        try:
-                            meta_lines.append(f"{key}: {json.dumps(val, ensure_ascii=False, separators=(',', ':'))}")
-                        except Exception:
-                            meta_lines.append(f"{key}: {str(val)}")
-                    else:
-                        s = str(val).strip()
-                        if not s:
-                            continue
-                        meta_lines.append(f"{key}: {s}")
                 if meta_lines:
                     item["metadata_context"] = meta_lines
             out.append(item)
@@ -687,6 +776,9 @@ class FetchNodeTextsAction(PipelineActionBase):
                 used_tokens += tok
 
         state.node_texts = list(out)
+        state.classification_labels_union = sorted(classification_union)
+        state.acl_labels_union = sorted(acl_union)
+        state.doc_level_max = doc_level_max
 
         # ---- Update graph_debug ----
         debug = dict(getattr(state, "graph_debug", None) or {})

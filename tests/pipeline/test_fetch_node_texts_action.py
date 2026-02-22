@@ -717,3 +717,164 @@ def test_fetch_node_texts_graph_edges_missing_fields_fail() -> None:
 
     with pytest.raises(ValueError, match="graph_edges items must contain from_id/to_id"):
         FetchNodeTextsAction().execute(step, state, rt)
+
+
+def test_fetch_node_texts_token_budget_counts_full_context_block_with_metadata() -> None:
+    class _CaptureCounter:
+        def __init__(self) -> None:
+            self.seen: List[str] = []
+
+        def count_tokens(self, text: str) -> int:
+            self.seen.append(str(text))
+            return 1
+
+    step = StepDef(
+        id="fetch_texts",
+        action="fetch_node_texts",
+        raw={
+            "id": "fetch_texts",
+            "action": "fetch_node_texts",
+            "budget_tokens": 5,
+            "include_metadata_in_context": True,
+            "metadata_fields": "repo_relative_path,classification_labels",
+        },
+    )
+    state = PipelineState(user_query="q", session_id="s", consultant="c", branch=None, translate_chat=False, snapshot_id="snap")
+    state.retrieval_seed_nodes = ["S1"]
+    backend = _RetrievalBackendFetchNodesStub(
+        nodes={
+            "S1": {
+                "text": "node S1",
+                "repo_relative_path": "src/a.cs",
+                "classification_labels": ["restricted"],
+            }
+        }
+    )
+    counter = _CaptureCounter()
+    rt = SimpleNamespace(
+        pipeline_settings={"repository": "nopCommerce", "snapshot_id": "snap", "max_context_tokens": 4096},
+        retrieval_backend=backend,
+        token_counter=counter,
+    )
+
+    FetchNodeTextsAction().execute(step, state, rt)
+
+    assert len(state.node_texts) == 1
+    assert counter.seen
+    rendered = counter.seen[0]
+    assert "--- NODE ---" in rendered
+    assert "id: S1" in rendered
+    assert "path: src/a.cs" in rendered
+    assert "metadata:" in rendered
+    assert "classification_labels: restricted" in rendered
+    assert "text:\nnode S1" in rendered
+
+
+def test_fetch_node_texts_include_metadata_context_with_selected_fields() -> None:
+    step = StepDef(
+        id="fetch_texts",
+        action="fetch_node_texts",
+        raw={
+            "id": "fetch_texts",
+            "action": "fetch_node_texts",
+            "max_chars": 1000,
+            "include_metadata_in_context": True,
+            "metadata_fields": "project_name,acl_allow",
+        },
+    )
+    state = PipelineState(user_query="q", session_id="s", consultant="c", branch=None, translate_chat=False, snapshot_id="snap")
+    state.retrieval_seed_nodes = ["S1"]
+    backend = _RetrievalBackendFetchNodesStub(
+        nodes={
+            "S1": {
+                "text": "node S1",
+                "project_name": "Nop.Core",
+                "class_name": "Category",
+                "acl_allow": ["dev", "ops"],
+            }
+        }
+    )
+    rt = SimpleNamespace(
+        pipeline_settings={"repository": "nopCommerce", "snapshot_id": "snap", "max_context_tokens": 4096},
+        retrieval_backend=backend,
+        token_counter=_TokenCounterStub(per_call=1),
+    )
+
+    FetchNodeTextsAction().execute(step, state, rt)
+
+    assert len(state.node_texts) == 1
+    meta = list(state.node_texts[0].get("metadata_context") or [])
+    assert meta == ["project_name: Nop.Core", "acl_allow: dev, ops"]
+    assert all("class_name" not in line for line in meta)
+
+
+def test_fetch_node_texts_metadata_fields_invalid_type_fails() -> None:
+    step = StepDef(
+        id="fetch_texts",
+        action="fetch_node_texts",
+        raw={
+            "id": "fetch_texts",
+            "action": "fetch_node_texts",
+            "max_chars": 1000,
+            "include_metadata_in_context": True,
+            "metadata_fields": 123,
+        },
+    )
+    state = PipelineState(user_query="q", session_id="s", consultant="c", branch=None, translate_chat=False, snapshot_id="snap")
+    state.retrieval_seed_nodes = ["S1"]
+    backend = _RetrievalBackendFetchNodesStub(nodes={"S1": {"text": "node S1"}})
+    rt = SimpleNamespace(
+        pipeline_settings={"repository": "nopCommerce", "snapshot_id": "snap", "max_context_tokens": 4096},
+        retrieval_backend=backend,
+        token_counter=_TokenCounterStub(per_call=1),
+    )
+
+    with pytest.raises(ValueError, match="metadata_fields must be a comma-separated string or list"):
+        FetchNodeTextsAction().execute(step, state, rt)
+
+
+def test_fetch_node_texts_aggregates_security_unions_and_doc_level_max() -> None:
+    step = StepDef(
+        id="fetch_texts",
+        action="fetch_node_texts",
+        raw={"id": "fetch_texts", "action": "fetch_node_texts", "max_chars": 1000},
+    )
+    state = PipelineState(user_query="q", session_id="s", consultant="c", branch=None, translate_chat=False, snapshot_id="snap")
+    state.retrieval_seed_nodes = ["S1", "S2", "S3"]
+    state.classification_labels_union = ["internal"]
+    state.acl_labels_union = ["team-a"]
+    state.doc_level_max = 2
+
+    backend = _RetrievalBackendFetchNodesStub(
+        nodes={
+            "S1": {
+                "text": "node S1",
+                "classification_labels": ["restricted", "internal"],
+                "acl_allow": ["team-a", "finance"],
+                "doc_level": 5,
+            },
+            "S2": {
+                "text": "node S2",
+                "classification_labels": "confidential",
+                "acl_allow": "it",
+                "doc_level": 3,
+            },
+            "S3": {
+                "text": "node S3",
+                "classification_labels": None,
+                "acl_allow": None,
+                "doc_level": "bad-int",
+            },
+        }
+    )
+    rt = SimpleNamespace(
+        pipeline_settings={"repository": "nopCommerce", "snapshot_id": "snap", "max_context_tokens": 4096},
+        retrieval_backend=backend,
+        token_counter=_TokenCounterStub(per_call=1),
+    )
+
+    FetchNodeTextsAction().execute(step, state, rt)
+
+    assert state.classification_labels_union == ["confidential", "internal", "restricted"]
+    assert state.acl_labels_union == ["finance", "it", "team-a"]
+    assert state.doc_level_max == 5
