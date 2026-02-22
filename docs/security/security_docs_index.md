@@ -13,6 +13,9 @@
 ---
 
 ## Related Documents (outside this folder)
+- `docs/contracts/authorization_contract.md`  
+  Formal security model contract (classification/clearance/ACL semantics and requirements).
+
 - `docs/tests/retrieval_integration_tests.md`  
   Security scenarios and expected behavior for ACL/classification/clearance in retrieval/graph.
 

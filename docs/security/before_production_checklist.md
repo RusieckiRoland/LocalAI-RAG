@@ -52,7 +52,7 @@ Clarification:
 3. Add security tests (access only to allowed chunks).
 
 **Related files**
-1. `docs/security/authorization_contract.md`
+1. `docs/contracts/authorization_contract.md`
 2. `code_query_engine/pipeline/providers/weaviate_retrieval_backend.py`
 3. `code_query_engine/pipeline/providers/weaviate_graph_provider.py`
 
@@ -110,4 +110,3 @@ Before production, all DEV shortcuts must be replaced with real mechanisms:
 4. Monitoring and alerts.
 
 Use this as a checklist and expand as the system evolves.
-
