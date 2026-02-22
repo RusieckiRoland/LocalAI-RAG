@@ -513,7 +513,11 @@ class WeaviateRetrievalBackend(IRetrievalBackend):
         if sec.get("acl_enabled", True):
             return_props.append("acl_allow")
         if sec.get("enabled", False):
-            return_props.extend(["classification_labels", "doc_level"])
+            kind = str(sec.get("kind") or "").strip()
+            if kind in ("labels_universe_subset", "classification_labels"):
+                return_props.append(self._classification_prop)
+            elif kind == "clearance_level":
+                return_props.append(self._doc_level_prop)
 
         t0 = time.time()
         try:
@@ -573,8 +577,8 @@ class WeaviateRetrievalBackend(IRetrievalBackend):
                 "sql_schema": str(props.get("sql_schema") or ""),
                 "sql_name": str(props.get("sql_name") or ""),
                 "acl_allow": props.get("acl_allow"),
-                "classification_labels": props.get("classification_labels"),
-                "doc_level": props.get("doc_level"),
+                "classification_labels": props.get(self._classification_prop),
+                "doc_level": props.get(self._doc_level_prop),
             }
 
         return out

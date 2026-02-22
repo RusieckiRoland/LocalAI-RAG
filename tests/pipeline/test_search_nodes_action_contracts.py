@@ -448,7 +448,7 @@ def test_search_nodes_auto_search_type_from_prefix() -> None:
     backend = _BackendStub(hits=[SearchHit(id="A", score=1.0, rank=1)])
     rt = _runtime_with_backend(backend, settings={"repository": "Fake", "top_k": 5})
     state = _state_with_query("{\"query\":\"class Category\"}")
-    state.last_prefix = "semantic_rerank"
+    state.last_prefix = "semantic"
 
     step = StepDef(
         id="search",
@@ -527,38 +527,6 @@ def test_search_nodes_allow_rrf_k_from_payload() -> None:
 
     assert backend.last_request is not None
     assert backend.last_request.rrf_k == 9
-
-
-def test_search_nodes_auto_search_type_semantic_rerank_payload_maps_to_semantic() -> None:
-    backend = _BackendStub(hits=[SearchHit(id="A", score=1.0, rank=1)])
-    rt = _runtime_with_backend(backend, settings={"repository": "Fake", "top_k": 5})
-    state = _state_with_query(
-        json.dumps(
-            {
-                "query": "class Category",
-                "search_type": "semantic_rerank",
-            }
-        )
-    )
-
-    step = StepDef(
-        id="search",
-        action="search_nodes",
-        raw={
-            "id": "search",
-            "action": "search_nodes",
-            "search_type": "auto",
-            "default_search_type": "hybrid",
-            "top_k": 5,
-            "query_parser": "jsonish_v1",
-        },
-    )
-
-    SearchNodesAction().execute(step, state, rt)
-
-    assert backend.last_request is not None
-    assert backend.last_request.search_type == "semantic"
-    assert state.search_type == "semantic"
 
 
 def test_search_nodes_rerank_widens_top_k() -> None:

@@ -105,11 +105,9 @@ class RetrievalDispatcher:
         self,
         *,
         semantic: Optional[IRetriever] = None,
-        semantic_rerank: Optional[IRetriever] = None,
         bm25: Optional[IRetriever] = None,
     ) -> None:
         self._semantic = semantic
-        self._semantic_rerank = semantic_rerank or semantic
         self._bm25 = bm25
 
     def search(
@@ -167,12 +165,6 @@ class RetrievalDispatcher:
 
             # Trim to requested top_k
             return fused[:top_k]
-
-        # Kept for compatibility with existing wiring/tests, even if router no longer emits it.
-        if mode == "semantic_rerank":
-            if self._semantic_rerank is None:
-                return []
-            return self._semantic_rerank.search(query, top_k=top_k, settings=settings, filters=filters)
 
         # Unknown => best-effort semantic
         if self._semantic is None:

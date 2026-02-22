@@ -43,9 +43,6 @@ YAMLpipeline:
         hybrid:
           prefix: "[HYBRID:]"
           next: fetch
-        semantic_rerank:
-          prefix: "[SEMANTIC_RERANK:]"
-          next: fetch
       on_other: call_answer
 
     - id: fetch

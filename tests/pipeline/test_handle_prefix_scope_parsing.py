@@ -24,7 +24,6 @@ def _make_step() -> StepDef:
                 "semantic": {"prefix": "[SEMANTIC:]", "next": "next_sem"},
                 "bm25": {"prefix": "[BM25:]", "next": "next_bm25"},
                 "hybrid": {"prefix": "[HYBRID:]", "next": "next_hyb"},
-                "semantic_rerank": {"prefix": "[SEMANTIC_RERANK:]", "next": "next_sr"},
                 "direct": {"prefix": "[DIRECT:]", "next": "next_direct"},
             },
             "on_other": "next_other",

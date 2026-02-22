@@ -42,9 +42,6 @@ YAMLpipelines:
           hybrid:
             prefix: "[HYBRID:]"
             next: call_answer
-          semantic_rerank:
-            prefix: "[SEMANTIC_RERANK:]"
-            next: call_answer
           direct:
             prefix: "[DIRECT:]"
             next: call_answer
@@ -131,9 +128,6 @@ YAMLpipelines:
             next: call_answer
           hybrid:
             prefix: "[HYBRID:]"
-            next: call_answer
-          semantic_rerank:
-            prefix: "[SEMANTIC_RERANK:]"
             next: call_answer
           direct:
             prefix: "[DIRECT:]"
@@ -229,9 +223,6 @@ YAMLpipelines:
             next: call_answer
           hybrid:
             prefix: "[HYBRID:]"
-            next: call_answer
-          semantic_rerank:
-            prefix: "[SEMANTIC_RERANK:]"
             next: call_answer
           direct:
             prefix: "[DIRECT:]"

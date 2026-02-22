@@ -479,17 +479,12 @@ class SearchNodesAction(PipelineActionBase):
         if search_type_cfg == "auto":
             # 1) from payload (if provided)
             if payload_search_type:
-                if payload_search_type == "semantic_rerank":
-                    search_type = "semantic"
-                else:
-                    search_type = payload_search_type
+                search_type = payload_search_type
             # 2) from prefix_router kind (state.last_prefix)
             if search_type == "auto":
                 lp = str(getattr(state, "last_prefix", "") or "").strip().lower()
                 if lp in ("semantic", "bm25", "hybrid"):
                     search_type = lp
-                elif lp == "semantic_rerank":
-                    search_type = "semantic"
             # 3) no explicit source -> fail fast (contract)
             if search_type == "auto":
                 raise ValueError("search_nodes: requires explicit search_type when search_type='auto'.")

@@ -172,7 +172,6 @@ class PipelineValidator:
             ("semantic_prefix", "on_semantic"),
             ("bm25_prefix", "on_bm25"),
             ("hybrid_prefix", "on_hybrid"),
-            ("semantic_rerank_prefix", "on_semantic_rerank"),
             ("direct_prefix", "on_direct"),
             ("answer_prefix", "on_answer"),
             ("followup_prefix", "on_followup"),

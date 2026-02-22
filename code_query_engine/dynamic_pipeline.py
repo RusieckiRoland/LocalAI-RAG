@@ -58,7 +58,6 @@ class DynamicPipelineRunner:
         markdown_translator: Any = None,
         translator_pl_en: Any = None,
         logger: Any = None,        
-        semantic_rerank_searcher: Any = None,
         graph_provider: Any = None,
         token_counter: Any = None,
         conversation_history_service: Any = None,
@@ -72,7 +71,6 @@ class DynamicPipelineRunner:
         self.pipelines_root = os.fspath(root)
         self.model = model       
         self.retrieval_backend = retrieval_backend       
-        self.semantic_rerank_searcher = semantic_rerank_searcher
 
         if graph_provider is None:
             # No fallback: graph provider must be injected explicitly.

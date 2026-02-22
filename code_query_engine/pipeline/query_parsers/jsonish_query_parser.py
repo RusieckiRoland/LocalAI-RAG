@@ -13,10 +13,10 @@ _RE_TRAILING_COMMA = re.compile(r",\s*([}\]])")
 _RE_UNQUOTED_KEY = re.compile(r"(?P<prefix>[{,]\s*)(?P<key>[A-Za-z_][A-Za-z0-9_\-]*)\s*:")
 _RE_EQUAL_ASSIGN = re.compile(r"(?P<key>[A-Za-z_][A-Za-z0-9_\-]*)\s*=\s*")
 _RE_QUERY_SEARCH_TYPE = re.compile(
-    r"(?i)\b(?:search_type|mode)\s*[:=]\s*(?P<st>semantic_rerank|semantic|bm25|hybrid)\b"
+    r"(?i)\b(?:search_type|mode)\s*[:=]\s*(?P<st>semantic|bm25|hybrid)\b"
 )
 
-_ALLOWED_SEARCH_TYPES = {"semantic", "bm25", "hybrid", "semantic_rerank"}
+_ALLOWED_SEARCH_TYPES = {"semantic", "bm25", "hybrid"}
 _ALLOWED_MATCH_OPERATORS = {"and", "or"}
 
 

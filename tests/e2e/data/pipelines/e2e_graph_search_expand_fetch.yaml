@@ -45,9 +45,6 @@ YAMLpipeline:
         hybrid:
           prefix: "[HYBRID:]"
           next: search
-        semantic_rerank:
-          prefix: "[SEMANTIC_RERANK:]"
-          next: search
         direct:
           prefix: "[DIRECT:]"
           next: call_answer
