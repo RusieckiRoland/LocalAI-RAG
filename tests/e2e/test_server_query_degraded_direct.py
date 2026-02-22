@@ -76,7 +76,7 @@ def test_query_endpoint_works_with_stubbed_runner(monkeypatch: pytest.MonkeyPatc
         "session_id": "test-session",
     }
 
-    resp = client.post("/search", json=payload)
+    resp = client.post("/search/dev", json=payload)
     assert resp.status_code == 200
 
     data = resp.get_json()

@@ -83,7 +83,7 @@ This is useful when a router/model emits a “JSON-ish” payload.
 
 ### Supported payload metadata (JSON-ish)
 When using `JsonishQueryParser`, the model can include optional *top-level* metadata keys:
-- `search_type` / `mode`: `semantic | bm25 | hybrid | semantic_rerank`
+- `search_type` / `mode`: `semantic | bm25 | hybrid`
 - `top_k`: integer (used only if `allow_top_k_from_payload: true`)
 - `rrf_k`: integer (used only if `allow_rrf_k_from_payload: true` and resolved search is `hybrid`)
 - `match_operator`: `and | or` (applied only when resolved search is `bm25`)
@@ -164,7 +164,7 @@ Optional:
 
   search_type: semantic | bm25 | hybrid
 
-  top_k: <int>                             # optional, default: 5
+  top_k: <int>                             # required (or set in pipeline settings)
   query_parser: <string>                   # optional (e.g. jsonish_v1)
   rerank: none | keyword_rerank | codebert_rerank   # optional; semantic-only
   snapshot_source: primary | secondary               # optional; default: primary
@@ -184,6 +184,7 @@ Runtime error if:
 - `snapshot_source` is invalid
 - `snapshot_source=secondary` and `snapshot_id_b` is missing
 - `search_type` is not one of `semantic | bm25 | hybrid`
+- `top_k` missing in step **and** pipeline settings
 - `top_k < 1`
 - query becomes empty after parsing/normalization
 - `rerank` is unknown

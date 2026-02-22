@@ -15,7 +15,6 @@ from code_query_engine.pipeline.state import PipelineState
 from code_query_engine.pipeline.validator import PipelineValidator
 
 from history.history_manager import HistoryManager
-pytestmark = pytest.mark.skip(reason="temporarily disabled")
 
 # -----------------------
 # Test doubles
@@ -54,15 +53,16 @@ class FakeModelWithAsk:
         self._outputs_by_consultant = outputs_by_consultant
         self._counters: Dict[str, int] = {}
 
-    def ask(self, *, consultant: str, prompt: str, **kwargs: Any) -> str:
-        outs = self._outputs_by_consultant.get(consultant, [])
-        idx = self._counters.get(consultant, 0)
-        self._counters[consultant] = idx + 1
+    def ask(self, *, consultant: str | None = None, prompt: str, **kwargs: Any) -> str:
+        key = consultant or "__default__"
+        outs = self._outputs_by_consultant.get(key, []) or self._outputs_by_consultant.get(consultant or "", [])
+        idx = self._counters.get(key, 0)
+        self._counters[key] = idx + 1
         if idx >= len(outs):
-         raise AssertionError(
-        f"FakeModelWithAsk: missing output for consultant='{consultant}' "
-        f"call_index={idx} available={len(outs)}"
-          )
+            raise AssertionError(
+                f"FakeModelWithAsk: missing output for consultant='{consultant}' "
+                f"call_index={idx} available={len(outs)}"
+            )
         return outs[idx]
 
 
@@ -159,6 +159,36 @@ def _runtime(*, pipe_settings: Dict[str, Any], model: Any, dispatcher: Any, grap
     # 'constants' is a project-level module in your repo; the test uses it via runtime.
     import constants  # type: ignore
 
+    class DummyTokenCounter:
+        def count_tokens(self, text: str) -> int:
+            return max(1, len((text or "").split()))
+
+    class FakeRetrievalBackend:
+        def __init__(self, *, hits: List[Dict[str, Any]], node_texts: List[Dict[str, Any]]):
+            self._hits = hits
+            self._node_texts = node_texts
+
+        def search(self, req):
+            from code_query_engine.pipeline.providers.retrieval_backend_contract import SearchResponse
+            return SearchResponse(hits=list(self._hits or []))
+
+        def fetch_nodes(self, *, node_ids, repository, snapshot_id, retrieval_filters=None):
+            out = {}
+            for n in self._node_texts or []:
+                nid = str(n.get("node_id") or n.get("id") or "").strip()
+                if not nid or (node_ids and nid not in node_ids):
+                    continue
+                out[nid] = {
+                    "text": str(n.get("text") or ""),
+                    "repo_relative_path": str(n.get("repo_relative_path") or n.get("file") or ""),
+                    "source_file": str(n.get("source_file") or n.get("file") or ""),
+                }
+            return out
+
+        def fetch_texts(self, *, ids, repository, snapshot_id, retrieval_filters=None):
+            data = self.fetch_nodes(node_ids=ids, repository=repository, snapshot_id=snapshot_id, retrieval_filters=retrieval_filters)
+            return {k: v.get("text", "") for k, v in data.items()}
+
     return PipelineRuntime(
         pipeline_settings=pipe_settings,
         model=model,
@@ -169,7 +199,11 @@ def _runtime(*, pipe_settings: Dict[str, Any], model: Any, dispatcher: Any, grap
         logger=NoopInteractionLogger(),
         constants=constants,
         graph_provider=graph,
-        token_counter=None,
+        token_counter=DummyTokenCounter(),
+        retrieval_backend=FakeRetrievalBackend(
+            hits=pipe_settings.get("_scenario_hits", []),
+            node_texts=pipe_settings.get("_scenario_node_texts", []),
+        ),
         add_plant_link=lambda x, _consultant: x,
     )
 
@@ -232,8 +266,13 @@ def test_pipeline_scenarios_runner(scenario_name: str) -> None:
 
     pipe = _load_pipeline_from_file(data["pipeline_file"], pipeline_name=pipeline_name)
 
-    # Provide a default for scenarios that don't define it explicitly.
+    # Provide defaults for scenarios that don't define them explicitly.
     pipe.settings.setdefault("context_budget_tokens", 400)
+    pipe.settings.setdefault("max_context_tokens", 4000)
+    pipe.settings.setdefault(
+        "prompts_dir",
+        str(Path(__file__).resolve().parent / "data" / "prompts"),
+    )
 
     sc = Scenario(
         name=raw["name"],
@@ -307,6 +346,10 @@ def test_pipeline_scenarios_runner(scenario_name: str) -> None:
     else:
         outputs_by_consultant = {pipeline_consultant: _flatten_outputs_by_prompt_key(pipe, outputs_by_key)}
 
+    # Some call_model paths use manual prompt mode and don't pass consultant to model.ask(...).
+    # Provide a default queue for that case.
+    outputs_by_consultant.setdefault("__default__", outputs_by_consultant[pipeline_consultant])
+
     model = FakeModelWithAsk(outputs_by_consultant=outputs_by_consultant)
    
     
@@ -320,6 +363,8 @@ def test_pipeline_scenarios_runner(scenario_name: str) -> None:
     dispatcher = DummyRetrievalDispatcher(retriever=retriever)
     graph = FakeGraphProvider(expand_result=sc.graph_expand_result, node_texts=sc.node_texts)
 
+    pipe.settings["_scenario_hits"] = sc.retriever_results
+    pipe.settings["_scenario_node_texts"] = sc.node_texts
     rt = _runtime(pipe_settings=pipe.settings, model=model, dispatcher=dispatcher, graph=graph)
     engine = PipelineEngine(build_default_action_registry())
 
@@ -330,6 +375,8 @@ def test_pipeline_scenarios_runner(scenario_name: str) -> None:
         branch="develop",
         translate_chat=sc.translate_chat,
     )
+    state.repository = str(raw.get("repository") or "Repo")
+    state.snapshot_id = str(raw.get("snapshot_id") or "snap")
 
     # Safety: some actions use a loop counter; ensure it exists for older state versions.
     if not hasattr(state, "turn_loop_counter"):

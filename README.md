@@ -488,7 +488,7 @@ models/
 
 Weaviate setup is documented in a separate file:
 
-- `docs/weviate/weaviate_local_setup.md`
+- `docs/weaviate/weaviate_local_setup.md`
 
 ## 8.5) Branch preparation guide
 

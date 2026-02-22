@@ -37,8 +37,9 @@ It intentionally excludes `UC-FILE-*` style file inventory entries.
 - Code: `code_query_engine/query_server_dynamic.py`, `code_query_engine/conversation_history/service.py`
 - Tests: `tests/api/test_chat_history_mock_endpoints.py`, `tests/conversation_history/test_conversation_history_service.py`, `tests/conversation_history/test_durable_store_fallback.py`
 
-### UC-WEB-V1-007 — Important flag and soft-delete
+### UC-WEB-V1-007 — Important flag (planned) and soft-delete
 - Entry: `PATCH /chat-history/sessions/<id>` (`important`, `softDeleted`), `DELETE /chat-history/sessions/<id>`
+- Status: **Planned** for `important` (not in DB schema). Soft-delete is supported via `deleted_at`.
 - Code: `code_query_engine/query_server_dynamic.py`
 - Tests: `tests/api/test_chat_history_mock_endpoints.py`
 

@@ -45,18 +45,17 @@ It also defines **security rules (ACL + labels or clearance_level)** and the **r
 
 ---
 
-## Retrieval backend abstraction (FAISS today, Weaviate-ready)
+## Retrieval backend abstraction (Weaviate-only)
 
 ### Motivation
 
-To keep future migrations (FAISS → Weaviate) low-risk, **no pipeline action may talk to FAISS directly**.
-
-**All retrieval operations must go through a single backend interface**, injected via runtime (e.g. `runtime.retrieval_backend`).
+The system uses **Weaviate as the single retrieval backend**.  
+All retrieval operations must go through a single backend interface, injected via runtime (e.g. `runtime.retrieval_backend`).
 
 This applies to:
 - `semantic`
-- `bm25` (even if implemented without FAISS)
-- `hybrid` (even if it internally calls both semantic and bm25)
+- `bm25`
+- `hybrid`
 
 ### Backend contract
 
@@ -134,7 +133,7 @@ class IRetrievalBackend:
   - `backend.search(search_type="<semantic|bm25|hybrid>", ...)`
 
 - The backend implementation is responsible for executing the requested search deterministically:
-  - FAISS backend may internally emulate `hybrid` using `semantic + bm25 + RRF`
+  - Backend may internally emulate `hybrid` using `semantic + bm25 + RRF`
   - Weaviate backend may implement `hybrid` natively
 
 **Important:** regardless of the internal implementation, the pipeline sees only canonical IDs.
@@ -156,9 +155,9 @@ The action MUST reset these fields (set to empty values):
  - `state.graph_seed_nodes = []`  
  - `state.graph_expanded_nodes = []`  
  - `state.graph_edges = []`  
- - `state.graph_node_texts = []`  
+ - `state.graph_node_texts = []` *(if present)*  
  - `state.graph_debug = {}`  
- - `state.node_sexts = []` *(if present)*  
+ - `state.node_texts = []` *(if present)*  
  - `state.context_blocks = []`
 
 
@@ -244,7 +243,7 @@ The system supports exactly three search modes:
 - `bm25`
 - `hybrid`
 
-No additional modes such as `semantic_rerank` are allowed.
+No additional modes are allowed.
 Reranking is a **feature**, not a search mode.
 
 ---

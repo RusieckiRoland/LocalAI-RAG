@@ -656,7 +656,7 @@ Expected:
 
 Review Notes on Test Completeness 2026-02-05
 
-The items below summarize **all not fully covered or missing** behaviors from `retrieval_contract_coverage_pl.md`. Each item includes a proposed **integration test** and the **expected result** (grounded in the Fake Enterprise 1.0/1.1 bundles).
+The items below summarize **all not fully covered or missing** behaviors from `retrieval_contract_coverage.md`. Each item includes a proposed **integration test** and the **expected result** (grounded in the Fake Enterprise 1.0/1.1 bundles).
 
 1) Gap: `search_nodes` must not materialize text or write `context_blocks` (partial coverage)
 Proposed integration test:

@@ -124,9 +124,9 @@ Implementation examples:
 - `finalize_turn` must be idempotent: repeated calls for the same `(session_id, turn_id)` must not corrupt data.
 
 **Finalize without start**
-- `ConversationHistoryService` currently supports a best-effort fallback:
-  - if `turn_id` is missing on finalize, it first calls `start_turn(...)`,
-  - then finalizes the returned turn.
+- **Production:** missing `turn_id` on finalize is a **hard error** (fail-fast).
+- **Dev/Test only:** a best‑effort fallback may be enabled:
+  - if `turn_id` is missing on finalize, call `start_turn(...)`, then finalize.
 - Store implementations should still treat explicit `(session_id, turn_id)` mismatches as errors.
 
 ### 2) User conversation store (durable)

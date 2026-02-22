@@ -86,6 +86,7 @@ Key properties:
 - `graph_seed_nodes` — graph seed nodes.
 - `graph_expanded_nodes` — expanded graph nodes.
 - `graph_edges` — graph edges.
+- `graph_node_texts` — graph-related node text buffer (if used by actions).
 - `graph_debug` — graph debug data.
 - `turn_loop_counter` — per‑run loop counter.
 - `loop_counters` — per‑step loop counters.

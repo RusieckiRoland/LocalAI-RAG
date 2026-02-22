@@ -5,7 +5,7 @@ This document describes the **CLI tools** used to:
 - **discover** which snapshots exist (and their `snapshot_id`)
 - **manage SnapshotSets** (named allowlists / query scopes)
 
-Weaviate must already be running (see `docs/weviate/weaviate_local_setup.md`).
+Weaviate must already be running (see `docs/weaviate/weaviate_local_setup.md`).
 
 ---
 

@@ -8,6 +8,7 @@ YAMLpipeline:
     compat_mode: latest
     top_k: 3
     prompts_dir: "tests/e2e/data/prompts"
+    max_context_tokens: 1200
 
   steps:
     - id: translate_in
@@ -69,11 +70,20 @@ YAMLpipeline:
       routes:
         answer:
           prefix: "[Answer:]"
-          next: finalize
+          next: set_answer_from_last_model_response
         followup:
           prefix: "[Requesting data on:]"
-          next: finalize
-      on_other: finalize
+          next: set_answer_from_last_model_response
+      on_other: set_answer_from_last_model_response
+
+    - id: set_answer_from_last_model_response
+      action: set_variables
+      rules:
+        - set: answer_neutral
+          from: last_model_response
+        - set: answer_translated
+          value: null
+      next: finalize
 
     - id: finalize
       action: finalize

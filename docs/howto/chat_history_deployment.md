@@ -7,11 +7,23 @@ This covers the durable user history storage only. Session-scoped history (Redis
 
 ## Database setup
 Choose one database engine and apply the matching schema:
-- PostgreSQL: `docs/chat_history_schema_postgres.sql`
-- MySQL: `docs/chat_history_schema_mysql.sql`
-- MS SQL: `docs/chat_history_schema_mssql.sql`
+- PostgreSQL: `docs/sqldb/chat_history_schema_postgres.sql`
+- MySQL: `docs/sqldb/chat_history_schema_mysql.sql`
+- MS SQL: `docs/sqldb/chat_history_schema_mssql.sql`
 
 Provision backups and retention before enabling writes.
+
+## Current schema capabilities (MVP)
+
+The current SQL schema provides:
+- `chat_sessions` and `chat_messages` tables
+- `deleted_at` for **soft delete**
+- `meta_json` for extra attributes not modeled as columns
+
+Not implemented as first‑class columns:
+- `important` / `is_important` (store only in `meta_json` if needed)
+
+If a feature is not in the schema, it is **not supported** at the DB contract level.
 
 ## Backend configuration
 Expose a dedicated connection string for chat history, for example `CHAT_HISTORY_DB_URL`.
