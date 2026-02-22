@@ -1,10 +1,28 @@
-# 🧠 GPU‑Accelerated RAG with Weaviate (BYOV) + LLaMA
+# 🧠 GPU-Accelerated RAG with Weaviate (BYOV) + LLaMA
 
-**Local, GPU-accelerated RAG for code repositories (Weaviate BYOV + LLM via llama.cpp).**
+**Security-aware, local-oriented RAG for code repositories (Weaviate BYOV + LLM via llama.cpp).**
 
-This project is a **local-first RAG server** optimized for **analyzing source-code repositories on-premises**, especially in organizations that **cannot send code or derived context to external LLM services** (e.g., regulated industries, critical infrastructure, strict IP policies).
+This is a **full-featured RAG server** (retrieval + generation) that can use **external LLMs like any other RAG** — but it is designed to **enforce security policies** and **reduce the risk of accidental data leakage** when working with **classified or restricted content**.
 
 It uses **Weaviate as the single retrieval backend** (vector search + BM25 + hybrid + metadata filtering) with **BYOV (Bring Your Own Vectors)** — embeddings are computed locally and stored in Weaviate. **FAISS is not used anywhere** in this project.
+
+## What “local-oriented” means here
+
+“Local-oriented” does **not** mean “no external LLMs”. It means:
+
+- you can run fully on-prem (GPU) end-to-end,
+- you can still route prompts to external providers when allowed,
+- and the system can **automatically fall back to an approved local/internal model** when a request touches **classified data**.
+
+In other words: **it behaves like a standard RAG**, but adds **policy enforcement and policy-driven routing** so sensitive contexts are not accidentally sent outside.
+
+## Security policies (built-in)
+
+The system supports **classification-aware generation**:
+
+- retrieved fragments can carry **classification labels** (and other security metadata),
+- policies can **block external LLM traffic entirely**, or
+- **route generation** to a safe internal/local LLM when a retrieval batch contains content above a configured threshold.
 
 ### Why it works well for code analysis
 
@@ -20,21 +38,6 @@ That graph lets retrieval behave more like a real developer: start from a likely
 ### Not only for code — also for regular documents
 
 Although the system is optimized for code repositories, it can also serve as a RAG backend for typical documents. The difference is that it includes optional mechanisms for **relationship-aware retrieval** (graph expansion and dependency tracing) when the indexed data provides those links.
-
-### Local-first server, optional external LLMs, and security policies
-
-The application runs as a **server** that hosts the primary model locally (GPU-accelerated), but it can also be configured to send prompts to **any LLM endpoint**, including external providers.
-
-At the same time, it supports security-oriented policies that help enforce your organization’s rules:
-
-1. **Block external LLM traffic**  
-   The system can be configured to disallow calls to external providers entirely, forcing all inference to remain local.
-
-2. **Classification-aware LLM routing**  
-   Retrieved documents can carry **classification labels** (or similar security metadata).  
-   If a retrieval batch contains content marked above a configured threshold, the request can be **automatically routed to an approved internal LLM** (as defined by your policies), rather than being sent to an external endpoint.
-
-This makes it possible to combine flexible LLM usage with enforceable constraints, without relying on developer discipline alone.
 
 ### Data versioning philosophy: snapshots and snapshot sets
 
@@ -67,18 +70,18 @@ Think of it as pipeline composition by configuration, not by code — like confi
 
 **At a glance**
 
-```mermaid
+```mermaid id="idjbe5"
 flowchart LR
-    A[translate_in_if_needed] --> B[load_conversation_history]
-    B --> C{sufficiency router}
-    C -->|BM25 / SEMANTIC / HYBRID| D[search_nodes]
-    D --> E[manage_context_budget]
-    E --> F[fetch_node_texts]
-    F --> G[call_model (answer_v1)]
-    G --> H{sufficient context?}
-    H -->|no| I[loop_guard]
+    A["translate_in_if_needed"] --> B["load_conversation_history"]
+    B --> C{"sufficiency router"}
+    C -->|BM25 / SEMANTIC / HYBRID| D["search_nodes"]
+    D --> E["manage_context_budget"]
+    E --> F["fetch_node_texts"]
+    F --> G["call_model answer_v1"]
+    G --> H{"sufficient context"}
+    H -->|no| I["loop_guard"]
     I --> D
-    H -->|yes| J[finalize]
+    H -->|yes| J["finalize"]
 ```
 
 ### Pipeline reliability additions
@@ -135,19 +138,106 @@ YAMLpipeline:
       end: true
 ```
 
-### Pipeline compat/lockfile (required for `compat_mode: locked`)
+### Deterministic pipelines across engine versions (compat + lockfile)
 
-- `settings.behavior_version` and `settings.compat_mode` are **mandatory**.
-- `compat_mode: locked` requires a lockfile next to the YAML:
+The pipeline engine is expected to evolve (new features, new defaults, stricter validation).  
+If a pipeline must remain **deterministic and stable regardless of engine upgrades**, it should be run in **compat mode** with a **lockfile**.
+
+- Every pipeline must declare:
+  - `settings.behavior_version`
+  - `settings.compat_mode`
+
+- When `compat_mode: locked` is enabled, a lockfile must exist next to the YAML:
   - `<pipeline_basename>.lock.json`
+
+The lockfile freezes version-sensitive behavior (defaults, normalization, validation rules, and other implicit semantics captured by the lockfile).
 
 Generate the lockfile:
 
-```bash
+```bash id="ohhaol"
 python -m code_query_engine.pipeline.pipeline_cli lock pipelines/rejewski.yaml
 ```
 
-**Hardware target.** Optimized for a **single NVIDIA RTX 4090** (CUDA 12.x). Defaults (e.g., full llama.cpp CUDA offload) are tuned for a single high-end GPU (e.g., RTX 4090-class).
+### Pipeline inheritance (fast evolution without copy-paste)
+
+Pipelines can **inherit** from other pipelines. This lets you keep a stable base pipeline and create variants by overriding only the parts that change (retrieval strategy, router prompt, filters, limits, policies).
+
+Example: a derived pipeline that reuses the base structure but changes retrieval mode and answer prompt.
+
+**Base pipeline (`pipelines/base/rejewski_base.yaml`)**
+```yaml
+YAMLpipeline:
+  name: "rejewski_base"
+
+  settings:
+    entry_step_id: "translate"
+    behavior_version: "0.2.0"
+    compat_mode: locked
+
+  steps:
+    - id: "translate"
+      action: "translate_in_if_needed"
+      next: "load_history"
+
+    - id: "load_history"
+      action: "load_conversation_history"
+      next: "search"
+
+    - id: "search"
+      action: "search_nodes"
+      search_type: "hybrid"
+      top_k: 8
+      next: "fetch"
+
+    - id: "fetch"
+      action: "fetch_node_texts"
+      top_n_from_settings: "node_text_fetch_top_n"
+      next: "answer"
+
+    - id: "answer"
+      action: "call_model"
+      prompt_key: "rejewski/answer_v1"
+      next: "finalize"
+
+    - id: "finalize"
+      action: "finalize"
+      end: true
+```
+
+**Derived pipeline (`pipelines/rejewski_semantic.yaml`)**
+```yaml
+YAMLpipeline:
+  name: "rejewski_semantic"
+  extends: "pipelines/base/rejewski_base.yaml"
+
+  steps:
+    - id: "search"
+      action: "search_nodes"
+      search_type: "semantic_rerank"
+      top_k: 12
+      next: "fetch"
+
+    - id: "answer"
+      action: "call_model"
+      prompt_key: "rejewski/answer_semantic_v1"
+      next: "finalize"
+```
+
+### Access control via pipeline assignment
+
+Assigning users to specific pipelines is not only a UX choice — it is also a practical **access-control mechanism**.
+
+Different pipelines can enforce different constraints:
+- which repositories/snapshots a user can query,
+- which metadata filters must always apply,
+- whether graph expansion is allowed,
+- whether external LLM calls are permitted,
+- and how classification labels affect routing.
+
+In other words: granting a user access to a pipeline can be used to grant (or deny) access to specific datasets and behaviors.
+
+## **Hardware target.** 
+Optimized for a **single NVIDIA RTX 4090** (CUDA 12.x). Defaults (e.g., full llama.cpp CUDA offload) are tuned for a single high-end GPU (e.g., RTX 4090-class).
 
 **Stack focus.**
 
