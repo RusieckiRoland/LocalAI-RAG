@@ -4,7 +4,7 @@ YAMLpipeline:
   settings:
     entry_step_id: translate_in
     behavior_version: "0.2.0"
-    compat_mode: locked
+    compat_mode: latest
     snapshot_set_id: "nopCommerce_4-60_4-90"
     max_context_tokens: 5000
     retrieval_budget_tokens: 2000
@@ -16,6 +16,10 @@ YAMLpipeline:
   steps:
     - id: translate_in
       action: translate_in_if_needed
+      next: load_history
+
+    - id: load_history
+      action: load_conversation_history
       next: build_search_query
 
     - id: build_search_query
@@ -24,6 +28,7 @@ YAMLpipeline:
       callback_caption: "Building search query"
       callback_caption_translated: "Budowanie zapytania do wyszukiwania"
       prompt_key: "shannon/search_query_v1"
+      use_history: true
       user_parts:
         user_question:
           source: user_question_neutral
@@ -77,6 +82,7 @@ YAMLpipeline:
       max_output_tokens: 200
       temperature: 0.2
       top_p: 0.6
+      use_history: true
       user_parts:
         context:
           source: composed_context_for_prompt
@@ -128,6 +134,7 @@ YAMLpipeline:
       callback_caption: "Comparing snapshots"
       callback_caption_translated: "Porównywanie snapshotów"
       prompt_key: "shannon/compare_answer_v1"
+      use_history: true
       user_parts:
         evidence:
           source: context_blocks

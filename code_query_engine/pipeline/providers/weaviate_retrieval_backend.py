@@ -508,10 +508,12 @@ class WeaviateRetrievalBackend(IRetrievalBackend):
             "sql_kind",
             "sql_schema",
             "sql_name",
-            "acl_allow",
-            "classification_labels",
-            "doc_level",
         ]
+        sec = self._security_cfg
+        if sec.get("acl_enabled", True):
+            return_props.append("acl_allow")
+        if sec.get("enabled", False):
+            return_props.extend(["classification_labels", "doc_level"])
 
         t0 = time.time()
         try:

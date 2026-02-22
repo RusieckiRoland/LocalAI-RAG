@@ -112,7 +112,11 @@ def test_weaviate_bm25_operator_is_passed(monkeypatch) -> None:
     query.bm25_objects = [SimpleNamespace(properties={"canonical_id": "X"})]
     collection = _FakeCollection(query)
     client = _FakeClient(collection)
-    backend = WeaviateRetrievalBackend(client=client, query_embed_model="models/embedding/e5-base-v2")
+    backend = WeaviateRetrievalBackend(
+        client=client,
+        query_embed_model="models/embedding/e5-base-v2",
+        security_config={"security_enabled": True, "acl_enabled": True},
+    )
 
     req = SearchRequest(
         search_type="bm25",
@@ -137,7 +141,11 @@ def test_weaviate_bm25_does_not_fallback_to_hybrid(monkeypatch) -> None:
     query.hybrid_objects = [SimpleNamespace(properties={"canonical_id": "Y"})]
     collection = _FakeCollection(query)
     client = _FakeClient(collection)
-    backend = WeaviateRetrievalBackend(client=client, query_embed_model="models/embedding/e5-base-v2")
+    backend = WeaviateRetrievalBackend(
+        client=client,
+        query_embed_model="models/embedding/e5-base-v2",
+        security_config={"security_enabled": True, "acl_enabled": True},
+    )
     backend._encode_query = lambda _q: [0.1, 0.2]  # type: ignore[assignment]
 
     req = SearchRequest(
@@ -162,7 +170,11 @@ def test_weaviate_bm25_does_not_retry_without_query_properties(monkeypatch) -> N
     query.bm25_objects = [SimpleNamespace(properties={"canonical_id": "Z"})]
     collection = _FakeCollection(query)
     client = _FakeClient(collection)
-    backend = WeaviateRetrievalBackend(client=client, query_embed_model="models/embedding/e5-base-v2")
+    backend = WeaviateRetrievalBackend(
+        client=client,
+        query_embed_model="models/embedding/e5-base-v2",
+        security_config={"security_enabled": True, "acl_enabled": True},
+    )
 
     req = SearchRequest(
         search_type="bm25",
@@ -185,7 +197,11 @@ def test_weaviate_ignores_bm25_operator_for_non_bm25(monkeypatch) -> None:
     query = _FakeQuery()
     collection = _FakeCollection(query)
     client = _FakeClient(collection)
-    backend = WeaviateRetrievalBackend(client=client, query_embed_model="models/embedding/e5-base-v2")
+    backend = WeaviateRetrievalBackend(
+        client=client,
+        query_embed_model="models/embedding/e5-base-v2",
+        security_config={"security_enabled": True, "acl_enabled": True},
+    )
     backend._encode_query = lambda _q: [0.1, 0.2]  # type: ignore[assignment]
 
     req = SearchRequest(
@@ -212,7 +228,11 @@ def test_weaviate_bm25_operator_factory_missing_raises(monkeypatch) -> None:
     query.bm25_objects = [SimpleNamespace(properties={"canonical_id": "X"})]
     collection = _FakeCollection(query)
     client = _FakeClient(collection)
-    backend = WeaviateRetrievalBackend(client=client, query_embed_model="models/embedding/e5-base-v2")
+    backend = WeaviateRetrievalBackend(
+        client=client,
+        query_embed_model="models/embedding/e5-base-v2",
+        security_config={"security_enabled": True, "acl_enabled": True},
+    )
 
     req = SearchRequest(
         search_type="bm25",
@@ -253,7 +273,11 @@ def test_weaviate_fetch_nodes_maps_security_fields(monkeypatch) -> None:
     ]
     collection = _FakeCollection(query)
     client = _FakeClient(collection)
-    backend = WeaviateRetrievalBackend(client=client, query_embed_model="models/embedding/e5-base-v2")
+    backend = WeaviateRetrievalBackend(
+        client=client,
+        query_embed_model="models/embedding/e5-base-v2",
+        security_config={"security_enabled": True, "acl_enabled": True},
+    )
 
     monkeypatch.setattr(backend, "_build_in_filter", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(backend, "_build_where_filter", lambda **_kwargs: None)

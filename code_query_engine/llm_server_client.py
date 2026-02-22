@@ -127,6 +127,110 @@ class ServerLLMClient:
         if not self._ordered_names:
             self._ordered_names = list(self._servers.keys())
 
+    @staticmethod
+    def _join(base: str, path: str) -> str:
+        return base.rstrip("/") + "/" + path.lstrip("/")
+
+    def _post_json(
+        self,
+        url: str,
+        payload: Dict[str, Any],
+        *,
+        server: ServerLLMConfig,
+        op: str,
+    ) -> Dict[str, Any]:
+        timer = LLMCallTimer()
+
+        def _do_request() -> Dict[str, Any]:
+            data = json.dumps(payload).encode("utf-8")
+            req = urllib.request.Request(url, data=data, method="POST")
+            req.add_header("Content-Type", "application/json")
+            if server.api_key:
+                req.add_header("Authorization", f"Bearer {server.api_key}")
+            with urllib.request.urlopen(req, timeout=server.timeout_seconds) as resp:
+                body = resp.read().decode("utf-8")
+            return json.loads(body)
+
+        try:
+            if server.throttling_enabled:
+                throttle = self._get_throttle(server)
+                res = throttle.call(_do_request)
+            else:
+                res = _do_request()
+            log_llm_query(
+                op=op,
+                request={
+                    "url": url,
+                    "server": server.name,
+                    "mode": server.mode,
+                    "payload": payload,
+                },
+                response=res,
+                duration_ms=timer.ms(),
+            )
+            return res
+        except urllib.error.HTTPError as e:
+            body = ""
+            try:
+                body = e.read().decode("utf-8")
+            except Exception:
+                body = "<unreadable>"
+            log_llm_query(
+                op=op,
+                request={
+                    "url": url,
+                    "server": server.name,
+                    "mode": server.mode,
+                    "payload": payload,
+                },
+                response=body,
+                error=str(e),
+                duration_ms=timer.ms(),
+            )
+            logger.error("ServerLLMClient request failed: %s body=%s", e, body)
+            raise
+        except Exception as e:
+            log_llm_query(
+                op=op,
+                request={
+                    "url": url,
+                    "server": server.name,
+                    "mode": server.mode,
+                    "payload": payload,
+                },
+                response=None,
+                error=str(e),
+                duration_ms=timer.ms(),
+            )
+            logger.error("ServerLLMClient request failed: %s", e)
+            raise
+
+    def _get_throttle(self, server: ServerLLMConfig) -> OpenAIThrottle:
+        existing = self._throttles.get(server.name)
+        if existing is not None:
+            return existing
+        cfg = server.throttling or ThrottleConfig()
+        throttle = OpenAIThrottle(cfg)
+        self._throttles[server.name] = throttle
+        return throttle
+
+    @staticmethod
+    def _extract_completion_text(res: Dict[str, Any]) -> str:
+        try:
+            return (res.get("choices") or [{}])[0].get("text", "").strip()
+        except Exception:
+            return ""
+
+    @staticmethod
+    def _extract_chat_text(res: Dict[str, Any]) -> str:
+        try:
+            choice = (res.get("choices") or [{}])[0]
+            msg = choice.get("message") or {}
+            text = msg.get("content") or choice.get("text") or ""
+            return str(text).strip()
+        except Exception:
+            return ""
+
     def ask(
         self,
         *,
@@ -477,102 +581,3 @@ class HybridLLMClient:
     @staticmethod
     def _join(base: str, path: str) -> str:
         return base.rstrip("/") + "/" + path.lstrip("/")
-
-    def _post_json(
-        self,
-        url: str,
-        payload: Dict[str, Any],
-        *,
-        server: ServerLLMConfig,
-        op: str,
-    ) -> Dict[str, Any]:
-        timer = LLMCallTimer()
-
-        def _do_request() -> Dict[str, Any]:
-            data = json.dumps(payload).encode("utf-8")
-            req = urllib.request.Request(url, data=data, method="POST")
-            req.add_header("Content-Type", "application/json")
-            if server.api_key:
-                req.add_header("Authorization", f"Bearer {server.api_key}")
-            with urllib.request.urlopen(req, timeout=server.timeout_seconds) as resp:
-                body = resp.read().decode("utf-8")
-            return json.loads(body)
-        try:
-            if server.throttling_enabled:
-                throttle = self._get_throttle(server)
-                res = throttle.call(_do_request)
-            else:
-                res = _do_request()
-            log_llm_query(
-                op=op,
-                request={
-                    "url": url,
-                    "server": server.name,
-                    "mode": server.mode,
-                    "payload": payload,
-                },
-                response=res,
-                duration_ms=timer.ms(),
-            )
-            return res
-        except urllib.error.HTTPError as e:
-            body = ""
-            try:
-                body = e.read().decode("utf-8")
-            except Exception:
-                body = "<unreadable>"
-            log_llm_query(
-                op=op,
-                request={
-                    "url": url,
-                    "server": server.name,
-                    "mode": server.mode,
-                    "payload": payload,
-                },
-                response=body,
-                error=str(e),
-                duration_ms=timer.ms(),
-            )
-            logger.error("ServerLLMClient request failed: %s body=%s", e, body)
-            raise
-        except Exception as e:
-            log_llm_query(
-                op=op,
-                request={
-                    "url": url,
-                    "server": server.name,
-                    "mode": server.mode,
-                    "payload": payload,
-                },
-                response=None,
-                error=str(e),
-                duration_ms=timer.ms(),
-            )
-            logger.error("ServerLLMClient request failed: %s", e)
-            raise
-
-    def _get_throttle(self, server: ServerLLMConfig) -> OpenAIThrottle:
-        existing = self._throttles.get(server.name)
-        if existing is not None:
-            return existing
-        cfg = server.throttling or ThrottleConfig()
-        throttle = OpenAIThrottle(cfg)
-        self._throttles[server.name] = throttle
-        return throttle
-
-    @staticmethod
-    def _extract_completion_text(res: Dict[str, Any]) -> str:
-        try:
-            return (res.get("choices") or [{}])[0].get("text", "").strip()
-        except Exception:
-            return ""
-
-    @staticmethod
-    def _extract_chat_text(res: Dict[str, Any]) -> str:
-        try:
-            choice = (res.get("choices") or [{}])[0]
-            msg = choice.get("message") or {}
-            text = msg.get("content") or choice.get("text") or ""
-            return str(text).strip()
-        except Exception:
-            return ""
