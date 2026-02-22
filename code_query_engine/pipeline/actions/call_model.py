@@ -60,17 +60,18 @@ class CallModelAction(PipelineActionBase):
 
         # Log ONLY the relevant rendered input for the current mode.
         # Otherwise, a previous call_model step may leave stale trace fields in state.
-        if not native_chat:
-            rendered = getattr(state, _TRACE_RENDERED_PROMPT_ATTR, None)
-            if isinstance(rendered, str) and rendered:
-                # DEV requirement: log full prompt (unbounded)
-                out["rendered_prompt"] = rendered
+        if self._full_trace_allowed(runtime):
+            if not native_chat:
+                rendered = getattr(state, _TRACE_RENDERED_PROMPT_ATTR, None)
+                if isinstance(rendered, str) and rendered:
+                    # DEV requirement: log full prompt (unbounded)
+                    out["rendered_prompt"] = rendered
 
-        if native_chat:
-            rendered_msgs = getattr(state, _TRACE_RENDERED_CHAT_MESSAGES_ATTR, None)
-            if isinstance(rendered_msgs, list) and rendered_msgs:
-                # DEV requirement: log full chat payload (unbounded)
-                out["rendered_chat_messages"] = json.dumps(rendered_msgs, ensure_ascii=False)
+            if native_chat:
+                rendered_msgs = getattr(state, _TRACE_RENDERED_CHAT_MESSAGES_ATTR, None)
+                if isinstance(rendered_msgs, list) and rendered_msgs:
+                    # DEV requirement: log full chat payload (unbounded)
+                    out["rendered_chat_messages"] = json.dumps(rendered_msgs, ensure_ascii=False)
 
         out["prompt_key"] = raw.get("prompt_key", "")
         out["native_chat"] = native_chat

@@ -10,6 +10,9 @@
 3. `permissions_and_identity_provider.md`  
    Identity provider, permissions config, and access-context derivation used to build retrieval filters.
 
+4. `before_production_checklist.md`  
+   Includes trace/logging policy and pre-deploy security safeguards.
+
 ---
 
 ## Related Documents (outside this folder)

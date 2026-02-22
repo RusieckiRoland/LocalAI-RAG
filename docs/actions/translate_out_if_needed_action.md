@@ -72,6 +72,9 @@ When pipeline tracing is enabled (`RAG_PIPELINE_TRACE=1` or `RAG_PIPELINE_TRACE_
 - The rendered prompt (`rendered_prompt`) in manual prompt mode, or the rendered chat payload (`rendered_chat_messages`) in `native_chat` mode (only for `use_main_model: true`).
 - The model response (`model_response`, `model_response_len`) when `use_main_model: true`.
 
+**Trace policy:** full rendered content is allowed **only in development**.  
+See `docs/security/before_production_checklist.md` → “Trace/Logging policy”.
+
 ## Notes
 
 - This action is intentionally best-effort (translation failures fall back to EN).

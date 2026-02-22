@@ -1193,6 +1193,8 @@ def _handle_query_request(*, require_bearer_auth: bool):
             pipeline_name = ""
 
     pipeline_settings = dict(_pipeline_settings_by_name.get(pipeline_name) or {})
+    if "development" not in pipeline_settings and "developement" not in pipeline_settings:
+        pipeline_settings["development"] = bool(_development_enabled)
     if "llm_server_security_messages_default" not in pipeline_settings:
         defaults = _runtime_cfg.get("llm_server_security_messages_default")
         if isinstance(defaults, dict):

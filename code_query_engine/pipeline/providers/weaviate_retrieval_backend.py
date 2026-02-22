@@ -514,9 +514,13 @@ class WeaviateRetrievalBackend(IRetrievalBackend):
             return_props.append("acl_allow")
         if sec.get("enabled", False):
             kind = str(sec.get("kind") or "").strip()
-            if kind in ("labels_universe_subset", "classification_labels"):
+            if kind == "clearance_level":
+                return_props.append(self._doc_level_prop)
+            elif kind in ("labels_universe_subset", "classification_labels"):
                 return_props.append(self._classification_prop)
-            elif kind == "clearance_level":
+            else:
+                # Backward-compat: when kind is unset/unknown, include both.
+                return_props.append(self._classification_prop)
                 return_props.append(self._doc_level_prop)
 
         t0 = time.time()

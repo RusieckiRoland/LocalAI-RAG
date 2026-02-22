@@ -71,10 +71,10 @@ Think of it as pipeline composition by configuration, not by code — like confi
 flowchart LR
     A[translate_in_if_needed] --> B[load_conversation_history]
     B --> C{sufficiency router}
-    C -->|[BM25]/[SEMANTIC]/[HYBRID]| D[search_nodes]
+    C -->|BM25 / SEMANTIC / HYBRID| D[search_nodes]
     D --> E[manage_context_budget]
     E --> F[fetch_node_texts]
-    F --> G[call_model: answer_v1]
+    F --> G[call_model (answer_v1)]
     G --> H{sufficient context?}
     H -->|no| I[loop_guard]
     I --> D
@@ -161,11 +161,35 @@ python -m code_query_engine.pipeline.pipeline_cli lock pipelines/rejewski.yaml
 
 ## Documentation
 
-- `docs/start/00_run_locally.md` (Start here)
-- `docs/start/10_indexing_dotnet_sql.md`
-- `docs/start/30_troubleshooting.md`
-- `docs/start/40_production.md`
-- `docs/start/50_frontend.md`
-- `docs/start/60_integrations_plantuml.md`
-- `docs/weaviate/weaviate_local_setup.md`
+### Start here (just the local run path)
 
+The `docs/start/` folder contains **only** the step-by-step path to run the project locally (WSL/Linux, GPU, models, Weaviate, server). It is intentionally linear — follow it top-to-bottom.
+
+- `docs/start/00_run_locally.md` — **Start here**: end-to-end local run checklist.
+- `docs/start/10_indexing_dotnet_sql.md` — how to index a .NET/SQL codebase (RoslynIndexer) and prepare branches/snapshots.
+- `docs/start/30_troubleshooting.md` — common setup/runtime issues (CUDA wheels, Weaviate quirks, etc.).
+- `docs/start/40_production.md` — production notes (WSGI, reverse proxy, integrity checks, concurrency).
+- `docs/start/50_frontend.md` — frontend notes (single-file dev UI vs production hardening).
+- `docs/start/60_integrations_plantuml.md` — PlantUML integration (local Docker server + config).
+
+### Docs map (what lives in each folder)
+
+- `docs/actions/` — action reference docs (inputs/outputs, YAML parameters, behavior contracts).
+- `docs/adr/` — architecture decision records (why we chose specific design constraints).
+- `docs/contracts/` — pipeline/runtime contracts and invariants (behavior versioning, compat rules, etc.).
+- `docs/diagrams/` — architecture/flow diagrams (PlantUML/Mermaid sources and rendered assets).
+- `docs/draft/` — work-in-progress notes (not guaranteed to be up-to-date).
+- `docs/howto/` — focused “how to” guides for specific workflows (non-linear, task-based).
+- `docs/llama.cpt/` — llama.cpp / llama-cpp-python operational notes (model loading, CUDA, tuning).
+- `docs/pipeline/` — pipeline authoring docs (YAML structure, inheritance, router patterns, examples).
+- `docs/security/` — security model & policies (classification, ACL/filters, external LLM routing rules, auth).
+- `docs/sqldb/` — SQL/DB-related docs (schemas, indexing, EF/SQL analysis notes).
+- `docs/tests/` — testing strategy and how to run tests locally/CI.
+- `docs/use-cases/` — use-case catalog and examples (what the system is meant to solve).
+- `docs/weaviate/` — Weaviate setup and operational docs (local compose, schema, tenants/snapshots).
+
+Key entry points:
+- Weaviate local setup: `docs/weaviate/weaviate_local_setup.md`
+- Pipeline authoring: `docs/pipeline/`
+- Action docs: `docs/actions/`
+- Security model: `docs/security/`

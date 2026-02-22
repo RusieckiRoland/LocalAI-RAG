@@ -44,6 +44,34 @@ Clarification:
 1. Empty ACL means “public”.
 2. A document is visible if it has no ACL tags or shares at least one tag with `acl_tags_any`.
 3. Classification labels must be a subset of `classification_labels_all` (empty classification allowed).
+
+---
+
+## Trace/Logging policy
+
+**Goal:** avoid leaking prompts, context, or sensitive code through trace files.
+
+**Modes:**
+
+1. `none` — tracing disabled.
+2. `preview` — redacted or summarized traces only.
+3. `full` — full rendered content (prompts, context, payloads).
+
+**Rule:** `full` is allowed **only** in development. In production, use `none` or `preview`.
+
+**Sensitive fields (examples):**
+
+* `rendered_prompt`
+* `rendered_chat_messages`
+* `context_blocks`
+* `history_blocks`
+* `model_payload`
+
+**Required safeguards in prod:**
+
+* If tracing is enabled, ensure redaction for sensitive fields.
+* Store traces in secure, access‑controlled locations.
+* Apply retention limits and ensure trace files are not shipped with artifacts.
 4. Importer MUST always set ACL/classification; missing fields are treated as empty lists.
 
 **Required before production**

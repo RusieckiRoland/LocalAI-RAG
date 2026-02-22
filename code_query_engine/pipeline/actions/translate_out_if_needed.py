@@ -58,12 +58,13 @@ class TranslateOutIfNeededAction(PipelineActionBase):
         summary = getattr(state, _TRACE_TRANSLATE_INPUT_SUMMARY_ATTR, None)
         if isinstance(summary, dict) and summary:
             out["translate_input_summary"] = summary
-        rendered = getattr(state, _TRACE_TRANSLATE_RENDERED_PROMPT_ATTR, None)
-        if isinstance(rendered, str) and rendered:
-            out["rendered_prompt"] = rendered
-        rendered_msgs = getattr(state, _TRACE_TRANSLATE_RENDERED_CHAT_MESSAGES_ATTR, None)
-        if isinstance(rendered_msgs, list) and rendered_msgs:
-            out["rendered_chat_messages"] = rendered_msgs
+        if self._full_trace_allowed(runtime):
+            rendered = getattr(state, _TRACE_TRANSLATE_RENDERED_PROMPT_ATTR, None)
+            if isinstance(rendered, str) and rendered:
+                out["rendered_prompt"] = rendered
+            rendered_msgs = getattr(state, _TRACE_TRANSLATE_RENDERED_CHAT_MESSAGES_ATTR, None)
+            if isinstance(rendered_msgs, list) and rendered_msgs:
+                out["rendered_chat_messages"] = rendered_msgs
         resp = getattr(state, _TRACE_TRANSLATE_MODEL_RESPONSE_ATTR, None)
         if isinstance(resp, str) and resp:
             out["model_response"] = resp[:9999]

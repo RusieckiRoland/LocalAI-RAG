@@ -201,6 +201,23 @@ class PipelineActionBase(ABC):
             return True
         return False
 
+    def _full_trace_allowed(self, runtime: PipelineRuntime) -> bool:
+        """
+        Full trace (rendered prompts/chat/context) is allowed only in development.
+        """
+        env = (os.getenv("APP_DEVELOPMENT") or "").strip().lower()
+        if env in ("1", "true", "yes", "on"):
+            return True
+        if env in ("0", "false", "no", "off"):
+            return False
+        settings = getattr(runtime, "pipeline_settings", None) or {}
+        if isinstance(settings, dict):
+            if "development" in settings:
+                return bool(settings.get("development"))
+            if "developement" in settings:
+                return bool(settings.get("developement"))
+        return False
+
     def _append_trace_event(self, state: PipelineState, event: Dict[str, Any]) -> None:
         if "run_id" not in event:
             try:

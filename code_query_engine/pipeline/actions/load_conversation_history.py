@@ -27,11 +27,13 @@ class LoadConversationHistoryAction(PipelineActionBase):
         next_step_id: Optional[str],
         error: Optional[Dict[str, Any]],
     ) -> Dict[str, Any]:
-        return {
+        out = {
             "next_step_id": next_step_id,
             "history_blocks_count": len(getattr(state, "history_blocks", []) or []),
-            "history_blocks": getattr(state, "history_blocks", []),
         }
+        if self._full_trace_allowed(runtime):
+            out["history_blocks"] = getattr(state, "history_blocks", [])
+        return out
 
     def do_execute(self, step: StepDef, state: PipelineState, runtime: PipelineRuntime) -> Optional[str]:
         raw = step.raw or {}

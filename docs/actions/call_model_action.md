@@ -235,6 +235,9 @@ In the trace you will see:
 - manual mode: `rendered_prompt`
 - `native_chat: true` mode: `rendered_chat_messages` (messages payload)
 
+**Trace policy:** full rendered content is allowed **only in development**.  
+See `docs/security/before_production_checklist.md` → “Trace/Logging policy”.
+
 For convenient viewing in VS Code, use:
 - https://github.com/RusieckiRoland/rag-debug-toolkit.git
 
