@@ -64,7 +64,6 @@ class PipelineState:
     llm_server_security_override_notice: Optional[str] = None
 
     # Answer fields expected by multiple actions/engine
-    draft_answer_neutral: Optional[str] = None  
     answer_neutral: Optional[str] = None
     answer_translated: Optional[str] = None
     classification_labels_union: List[str] = field(default_factory=list)
@@ -93,9 +92,6 @@ class PipelineState:
 
     # Model input (logged)
     model_input_en: Optional[str] = None
-
-    # Additional: used by some actions/tests
-    seen_chunk_ids: Set[str] = field(default_factory=set)
 
     # ------------------------------------------------------------------
     # Inbox (per-run, memory-only)
