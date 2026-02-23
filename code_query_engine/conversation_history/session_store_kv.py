@@ -147,23 +147,7 @@ class KvSessionConversationStore(ISessionConversationStore):
                 break
 
         if not updated:
-            # Soft self-heal: create a minimal record to avoid "ghost turns" in session context reads.
-            turns.append(
-                {
-                    "turn_id": turn_id,
-                    "session_id": session_id,
-                    "request_id": request_id,
-                    "created_at_utc": self._now_utc(),
-                    "finalized_at_utc": self._now_utc(),
-                    "identity_id": None,
-                    "question_neutral": "",
-                    "answer_neutral": str(answer_neutral or ""),
-                    "question_translated": None,
-                    "answer_translated": str(answer_translated) if answer_translated is not None else None,
-                    "answer_translated_is_fallback": answer_translated_is_fallback,
-                    "metadata": dict(meta or {}),
-                }
-            )
+            raise ValueError("KvSessionConversationStore.finalize_turn: turn_id not found")
 
         data["turns"] = turns[-self._max_turns :]
         self._save(session_id, data)
@@ -218,4 +202,3 @@ class KvSessionConversationStore(ISessionConversationStore):
 
         # Keep last N finalized turns
         return out[-lim:]
-

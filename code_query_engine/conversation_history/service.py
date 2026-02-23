@@ -112,17 +112,8 @@ class ConversationHistoryService(IConversationHistoryService):
         if iid:
             self._ensure_session_identity_link(session_id=sid, identity_id=iid)
 
-        # If turn wasn't started explicitly, start it now (best-effort).
         if not turn_id:
-            turn_id = self._session_store.start_turn(
-                session_id=sid,
-                request_id=rid,
-                identity_id=iid,
-                question_neutral="",
-                question_translated=None,
-                translate_chat=False,
-                meta=meta,
-            )
+            raise ValueError("ConversationHistoryService.on_request_finalized: turn_id is required")
 
         self._session_store.finalize_turn(
             session_id=sid,

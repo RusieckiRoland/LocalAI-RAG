@@ -395,7 +395,7 @@ Production endpoints (always bearer-protected):
 
 Auth behavior for `prod` endpoints:
 - if IDP config is active, bearer is validated as JWT (issuer/audience/JWKS)
-- otherwise fallback is exact match `Authorization: Bearer <API_TOKEN>`
+- otherwise an optional `API_TOKEN` may be used for **service-to-service** calls only (restricted network); it is not suitable for browser/SPA clients
 - after bearer validation, server enforces custom access checks:
   - user must be allowed to run the selected pipeline
   - when `snapshot_set_id` + snapshot ids are provided, each snapshot must belong to that set

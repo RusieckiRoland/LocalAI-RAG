@@ -46,6 +46,6 @@ Dynamic pipeline directives must **not** override these security-critical filter
 1. Retrieval filters are mandatory in every stage.
 2. ACL is OR.
 3. Classification is ALL/subset.
-4. Empty ACL = public.
+4. When `acl_enabled=true`, ACL metadata MUST be present on every document (even if empty `[]`). Missing ACL fields are invalid and must fail ingestion/import. An empty list is an explicit "public" marker by policy (not a default for missing data).
 5. Empty classification = allowed.
 6. Doc level enforced only for clearance model.

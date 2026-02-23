@@ -1,8 +1,8 @@
 # Retrieval Integration Test Expectations (Fake Snapshot)
 
 This document defines **expected outcomes** for the integration suite under:
-- `tests/integration/retrival/test_fake_snapshot_bootstrap.py`
-- `tests/integration/retrival/test_search_and_fetch_expectations.py`
+- `tests/integration/retrival/test_bootstrap.py`
+- `tests/integration/retrival/test_search_and_fetch.py`
 
 It is intentionally result-focused, so you can compare real run output against a stable target.
 
@@ -51,6 +51,15 @@ Test: `test_import_runs_are_completed`
 Expected outcome:
 - Import jobs complete successfully.
 - No partial/failed import state.
+
+### B3 (Added after security review)
+Test group: `test_import_rejects_invalid_security_inputs`
+Purpose: validate importer rejects invalid security configuration/data inputs.
+Expected outcome:
+1. If `permissions.acl_enabled=true` and any document is missing `acl_allow`, import fails with a clear error.
+2. If `permissions.security_enabled=true` and `permissions.security_model` is missing, import fails with a clear error.
+3. If `permissions.security_enabled=true` and `security_model.kind=labels_universe_subset` and any document is missing `classification_labels`, import fails with a clear error.
+4. If `permissions.security_enabled=true` and `security_model.kind=clearance_level` and any document is missing `doc_level`, import fails with a clear error.
 
 ---
 
@@ -271,7 +280,7 @@ Fail means:
 ## 5) Security Filter Scenarios (ACL + Clearance Level)
 
 This section defines expected behavior when security filters are present in `retrieval_filters`
-for the **clearance_level** model (current default in `config.json`).
+for the **clearance_level** model (when `permissions.security_model.kind=clearance_level`).
 
 ### Security Logic Contract (clearance_level)
 1. `acl_tags_any` is evaluated as OR (if `permissions.acl_enabled=true`).
@@ -281,7 +290,8 @@ for the **clearance_level** model (current default in `config.json`).
 4. Empty ACL is allowed by default.
 5. If `allow_missing_doc_level=true`, missing `doc_level` is treated as public.
 6. Importer rule:
-   - `acl_allow` is written **only when** `acl_enabled=true`.
+   - If `acl_enabled=true`, importer MUST write `acl_allow` for every document (attribute present even if empty `[]`). Missing `acl_allow` must fail import/ingestion.
+   - If `acl_enabled=false`, importer MUST NOT write `acl_allow`.
    - `doc_level` is written **only when** `security_model.kind=clearance_level`.
 
 ### Expected Trace Fields
@@ -517,6 +527,9 @@ Expected depth-2 node IDs:
 Must not appear:
 1. Any node at depth >= 3 from this seed.
 2. Any non-allowlisted edge type.
+
+---
+
 
 #### D4. Security-trimmed tree (ACL + classification)
 Applied filters:
@@ -842,7 +855,7 @@ Data preparation method (how we guarantee tag combinations):
 - If a combination returns zero nodes, the test should explicitly fail with a clear message (data coverage gap), not silently skip.
 
 How to obtain nodes for each combination:
-- ACL = public: filter `acl_allow` is empty (or missing) AND no classification constraint.
+- ACL = public: filter `acl_allow` is empty (`[]`) AND no classification constraint.
 - ACL contains `finance`: filter `acl_allow` contains_any `["finance"]`.
 - ACL contains `security`: filter `acl_allow` contains_any `["security"]`.
 - ACL contains `hr` only (negative): filter `acl_allow` contains_any `["hr"]` AND NOT contains_any `["finance","security"]`.

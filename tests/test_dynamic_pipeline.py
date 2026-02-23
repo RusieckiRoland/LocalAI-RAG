@@ -40,9 +40,16 @@ class StubValidator:
 
 
 class DummyHistoryManager:
-    def __init__(self, redis: Any, session_id: str, user_id: Optional[str] = None) -> None:
-        self.redis = redis
+    def __init__(
+        self,
+        backend: Any,
+        session_id: Optional[str] = None,
+        ttl: Optional[int] = None,
+        user_id: Optional[str] = None,
+    ) -> None:
+        self.backend = backend
         self.session_id = session_id
+        self.ttl = ttl
         self.user_id = user_id
 
     def start_user_query(self, model_input_en: str, original_pl: str, user_id: Optional[str] = None) -> None:

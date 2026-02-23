@@ -11,6 +11,11 @@ import json
 import os
 from dotenv import load_dotenv
 
+PROJECT_ROOT = os.path.dirname(__file__)
+RUNTIME_CONFIG_DEFAULT_PATH = os.path.join(PROJECT_ROOT, "config.json")
+RUNTIME_CONFIG_DEV_PATH = os.path.join(PROJECT_ROOT, "config.dev.json")
+RUNTIME_CONFIG_PROD_PATH = os.path.join(PROJECT_ROOT, "config.prod.json")
+
 # --- Optional --env flag ---
 parser = argparse.ArgumentParser()
 parser.add_argument("--env", action="store_true", help="Load environment variables from .env file")
@@ -66,21 +71,57 @@ def _print_start_banner(host: str, port: int) -> None:
     print("")
 
 
-def _is_development_enabled() -> bool:
-    env = (os.getenv("APP_DEVELOPMENT") or "").strip().lower()
-    if env in ("1", "true", "yes", "on"):
+def _parse_env_bool(raw: str | None) -> bool | None:
+    val = str(raw or "").strip().lower()
+    if val in ("1", "true", "yes", "on"):
         return True
-    if env in ("0", "false", "no", "off"):
+    if val in ("0", "false", "no", "off"):
         return False
+    return None
 
-    cfg_path = os.path.join(os.path.dirname(__file__), "config.json")
+
+def _resolve_runtime_config_path() -> str:
+    explicit = str(os.getenv("APP_CONFIG_PATH") or "").strip()
+    if explicit:
+        return explicit if os.path.isabs(explicit) else os.path.join(PROJECT_ROOT, explicit)
+
+    profile = str(os.getenv("APP_CONFIG_PROFILE") or "").strip().lower()
+    if profile in ("dev", "development"):
+        return RUNTIME_CONFIG_DEV_PATH
+    if profile in ("prod", "production"):
+        return RUNTIME_CONFIG_PROD_PATH
+
+    env_dev = _parse_env_bool(os.getenv("APP_DEVELOPMENT"))
+    if env_dev is True:
+        return RUNTIME_CONFIG_DEV_PATH
+    if env_dev is False:
+        return RUNTIME_CONFIG_PROD_PATH
+
+    if os.path.exists(RUNTIME_CONFIG_DEV_PATH):
+        return RUNTIME_CONFIG_DEV_PATH
+    return RUNTIME_CONFIG_DEFAULT_PATH
+
+
+def _is_development_enabled() -> bool:
+    env_val = _parse_env_bool(os.getenv("APP_DEVELOPMENT"))
+    if env_val is not None:
+        return env_val
+
+    cfg_path = _resolve_runtime_config_path()
     try:
         with open(cfg_path, "r", encoding="utf-8") as f:
             cfg = json.load(f) or {}
     except Exception:
-        return True
+        if cfg_path != RUNTIME_CONFIG_DEFAULT_PATH:
+            try:
+                with open(RUNTIME_CONFIG_DEFAULT_PATH, "r", encoding="utf-8") as f:
+                    cfg = json.load(f) or {}
+            except Exception:
+                return True
+        else:
+            return True
 
-    return bool(cfg.get("developement", cfg.get("development", True)))
+    return bool(cfg.get("development", True))
 
 
 if __name__ == "__main__":
@@ -92,7 +133,8 @@ if __name__ == "__main__":
 
     host = "0.0.0.0"
     port = 5000
+    development = _is_development_enabled()
 
     _print_start_banner(host=host, port=port)
 
-    app.run(host=host, port=port, debug=True, use_reloader=False)
+    app.run(host=host, port=port, debug=development, use_reloader=False)

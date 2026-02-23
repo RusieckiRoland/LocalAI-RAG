@@ -58,7 +58,7 @@ def _expected_sources(env, case: QueryCase) -> List[str]:
 
     out: List[str] = []
     for src in case.expected_sources:
-        m = meta.get(src, {"acl": [], "labels": [], "clearance": None})
+        m = meta.get(src, {"acl_allow": [], "classification_labels": [], "doc_level": None})
         if is_visible(
             m,
             acl_any=acl_any,
@@ -120,7 +120,7 @@ def test_search_then_fetch_matches_expected_markers(retrieval_integration_env, c
     else:
         meta = load_bundle_metadata(env.bundle_paths[0])
         for src in observed_sources:
-            m = meta.get(src, {"acl": [], "labels": [], "clearance": None})
+            m = meta.get(src, {"acl_allow": [], "classification_labels": [], "doc_level": None})
             assert is_visible(
                 m,
                 acl_any=list(filters.get("acl_tags_any") or []),

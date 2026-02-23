@@ -482,7 +482,9 @@ def iter_cs_nodes(bundle: BundleReader, meta: RepoMeta) -> Iterator[Dict[str, An
         if not local_id:
             continue
         cid = canonical_id(meta.repo, meta.snapshot_id, "cs", local_id)
-        acl_allow = _normalize_list_field(d.get("acl_allow") or d.get("acl_tags_any"))
+        if _ACL_ENABLED and "acl_allow" not in d:
+            raise ValueError(f"ACL enabled but missing 'acl_allow' in input. canonical_id={cid}")
+        acl_allow = _normalize_list_field(d.get("acl_allow"))
         classification_labels = _normalize_list_field(d.get("classification_labels") or d.get("classification_labels_all"))
         doc_level_raw = d.get("doc_level") or d.get("clearance_level")
         doc_level = _normalize_int_field(doc_level_raw)
@@ -538,7 +540,9 @@ def _iter_sql_nodes_from_jsonl(bundle: BundleReader, meta: RepoMeta, jsonl_rel: 
             if not key:
                 continue
             cid = canonical_id(meta.repo, meta.snapshot_id, "sql", key)
-            acl_allow = _normalize_list_field(d.get("acl_allow") or d.get("acl_tags_any"))
+            if _ACL_ENABLED and "acl_allow" not in d:
+                raise ValueError(f"ACL enabled but missing 'acl_allow' in input. canonical_id={cid}")
+            acl_allow = _normalize_list_field(d.get("acl_allow"))
             classification_labels = _normalize_list_field(d.get("classification_labels") or d.get("classification_labels_all"))
             doc_level_raw = d.get("doc_level") or d.get("clearance_level")
             doc_level = _normalize_int_field(doc_level_raw)
@@ -584,6 +588,11 @@ def _iter_sql_nodes_from_jsonl(bundle: BundleReader, meta: RepoMeta, jsonl_rel: 
 
 
 def _iter_sql_nodes_from_nodes_csv(bundle: BundleReader, meta: RepoMeta, nodes_csv_rel: str) -> Iterator[Dict[str, Any]]:
+    if _ACL_ENABLED:
+        raise ValueError(
+            "ACL enabled but legacy SQL nodes CSV does not carry 'acl_allow'. "
+            "Use jsonl input with explicit acl_allow (can be empty list) or disable ACL."
+        )
     raw = bundle.read_text(nodes_csv_rel)
     reader = csv.DictReader(io.StringIO(raw))
     for row in reader:

@@ -1,3 +1,5 @@
+import pytest
+
 from code_query_engine.conversation_history.durable_store_memory import InMemoryUserConversationStore
 from code_query_engine.conversation_history.service import ConversationHistoryService
 from code_query_engine.conversation_history.session_store_kv import KvSessionConversationStore
@@ -59,26 +61,23 @@ def test_session_store_start_turn_is_idempotent() -> None:
     assert t1 == t2
 
 
-def test_on_request_finalized_without_turn_id_self_heals_by_starting_turn() -> None:
+def test_on_request_finalized_without_turn_id_raises() -> None:
     backend = InMemoryMockRedis()
     session_store = KvSessionConversationStore(backend=backend, ttl_s=None, max_turns=50)
     svc = ConversationHistoryService(session_store=session_store, durable_store=None)
 
-    svc.on_request_finalized(
-        session_id="s1",
-        request_id="r-finalize-only",
-        identity_id=None,
-        turn_id=None,
-        answer_neutral="A_EN",
-        answer_translated=None,
-        answer_translated_is_fallback=None,
-        meta={"source": "unit"},
-    )
+    with pytest.raises(ValueError, match="turn_id is required"):
+        svc.on_request_finalized(
+            session_id="s1",
+            request_id="r-finalize-only",
+            identity_id=None,
+            turn_id=None,
+            answer_neutral="A_EN",
+            answer_translated=None,
+            answer_translated_is_fallback=None,
+            meta={"source": "unit"},
+        )
 
     turns = session_store.list_recent_finalized_turns(session_id="s1", limit=10)
-    assert len(turns) == 1
-    assert turns[0].request_id == "r-finalize-only"
-    assert turns[0].answer_neutral == "A_EN"
-    assert turns[0].question_neutral == ""
-    # Empty question should not appear in neutral QA map.
+    assert len(turns) == 0
     assert svc.get_recent_qa_neutral(session_id="s1", limit=10) == {}

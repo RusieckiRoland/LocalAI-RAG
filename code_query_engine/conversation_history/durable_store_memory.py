@@ -64,22 +64,8 @@ class InMemoryUserConversationStore(IUserConversationStore):
                 )
                 return
 
-        # If missing, create a minimal record (best-effort).
-        turns.append(
-            ConversationTurn(
-                turn_id=turn_id,
-                session_id=session_id,
-                request_id="",
-                created_at_utc=finalized_at_utc or "",
-                identity_id=iid,
-                finalized_at_utc=finalized_at_utc,
-                question_neutral="",
-                answer_neutral=str(answer_neutral or ""),
-                question_translated=None,
-                answer_translated=answer_translated,
-                answer_translated_is_fallback=answer_translated_is_fallback,
-                metadata=dict(meta or {}),
-            )
+        raise ValueError(
+            "InMemoryUserConversationStore.upsert_turn_final: turn_id not found for session"
         )
 
     def list_recent_finalized_turns_by_session(

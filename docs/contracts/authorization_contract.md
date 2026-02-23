@@ -46,14 +46,15 @@ All authorization behavior is driven by `config.json`:
     "kind": "labels_universe_subset",
     "labels_universe_subset": {
       "doc_labels_field": "classification_labels",
-      "user_labels_source": "claim",
-      "user_labels_claim": "labels",
       "allow_unlabeled": true,
       "classification_labels_universe": ["public", "internal", "restricted", "critical"]
     }
   }
 }
 ```
+Note:
+- User labels are **not** read directly from JWT claims in the current implementation.
+- Claims are mapped to groups (`auth_policies.json`), and **groups** supply `classification_labels_all` and other permissions.
 Rules:
 - `security_enabled=false` → **no security filtering** (warning logged).
 - `acl_enabled=false` → **ACL not enforced** and importer must not write `acl_allow`.
@@ -62,9 +63,10 @@ Rules:
   - `labels_universe_subset` **or**
   - `clearance_level`.
 
-### 4.1. Token and UserId
+### 4.1. Token, claims, and UserId
 - Each request may include `Authorization: Bearer <token>`.
 - The token is validated by the auth layer.
+- Claims are used only to **map into groups** (via `auth_policies.json`).
 - The token is mapped to `user_id` and a list of groups.
 
 ### 4.2. Group permissions
@@ -87,18 +89,23 @@ A group determines:
 
 ### 4.4. `acl_tags_any` semantics (MUST) – when `permissions.acl_enabled=true`
 - `acl_tags_any` means **logical OR**.
-- A document/record is accessible when it has at least one ACL tag from user/group context.
-- Empty document ACL tags are allowed (do not block access).
+- A document/record is accessible when:
+  - its document ACL list is empty (`acl_allow=[]`) → explicitly **public**, OR
+  - it shares **at least one** tag with `acl_tags_any`.
+- Empty document ACL tags are allowed (do not block access). Empty list explicitly means **public**.
 - If `permissions.acl_enabled=false`, ACL is **not enforced**, and importer **must not** write `acl_allow`.
-- Importers MUST always set ACL fields **only when ACL is enabled**.
+- If `permissions.acl_enabled=true`, importer MUST write `acl_allow` for **every** document (the attribute must be present even if empty `[]`). Missing `acl_allow` is invalid and must fail import/ingestion.
 - If a document has extra ACL tags, it is still visible as long as it shares **at least one** tag with `acl_tags_any`.
 
 ### 4.5. `classification_labels_all` semantics (MUST) – when `security_model.kind=labels_universe_subset`
 - `classification_labels_all` means **ALL/subset check** (`doc_labels ⊆ user_labels`).
-- Empty document classification labels are allowed (do not block access).
-- Importers MUST set classification fields when this model is active; missing fields are treated as empty lists.
+- Empty document classification labels:
+  - are allowed **only if** `permissions.security_model.labels_universe_subset.allow_unlabeled=true`,
+  - otherwise (when `allow_unlabeled=false`) an empty label list must block access.
+- Importers MUST write the classification labels attribute for **every** document when this model is active (the attribute must be present even if empty `[]`). Missing classification fields are invalid and must fail import/ingestion.
 - If the document has any label **not present** in `classification_labels_all`, it is not visible.
 - Label hierarchy is **not inferred** by the engine.
+
 Additional constraints:
 - `classification_labels_universe` is a **finite list** defined in config.
 - Any label **outside the universe** is considered invalid (should be blocked or flagged by consistency checks).
@@ -328,7 +335,7 @@ Any deviation (e.g., temporary fallbacks) must be logged and treated as a blocki
 
 Endpoint exposure by mode:
 - Development endpoints are controlled by `config.json`:
-  - `"developement": true|false` (also accepts `"development"`)
+  - `"development": true|false`
 - When disabled, `/app-config/dev`, `/search/dev`, `/query/dev` return `404`.
 - Production endpoints remain available: `/app-config/prod`, `/search/prod`, `/query/prod`.
 
@@ -380,7 +387,7 @@ Authorization: Bearer dev-user:<user_id>
 ### 7.2 PROD (current)
 For `prod` endpoints, token validation follows this order:
 1. If IDP auth is active (`identity_provider.enabled=true` and required fields present), validate JWT using `issuer`, `audience`, and `jwks_url`.
-2. Otherwise fallback to `Authorization: Bearer <API_TOKEN>` exact match.
+2. Optional: a static `API_TOKEN` may be supported for **service-to-service** calls only (non-browser clients, restricted network). It must NOT be treated as a general replacement for IDP auth for public/UI traffic.
 
 
 ## 8. Roadmap to PROD

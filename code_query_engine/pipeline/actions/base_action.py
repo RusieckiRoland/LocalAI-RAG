@@ -215,7 +215,7 @@ class PipelineActionBase(ABC):
             if "development" in settings:
                 return bool(settings.get("development"))
             if "developement" in settings:
-                return bool(settings.get("developement"))
+                raise ValueError("pipeline settings contain invalid key 'developement' (typo). Use 'development'.")
         return False
 
     def _append_trace_event(self, state: PipelineState, event: Dict[str, Any]) -> None:

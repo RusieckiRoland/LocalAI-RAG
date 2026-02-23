@@ -20,31 +20,110 @@ from .pipeline.validator import PipelineValidator
 
 py_logger = logging.getLogger(__name__)
 
+_OVERRIDE_KEYS_ALLOWED = {
+    "trace_enabled",
+    "pipeline_run_id",
+    "branch_b",
+    "snapshot_id",
+    "snapshot_id_b",
+    "snapshot_set_id",
+    "snapshot_friendly_names",
+    "allowed_commands",
+    "retrieval_filters",
+    "model_context_window",
+}
+
+_OVERRIDE_KEYS_SETTINGS = {
+    "model_context_window",
+}
+
+_RETRIEVAL_FILTER_KEYS_ALLOWED = {
+    "acl_tags_any",
+    "permission_tags_any",
+    "permission_tags_all",
+    "classification_labels_all",
+    "user_level",
+    "clearance_level",
+    "doc_level_max",
+    "owner_id",
+    "source_system_id",
+    "data_type",
+    "repository",
+    "repo",
+    "snapshot_id",
+    "snapshot_id_b",
+    "snapshot_set_id",
+    "snapshot_ids_any",
+    "hybrid_alpha",
+}
+
 
 
 def _create_history_manager(*, mock_redis: Any, session_id: str, consultant: str, user_id: Optional[str]):
-    """
-    HistoryManager signature changed a few times; keep this tolerant for tests/mocks.
-    """
-    candidates = [
-        lambda: HistoryManager(mock_redis=mock_redis, session_id=session_id, consultant=consultant, user_id=user_id),
-        lambda: HistoryManager(mock_redis=mock_redis, session_id=session_id, consultant=consultant),
-        lambda: HistoryManager(mock_redis, session_id=session_id, consultant=consultant, user_id=user_id),
-        lambda: HistoryManager(mock_redis, session_id=session_id, user_id=user_id),
-        lambda: HistoryManager(mock_redis, session_id=session_id),
-        lambda: HistoryManager(mock_redis, session_id, user_id),
-        lambda: HistoryManager(mock_redis, session_id),
-    ]
+    return HistoryManager(backend=mock_redis, session_id=session_id, user_id=user_id)
 
-    last_err: Optional[Exception] = None
-    for ctor in candidates:
+
+def _validate_override_keys(overrides: dict[str, Any]) -> None:
+    for key in overrides.keys():
+        if key in ("permissions", "identity_provider") or key.startswith("security_") or key.startswith("acl_"):
+            raise ValueError(f"override key '{key}' is not allowed")
+        if key not in _OVERRIDE_KEYS_ALLOWED:
+            raise ValueError(f"override key '{key}' is not allowed")
+
+
+def _sanitize_retrieval_filters(retrieval_filters: dict[str, Any]) -> dict[str, Any]:
+    out: dict[str, Any] = {}
+    for key in retrieval_filters.keys():
+        if key not in _RETRIEVAL_FILTER_KEYS_ALLOWED:
+            raise ValueError(f"retrieval_filters key '{key}' is not allowed")
+
+    def _clean_str_list(val: Any) -> list[str]:
+        if val is None:
+            return []
+        if isinstance(val, (list, tuple, set)):
+            items = val
+        else:
+            items = [val]
+        return [str(x).strip() for x in items if str(x).strip()]
+
+    def _coerce_int(val: Any, *, key: str) -> int:
         try:
-            return ctor()
-        except TypeError as e:
-            last_err = e
+            return int(val)
+        except Exception as exc:
+            raise ValueError(f"retrieval_filters.{key} must be int") from exc
 
-    # If we got here, no signature matched.
-    raise last_err or TypeError("Unable to construct HistoryManager with provided arguments.")
+    def _coerce_float(val: Any, *, key: str) -> float:
+        try:
+            return float(val)
+        except Exception as exc:
+            raise ValueError(f"retrieval_filters.{key} must be float") from exc
+
+    list_keys = {"acl_tags_any", "permission_tags_any", "permission_tags_all", "classification_labels_all"}
+    for lk in list_keys:
+        if lk in retrieval_filters:
+            cleaned = _clean_str_list(retrieval_filters.get(lk))
+            if cleaned:
+                out[lk] = cleaned
+
+    if "snapshot_ids_any" in retrieval_filters:
+        cleaned = _clean_str_list(retrieval_filters.get("snapshot_ids_any"))
+        if cleaned:
+            out["snapshot_ids_any"] = cleaned
+
+    for sk in ("owner_id", "source_system_id", "data_type", "repository", "repo", "snapshot_id", "snapshot_id_b", "snapshot_set_id"):
+        if sk in retrieval_filters:
+            val = str(retrieval_filters.get(sk) or "").strip()
+            if val:
+                out[sk] = val
+
+    for ik in ("user_level", "clearance_level", "doc_level_max"):
+        if ik in retrieval_filters and retrieval_filters.get(ik) is not None:
+            out[ik] = _coerce_int(retrieval_filters.get(ik), key=ik)
+
+    if "hybrid_alpha" in retrieval_filters and retrieval_filters.get("hybrid_alpha") is not None:
+        out["hybrid_alpha"] = _coerce_float(retrieval_filters.get("hybrid_alpha"), key="hybrid_alpha")
+
+    return out
 
 
 class DynamicPipelineRunner:
@@ -124,7 +203,10 @@ class DynamicPipelineRunner:
 
         effective_settings = dict(pipeline.settings or {})
         if overrides:
-            effective_settings.update(dict(overrides))
+            _validate_override_keys(overrides)
+            settings_overrides = {k: overrides[k] for k in _OVERRIDE_KEYS_SETTINGS if k in overrides}
+            if settings_overrides:
+                effective_settings.update(settings_overrides)
 
         compat_mode = str(effective_settings.get("compat_mode") or "").strip().lower()
         behavior_version = str(effective_settings.get("behavior_version") or "").strip()
@@ -290,7 +372,7 @@ class DynamicPipelineRunner:
             # Optional retrieval filters (e.g., ACL tags) resolved by the server.
             retrieval_filters = overrides.get("retrieval_filters")
             if isinstance(retrieval_filters, dict):
-                state.retrieval_filters.update(retrieval_filters)
+                state.retrieval_filters.update(_sanitize_retrieval_filters(retrieval_filters))
 
         history_manager = _create_history_manager(
             mock_redis=mock_redis,

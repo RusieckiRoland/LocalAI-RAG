@@ -41,3 +41,19 @@ def test_history_falls_back_to_durable_store_when_session_empty() -> None:
 
     out = svc.get_recent_qa_neutral(session_id="s1", limit=10)
     assert out == {"Q?": "A!"}
+
+
+def test_durable_store_upsert_missing_turn_raises() -> None:
+    durable = InMemoryUserConversationStore()
+
+    with pytest.raises(ValueError, match="turn_id not found"):
+        durable.upsert_turn_final(
+            identity_id="u1",
+            session_id="s1",
+            turn_id="missing",
+            answer_neutral="A!",
+            answer_translated=None,
+            answer_translated_is_fallback=None,
+            finalized_at_utc="2026-02-20T20:00:01Z",
+            meta=None,
+        )

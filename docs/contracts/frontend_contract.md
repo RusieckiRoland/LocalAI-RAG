@@ -26,7 +26,7 @@ The server is the source of truth.
 ## 3. Environment and endpoint matrix
 
 ### 3.1 Runtime modes
-- Development endpoints are available only when `APP_DEVELOPMENT=true` (or `config.json: developement=true`).
+- Development endpoints are available only when `APP_DEVELOPMENT=true` (or `config.json: development=true`).
 - Production endpoints are always mounted, but require bearer auth.
 
 ### 3.2 Endpoint matrix
@@ -57,8 +57,9 @@ The server is the source of truth.
 ### 4.1 Production endpoints (`/prod`)
 - Require `Authorization: Bearer <token>`.
 - Validation mode:
-  - Identity Provider JWT (if enabled), or
-  - static API token (`API_TOKEN`).
+  - Identity Provider JWT (if enabled).
+  - Optional static API token (`API_TOKEN`) may be supported for **service-to-service** clients only (restricted network).
+    - It must NOT be used by browser/SPA clients.
 
 ### 4.2 Development endpoints (`/dev`)
 - Do not require bearer token.
@@ -70,8 +71,7 @@ The server is the source of truth.
 - `X-Session-ID`: optional; if valid, server uses it.
 - `X-Request-ID`: optional idempotency/correlation key for one request.
 - `X-Run-ID`: optional alternative for trace/cancel routes.
-- `X-Tenant-ID`: optional for history API (`tenant-default` fallback).
-- `X-User-ID`: optional fallback user id for history API when no bearer token.
+- `X-User-ID`: **DEV-only** for local testing; in production the server must derive user identity from the bearer token. Client-provided user headers must be ignored in prod.
 
 ---
 

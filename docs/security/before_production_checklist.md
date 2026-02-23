@@ -42,8 +42,8 @@ This document lists what must be completed before moving to production. It focus
 
 Clarification:
 1. Empty ACL means “public”.
-2. A document is visible if it has no ACL tags or shares at least one tag with `acl_tags_any`.
-3. Classification labels must be a subset of `classification_labels_all` (empty classification allowed).
+2. A document is visible if `acl_allow` is empty (`[]`) or shares at least one tag with `acl_tags_any`.
+3. Classification labels must be a subset of `classification_labels_all` (empty classification allowed only if `allow_unlabeled=true`).
 
 ---
 
@@ -72,7 +72,7 @@ Clarification:
 * If tracing is enabled, ensure redaction for sensitive fields.
 * Store traces in secure, access‑controlled locations.
 * Apply retention limits and ensure trace files are not shipped with artifacts.
-4. Importer MUST always set ACL/classification; missing fields are treated as empty lists.
+4. Importer MUST always set ACL/classification. If `permissions.acl_enabled=true` (or `permissions.security_enabled=true`), missing ACL/classification fields MUST be treated as an error (fail import). The ACL attribute must be present even if empty (`[]`), where an empty list explicitly means "public" by policy.
 
 **Required before production**
 1. Confirm and document ACL semantics (OR/ALL) consistently.

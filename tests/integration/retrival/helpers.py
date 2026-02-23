@@ -487,9 +487,13 @@ def load_bundle_metadata(bundle_path: Path) -> Dict[str, Dict[str, Any]]:
                 if not file:
                     continue
                 out[file] = {
-                    "acl": list(item.get("acl_tags_any") or []),
-                    "labels": list(item.get("classification_labels_all") or []),
-                    "clearance": item.get("clearance_level"),
+                    "acl_allow": list(item.get("acl_allow") or item.get("acl_tags_any") or []),
+                    "classification_labels": list(
+                        item.get("classification_labels")
+                        or item.get("classification_labels_all")
+                        or []
+                    ),
+                    "doc_level": item.get("doc_level") if item.get("doc_level") is not None else item.get("clearance_level"),
                 }
 
         if sql_path:
@@ -502,9 +506,13 @@ def load_bundle_metadata(bundle_path: Path) -> Dict[str, Dict[str, Any]]:
                 if not file:
                     continue
                 out[file] = {
-                    "acl": list(item.get("acl_tags_any") or []),
-                    "labels": list(item.get("classification_labels_all") or []),
-                    "clearance": item.get("clearance_level"),
+                    "acl_allow": list(item.get("acl_allow") or item.get("acl_tags_any") or []),
+                    "classification_labels": list(
+                        item.get("classification_labels")
+                        or item.get("classification_labels_all")
+                        or []
+                    ),
+                    "doc_level": item.get("doc_level") if item.get("doc_level") is not None else item.get("clearance_level"),
                 }
 
     return out
@@ -522,7 +530,7 @@ def is_visible(
     security_enabled = bool(permissions.get("security_enabled", False))
 
     if acl_enabled and acl_any:
-        doc_acl = [str(x).strip() for x in (meta.get("acl") or []) if str(x).strip()]
+        doc_acl = [str(x).strip() for x in (meta.get("acl_allow") or []) if str(x).strip()]
         if doc_acl and not set(doc_acl).intersection(set(acl_any)):
             return False
 
@@ -530,7 +538,7 @@ def is_visible(
         model = permissions.get("security_model") or {}
         kind = str(model.get("kind") or "")
         if kind == "clearance_level":
-            doc_level = meta.get("clearance")
+            doc_level = meta.get("doc_level")
             allow_missing = bool(model.get("clearance_level", {}).get("allow_missing_doc_level", True))
             if doc_level is None:
                 return allow_missing
@@ -538,7 +546,7 @@ def is_visible(
                 return True
             return int(doc_level) <= int(user_level)
         if kind == "labels_universe_subset":
-            doc_labels = [str(x).strip() for x in (meta.get("labels") or []) if str(x).strip()]
+            doc_labels = [str(x).strip() for x in (meta.get("classification_labels") or []) if str(x).strip()]
             allow_unlabeled = bool(model.get("labels_universe_subset", {}).get("allow_unlabeled", True))
             if not doc_labels:
                 return allow_unlabeled

@@ -66,7 +66,9 @@ except Exception:
 
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 
-RUNTIME_CONFIG_PATH = os.path.join(PROJECT_ROOT, "config.json")
+RUNTIME_CONFIG_DEFAULT_PATH = os.path.join(PROJECT_ROOT, "config.json")
+RUNTIME_CONFIG_DEV_PATH = os.path.join(PROJECT_ROOT, "config.dev.json")
+RUNTIME_CONFIG_PROD_PATH = os.path.join(PROJECT_ROOT, "config.prod.json")
 FRONTEND_HTML_PATH = os.path.join(PROJECT_ROOT, "frontend", "production", "Rag.html")
 FRONTEND_ASSETS_DIR = os.path.join(PROJECT_ROOT, "frontend", "production", "assets")
 
@@ -118,17 +120,65 @@ def _load_json_file(path: str) -> dict:
         return data
 
 
+def _parse_env_bool(raw: Optional[str]) -> Optional[bool]:
+    val = str(raw or "").strip().lower()
+    if val in ("1", "true", "yes", "on"):
+        return True
+    if val in ("0", "false", "no", "off"):
+        return False
+    return None
+
+
+def _resolve_runtime_config_path() -> str:
+    explicit = str(os.getenv("APP_CONFIG_PATH") or "").strip()
+    if explicit:
+        return explicit if os.path.isabs(explicit) else os.path.join(PROJECT_ROOT, explicit)
+
+    profile = str(os.getenv("APP_CONFIG_PROFILE") or "").strip().lower()
+    if profile in ("dev", "development"):
+        return RUNTIME_CONFIG_DEV_PATH
+    if profile in ("prod", "production"):
+        return RUNTIME_CONFIG_PROD_PATH
+
+    env_dev = _parse_env_bool(os.getenv("APP_DEVELOPMENT"))
+    if env_dev is True:
+        return RUNTIME_CONFIG_DEV_PATH
+    if env_dev is False:
+        return RUNTIME_CONFIG_PROD_PATH
+
+    if os.path.exists(RUNTIME_CONFIG_DEV_PATH):
+        return RUNTIME_CONFIG_DEV_PATH
+    return RUNTIME_CONFIG_DEFAULT_PATH
+
+
+RUNTIME_CONFIG_PATH = _resolve_runtime_config_path()
+
+
 def _load_runtime_cfg() -> dict:
-    return _load_json_file(RUNTIME_CONFIG_PATH) or {}
+    cfg = _load_json_file(RUNTIME_CONFIG_PATH) or {}
+    if cfg:
+        return cfg
+    if RUNTIME_CONFIG_PATH != RUNTIME_CONFIG_DEFAULT_PATH:
+        py_logger.warning(
+            "runtime config not found at '%s'; falling back to '%s'",
+            RUNTIME_CONFIG_PATH,
+            RUNTIME_CONFIG_DEFAULT_PATH,
+        )
+        return _load_json_file(RUNTIME_CONFIG_DEFAULT_PATH) or {}
+    return {}
 
 
 _runtime_cfg = _load_runtime_cfg()
-_development_raw = _runtime_cfg.get("developement", _runtime_cfg.get("development", True))
+if "developement" in _runtime_cfg:
+    py_logger.error("runtime config: invalid key 'developement' (typo). Use 'development' instead.")
+    raise ValueError("runtime config contains invalid key 'developement' (typo). Use 'development'.")
+
+_development_raw = _runtime_cfg.get("development", True)
 _development_enabled = bool(_development_raw)
-_development_env = (os.getenv("APP_DEVELOPMENT") or "").strip().lower()
-if _development_env in ("1", "true", "yes", "on"):
+_development_env = _parse_env_bool(os.getenv("APP_DEVELOPMENT"))
+if _development_env is True:
     _development_enabled = True
-elif _development_env in ("0", "false", "no", "off"):
+elif _development_env is False:
     _development_enabled = False
 
 _mock_sql_raw = _runtime_cfg.get("mockSqlServer", False)
@@ -151,31 +201,43 @@ _logging_cfg = logging_config_from_runtime_config(_runtime_cfg)
 configure_logging(_logging_cfg)
 
 
-def _validate_security_consistency(*, runtime_cfg: dict, client: Any | None) -> None:
+def _warn_or_raise_security(message: str, *, strict: bool) -> None:
+    if strict:
+        raise ValueError(message)
+    py_logger.warning(message)
+
+
+def _validate_security_consistency(*, runtime_cfg: dict, client: Any | None, strict: bool) -> None:
     security = runtime_cfg.get("permissions") or {}
     if not isinstance(security, dict):
-        py_logger.warning("permissions config missing or invalid; security checks skipped")
+        _warn_or_raise_security("permissions config missing or invalid; security checks skipped", strict=strict)
         return
 
     if not security.get("security_enabled", False):
-        py_logger.warning("permissions.security_enabled is false; system will not enforce security filters")
+        _warn_or_raise_security(
+            "permissions.security_enabled is false; system will not enforce security filters",
+            strict=strict,
+        )
         if client is not None:
             try:
                 coll = client.collections.get("RagNode")
                 cfg = coll.config.get()
                 props = [p.name for p in (cfg.properties or [])]
                 if "classification_labels" in props or "doc_level" in props:
-                    py_logger.warning(
-                        "permissions: security_enabled is false but RagNode schema contains security fields (classification_labels/doc_level)"
+                    _warn_or_raise_security(
+                        "permissions: security_enabled is false but RagNode schema contains security fields (classification_labels/doc_level)",
+                        strict=strict,
                     )
             except Exception:
+                if strict:
+                    raise RuntimeError("permissions: failed to validate RagNode schema when security is disabled")
                 py_logger.exception("permissions: failed to validate RagNode schema when security is disabled")
         return
 
     model = security.get("security_model") or {}
     kind = str(model.get("kind") or "").strip()
     if kind not in ("clearance_level", "labels_universe_subset", "classification_labels"):
-        py_logger.warning("security.enabled is true but security_model.kind is missing/invalid")
+        _warn_or_raise_security("security.enabled is true but security_model.kind is missing/invalid", strict=strict)
         return
 
     # Validate Weaviate schema (best-effort).
@@ -185,16 +247,27 @@ def _validate_security_consistency(*, runtime_cfg: dict, client: Any | None) -> 
             cfg = coll.config.get()
             props = [p.name for p in (cfg.properties or [])]
             if bool(security.get("acl_enabled", True)) and "acl_allow" not in props:
-                py_logger.warning("permissions: acl_enabled is true but 'acl_allow' is missing in RagNode schema")
+                _warn_or_raise_security(
+                    "permissions: acl_enabled is true but 'acl_allow' is missing in RagNode schema",
+                    strict=strict,
+                )
             if kind == "clearance_level":
                 field = str((model.get("clearance_level") or {}).get("doc_level_field") or "doc_level")
                 if field not in props:
-                    py_logger.warning("permissions: doc_level field '%s' not found in RagNode schema", field)
+                    _warn_or_raise_security(
+                        f"permissions: doc_level field '{field}' not found in RagNode schema",
+                        strict=strict,
+                    )
             if kind in ("labels_universe_subset", "classification_labels"):
                 field = str((model.get("labels_universe_subset") or model.get("classification_labels") or {}).get("doc_labels_field") or "classification_labels")
                 if field not in props:
-                    py_logger.warning("permissions: classification labels field '%s' not found in RagNode schema", field)
+                    _warn_or_raise_security(
+                        f"permissions: classification labels field '{field}' not found in RagNode schema",
+                        strict=strict,
+                    )
         except Exception:
+            if strict:
+                raise RuntimeError("permissions: failed to validate Weaviate schema for RagNode")
             py_logger.exception("permissions: failed to validate Weaviate schema for RagNode")
 
     # Validate auth policies and mappings.
@@ -210,28 +283,41 @@ def _validate_security_consistency(*, runtime_cfg: dict, client: Any | None) -> 
             list_map = rule.get("list_map") or {}
             for _k, group in (value_map or {}).items():
                 if str(group) not in group_ids:
-                    py_logger.warning("permissions: claim_group_mappings refers to unknown group '%s'", group)
+                    _warn_or_raise_security(
+                        f"permissions: claim_group_mappings refers to unknown group '{group}'",
+                        strict=strict,
+                    )
             for _k, group in (list_map or {}).items():
                 if str(group) not in group_ids:
-                    py_logger.warning("permissions: claim_group_mappings refers to unknown group '%s'", group)
+                    _warn_or_raise_security(
+                        f"permissions: claim_group_mappings refers to unknown group '{group}'",
+                        strict=strict,
+                    )
 
         if kind == "clearance_level":
             if not any(p.user_level is not None for p in policies.values()):
-                py_logger.warning("permissions: clearance_level enabled but no group has user_level in auth_policies")
+                _warn_or_raise_security(
+                    "permissions: clearance_level enabled but no group has user_level in auth_policies",
+                    strict=strict,
+                )
         if kind in ("labels_universe_subset", "classification_labels"):
             universe = (model.get("labels_universe_subset") or model.get("classification_labels") or {}).get("classification_labels_universe") or []
             universe_set = set(str(x).strip() for x in universe if str(x).strip())
             if not universe_set:
-                py_logger.warning("permissions: labels_universe_subset enabled but classification_labels_universe is empty")
+                _warn_or_raise_security(
+                    "permissions: labels_universe_subset enabled but classification_labels_universe is empty",
+                    strict=strict,
+                )
             for gid, policy in policies.items():
                 for label in policy.classification_labels_all or []:
                     if label not in universe_set:
-                        py_logger.warning(
-                            "permissions: group '%s' has classification label '%s' outside universe",
-                            gid,
-                            label,
+                        _warn_or_raise_security(
+                            f"permissions: group '{gid}' has classification label '{label}' outside universe",
+                            strict=strict,
                         )
     except Exception:
+        if strict:
+            raise RuntimeError("permissions: failed to validate auth_policies consistency")
         py_logger.exception("permissions: failed to validate auth_policies consistency")
 
 
@@ -496,7 +582,6 @@ def _load_llm_servers() -> tuple[dict[str, "ServerLLMConfig"], str, list[str]]:
             f"using first: {default_candidates[0]} (candidates: {default_candidates})"
         )
         py_logger.warning(msg)
-        print(f"WARNING: {msg}")
     return servers, default_candidates[0], ordered_names
 
 _model = None
@@ -534,7 +619,6 @@ if _server_llm_enabled:
         )
     except Exception as e:
         py_logger.error("serverLLM=true but failed to load ServersLLM.json: %s", e)
-        print(f"ERROR: serverLLM=true but failed to load ServersLLM.json: {e}")
         raise
 
 if _server_client is not None and _local_model is not None:
@@ -589,10 +673,15 @@ _graph_provider = None
 
 _skip_weaviate_init = (os.getenv("WEAVIATE_SKIP_INIT") or "").strip().lower() in ("1", "true", "yes", "on")
 _skip_weaviate_init = _skip_weaviate_init or bool(os.getenv("PYTEST_CURRENT_TEST"))
+_strict_security_validation = not bool(_development_enabled)
 
 if _skip_weaviate_init:
     py_logger.warning("degraded-mode: skipping Weaviate init (test mode)")
-    _validate_security_consistency(runtime_cfg=_runtime_cfg, client=None)
+    _validate_security_consistency(
+        runtime_cfg=_runtime_cfg,
+        client=None,
+        strict=_strict_security_validation,
+    )
 else:
     try:
         _weaviate_settings = get_weaviate_settings()
@@ -601,30 +690,40 @@ else:
         py_logger.exception("fatal: cannot initialize Weaviate client (vector_db/weaviate_client.py)")
         raise
 
-    _validate_security_consistency(runtime_cfg=_runtime_cfg, client=_weaviate_client)
+    _validate_security_consistency(
+        runtime_cfg=_runtime_cfg,
+        client=_weaviate_client,
+        strict=_strict_security_validation,
+    )
 
     _embed_model_path = _resolve_cfg_path(str(_runtime_cfg.get("model_path_embd") or ""))
-    _security_cfg = _runtime_cfg.get("permissions") or {}
-    _classification_universe = []
-    try:
-        _sec_model = (_security_cfg.get("security_model") or {}) if isinstance(_security_cfg, dict) else {}
-        _labels_cfg = _sec_model.get("labels_universe_subset") or {}
-        _classification_universe = _labels_cfg.get("classification_labels_universe") or []
-        if isinstance(_classification_universe, str):
-            _classification_universe = [s.strip() for s in _classification_universe.split(",") if s.strip()]
-    except Exception:
-        py_logger.exception("soft-failure: failed to resolve classification_labels_universe from permissions config")
+    _security_cfg = _runtime_cfg.get("permissions") if isinstance(_runtime_cfg.get("permissions"), dict) else {}
+    _sec_model = _security_cfg.get("security_model") if isinstance(_security_cfg.get("security_model"), dict) else {}
+    _labels_cfg = _sec_model.get("labels_universe_subset") if isinstance(_sec_model.get("labels_universe_subset"), dict) else {}
+    _classification_universe_raw = _labels_cfg.get("classification_labels_universe")
+    if isinstance(_classification_universe_raw, list):
+        _classification_universe = [str(s).strip() for s in _classification_universe_raw if str(s).strip()]
+    elif isinstance(_classification_universe_raw, str):
+        _classification_universe = [s.strip() for s in _classification_universe_raw.split(",") if s.strip()]
+    else:
+        _classification_universe = []
     _doc_level_field = "doc_level"
     _doc_labels_field = "classification_labels"
-    try:
-        _sec_model = (_security_cfg.get("security_model") or {}) if isinstance(_security_cfg, dict) else {}
-        _kind = str(_sec_model.get("kind") or "").strip()
-        if _kind == "clearance_level":
-            _doc_level_field = str((_sec_model.get("clearance_level") or {}).get("doc_level_field") or _doc_level_field)
-        if _kind == "labels_universe_subset":
-            _doc_labels_field = str((_sec_model.get("labels_universe_subset") or {}).get("doc_labels_field") or _doc_labels_field)
-    except Exception:
-        py_logger.exception("soft-failure: failed to resolve security model fields from config")
+    _kind = str(_sec_model.get("kind") or "").strip()
+    _clearance_cfg = _sec_model.get("clearance_level") if isinstance(_sec_model.get("clearance_level"), dict) else {}
+    _labels_or_cls_cfg = (
+        _sec_model.get("labels_universe_subset")
+        if isinstance(_sec_model.get("labels_universe_subset"), dict)
+        else (
+            _sec_model.get("classification_labels")
+            if isinstance(_sec_model.get("classification_labels"), dict)
+            else {}
+        )
+    )
+    if _kind == "clearance_level":
+        _doc_level_field = str(_clearance_cfg.get("doc_level_field") or _doc_level_field)
+    if _kind in ("labels_universe_subset", "classification_labels"):
+        _doc_labels_field = str(_labels_or_cls_cfg.get("doc_labels_field") or _doc_labels_field)
     _retrieval_backend = WeaviateRetrievalBackend(
         client=_weaviate_client,
         query_embed_model=_embed_model_path,
@@ -1201,7 +1300,7 @@ def _handle_query_request(*, require_bearer_auth: bool):
             pipeline_name = ""
 
     pipeline_settings = dict(_pipeline_settings_by_name.get(pipeline_name) or {})
-    if "development" not in pipeline_settings and "developement" not in pipeline_settings:
+    if "development" not in pipeline_settings:
         pipeline_settings["development"] = bool(_development_enabled)
     if "llm_server_security_messages_default" not in pipeline_settings:
         defaults = _runtime_cfg.get("llm_server_security_messages_default")
@@ -1309,22 +1408,27 @@ def _handle_query_request(*, require_bearer_auth: bool):
     retrieval_filters_override: Dict[str, Any] = {}
     security_cfg = _runtime_cfg.get("permissions") or {}
     acl_enabled = True
+    security_enabled = False
+    security_kind = ""
     if isinstance(security_cfg, dict):
         acl_enabled = bool(security_cfg.get("acl_enabled", True))
+        security_enabled = bool(security_cfg.get("security_enabled", False))
+        security_kind = str((security_cfg.get("security_model") or {}).get("kind") or "")
     acl_tags_any = list(getattr(access_ctx, "acl_tags_any", None) or getattr(access_ctx, "acl_tags_all", None) or [])
     if acl_enabled and acl_tags_any:
         retrieval_filters_override["acl_tags_any"] = acl_tags_any
     classification_labels_all = list(getattr(access_ctx, "classification_labels_all", None) or [])
-    if classification_labels_all:
+    if security_enabled and security_kind in ("labels_universe_subset", "classification_labels") and classification_labels_all:
         retrieval_filters_override["classification_labels_all"] = classification_labels_all
     user_level = getattr(access_ctx, "user_level", None)
-    if user_level is not None:
+    if security_enabled and security_kind == "clearance_level" and user_level is not None:
         retrieval_filters_override["user_level"] = int(user_level)
     owner_id = str(getattr(access_ctx, "owner_id", "") or "").strip()
     if owner_id:
         retrieval_filters_override["owner_id"] = owner_id
     if source_system_id:
         retrieval_filters_override["source_system_id"] = source_system_id
+    # Drop empty filters to avoid polluting state.
     if retrieval_filters_override:
         overrides["retrieval_filters"] = retrieval_filters_override
     if access_ctx.allowed_commands:

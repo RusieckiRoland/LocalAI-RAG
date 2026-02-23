@@ -20,10 +20,11 @@ It also defines **security rules (ACL + labels or clearance_level)** and the **r
 - **Expanded nodes** — seed nodes plus graph dependencies after expansion (`expand_dependency_tree`).
 - **ACL / security filters** — tenant/permissions/group allowlist/tags/labels/clearance.
   Source is **`state.retrieval_filters`** and these filters are **"sacred"**.
-  - `acl_tags_any` uses OR semantics (only when `permissions.acl_enabled=true`).
-    - Empty ACL on a document means “public” and must be included when `acl_tags_any` is present.
-    - A document is visible if it has no ACL tags or shares at least one tag with `acl_tags_any`.
-    - Importers MUST set ACL fields only when ACL is enabled; missing fields are treated as empty lists (public).
+- `acl_tags_any` uses OR semantics (only when `permissions.acl_enabled=true`).
+  - Empty ACL on a document means “public” and must be included when `acl_tags_any` is present.
+  - A document is visible if it has an empty ACL list (`[]`) or shares at least one tag with `acl_tags_any`.
+  - When `permissions.acl_enabled=true`, importers MUST write ACL fields on every document (the ACL attribute must be present even if empty `[]`). Missing ACL fields are invalid and must fail import/ingestion.
+  - When `permissions.acl_enabled=false`, ACL is not enforced and importers MUST NOT write ACL fields.
   - **Labels model** (`security_model.kind=labels_universe_subset`):
     - `classification_labels_all` uses ALL/subset semantics (`doc_labels ⊆ user_labels`).
     - Empty classification labels are allowed.

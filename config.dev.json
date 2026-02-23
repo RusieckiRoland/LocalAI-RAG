@@ -5,7 +5,7 @@
   "enable_model_path_analysis": true,
   "serverLLM": false,
   "model_max_tokens": 1500,
-  "model_context_window":8192 ,
+  "model_context_window": 8192,
   "model_translation_en_pl": "models/translation/en_pl/Helsinki_NLPopus_mt_en_pl",
   "model_translation_pl_en": "models/translation/pl_en/Helsinki_NLPopus_mt_pl_en",
   "log_path": "log/ai_interaction.log",
@@ -32,12 +32,17 @@
     {
       "neutral_description": "today",
       "translated_description": "dzisiaj",
-      "formula": { "type": "today" }
+      "formula": {
+        "type": "today"
+      }
     },
     {
       "neutral_description": "last week",
       "translated_description": "ostatni tydzień",
-      "formula": { "type": "last_n_days", "days": 7 }
+      "formula": {
+        "type": "last_n_days",
+        "days": 7
+      }
     }
   ],
   "history_important": {
@@ -70,13 +75,20 @@
     "ready_timeout_seconds": 30
   },
   "identity_provider": {
-  "enabled": true,
-  "issuer": "http://127.0.0.1:18090/realms/localai-rag",
-  "jwks_url": "http://127.0.0.1:18090/realms/localai-rag/protocol/openid-connect/certs",
-  "audience": "localai-rag-api",
-  "algorithms": ["RS256"],
-  "required_claims": ["sub","exp","iss","aud"]
-},
+    "enabled": true,
+    "issuer": "http://127.0.0.1:18090/realms/localai-rag",
+    "jwks_url": "http://127.0.0.1:18090/realms/localai-rag/protocol/openid-connect/certs",
+    "audience": "localai-rag-api",
+    "algorithms": [
+      "RS256"
+    ],
+    "required_claims": [
+      "sub",
+      "exp",
+      "iss",
+      "aud"
+    ]
+  },
   "vector_indexes_root": "repositories/nopCommerce/indexes",
   "repo_name": "nopCommerce",
   "callback": "allowed",

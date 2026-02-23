@@ -281,7 +281,7 @@ def _build_cs_release(
                 "namespace FakeEnterprise;\n"
                 f"public static class {cls} {{ public static void {member}() {{ }} }}\n"
             ),
-            "acl_tags_any": [],
+            "acl_allow": [],
             "classification_labels_all": [],
             "doc_level": CLEARANCE_LEVELS["public"],
             "owner_id": "",
@@ -325,7 +325,7 @@ def _build_cs_release(
         override = fixture_overrides.get(node.key)
         if override:
             acl, cls, lvl = override
-            node.obj["acl_tags_any"] = acl
+            node.obj["acl_allow"] = acl
             node.obj["classification_labels_all"] = cls
             node.obj["doc_level"] = int(lvl)
             node.obj["owner_id"] = "team-security"
@@ -408,7 +408,7 @@ def _build_sql_release(release: str, rng: random.Random) -> Tuple[List[SqlNode],
             "data_type": "sql_code",
             "file_type": "sql",
             "domain": "sql",
-            "acl_tags_any": [],
+            "acl_allow": [],
             "classification_labels_all": [],
             "doc_level": CLEARANCE_LEVELS["public"],
             "owner_id": "",
@@ -508,7 +508,7 @@ def _assign_security_distribution(
         if cat in ("cls", "both"):
             cls = sorted(set(rng.sample(CLASSIFICATION_LABELS, k=1 if rng.random() < 0.70 else 2)))
             owner = rng.choice(OWNER_IDS)
-        doc["acl_tags_any"] = acl
+        doc["acl_allow"] = acl
         doc["classification_labels_all"] = cls
         doc["doc_level"] = _labels_to_level(cls)
         doc["owner_id"] = owner
@@ -539,7 +539,7 @@ def _build_release_bundle(release: str, out_dir: Path) -> Path:
         override = fixture_overrides.get(node.key)
         if override:
             acl, cls, lvl = override
-            node.obj["acl_tags_any"] = list(acl)
+            node.obj["acl_allow"] = list(acl)
             node.obj["classification_labels_all"] = list(cls)
             node.obj["doc_level"] = int(lvl)
             node.obj["owner_id"] = "team-security"

@@ -139,9 +139,10 @@ def _build_cs_chunk(item: CorpusItem, idx: int, *, include_acl: bool, include_la
         "ChunkTotal": 1,
         "Text": item.text.strip(),
         "source_system_id": "code.csharp",
+        "acl_allow": [],
     }
     if include_acl:
-        payload["acl_tags_any"] = _assign_acl(idx)
+        payload["acl_allow"] = _assign_acl(idx)
     if include_labels:
         payload["classification_labels_all"] = _assign_labels(idx)
     if include_clearance_level:
@@ -164,9 +165,10 @@ def _build_sql_body(item: CorpusItem, idx: int, *, include_acl: bool, include_la
         "file_type": "sql",
         "domain": "sql",
         "source_system_id": "code.sql",
+        "acl_allow": [],
     }
     if include_acl:
-        payload["acl_tags_any"] = _assign_acl(idx)
+        payload["acl_allow"] = _assign_acl(idx)
     if include_labels:
         payload["classification_labels_all"] = _assign_labels(idx)
     if include_clearance_level:
