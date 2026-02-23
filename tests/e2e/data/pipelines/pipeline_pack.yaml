@@ -1,0 +1,401 @@
+YAMLpipelines:
+  - name: P0
+    settings:
+      entry_step_id: translate_in
+      test: true
+      max_turn_loops: 4
+      prompts_dir: "tests/e2e/data/prompts"
+      max_context_tokens: 2000
+      graph_max_depth: 2
+      graph_max_nodes: 200
+      graph_edge_allowlist: null
+      behavior_version: "0.2.0"
+      compat_mode: latest
+
+    steps:
+      - id: translate_in
+        action: translate_in_if_needed
+        next: load_history
+
+      - id: load_history
+        action: load_conversation_history
+        next: call_router
+
+      - id: call_router
+        action: call_model
+        prompt_key: "e2e/router_v1"
+        user_parts:
+          user_question:
+            source: user_query
+            template: "{}"
+        next: handle_router
+
+      - id: handle_router
+        action: prefix_router
+        routes:
+          bm25:
+            prefix: "[BM25:]"
+            next: call_answer
+          semantic:
+            prefix: "[SEMANTIC:]"
+            next: call_answer
+          hybrid:
+            prefix: "[HYBRID:]"
+            next: call_answer
+          direct:
+            prefix: "[DIRECT:]"
+            next: call_answer
+        on_other: call_answer
+
+      - id: call_answer
+        action: call_model
+        prompt_key: "e2e/answer_v1"
+        user_parts:
+          evidence:
+            source: context_blocks
+            template: "{}"
+          user_question:
+            source: user_query
+            template: "{}"
+        next: handle_answer
+
+      - id: handle_answer
+        action: prefix_router
+        routes:
+          answer:
+            prefix: "[Answer:]"
+            next: set_answer_from_last_model_response
+          followup:
+            prefix: "[Requesting data on:]"
+            next: set_answer_from_last_model_response
+        on_other: set_answer_from_last_model_response
+
+      - id: set_answer_from_last_model_response
+        action: set_variables
+        rules:
+          - set: answer_neutral
+            from: last_model_response
+          - set: answer_translated
+            value: null
+        next: finalize
+
+      - id: finalize
+        action: finalize
+        persist_turn: true
+        end: true
+
+
+  - name: P1
+    settings:
+      entry_step_id: translate_in
+      top_k: 2
+      test: true
+      max_turn_loops: 4
+      prompts_dir: "tests/e2e/data/prompts"
+      max_context_tokens: 2000
+      graph_max_depth: 2
+      graph_max_nodes: 200
+      graph_edge_allowlist: null
+      behavior_version: "0.2.0"
+      compat_mode: latest
+
+    steps:
+      - id: translate_in
+        action: translate_in_if_needed
+        next: load_history
+
+      - id: load_history
+        action: load_conversation_history
+        next: call_router
+
+      - id: call_router
+        action: call_model
+        prompt_key: "e2e/router_v1"
+        user_parts:
+          user_question:
+            source: user_query
+            template: "{}"
+        next: handle_router
+
+      - id: handle_router
+        action: prefix_router
+        routes:
+          bm25:
+            prefix: "[BM25:]"
+            next: search
+          semantic:
+            prefix: "[SEMANTIC:]"
+            next: call_answer
+          hybrid:
+            prefix: "[HYBRID:]"
+            next: call_answer
+          direct:
+            prefix: "[DIRECT:]"
+            next: call_answer
+        on_other: call_answer
+
+      - id: search
+        action: search_nodes
+        search_type: bm25
+        next: call_answer
+
+      - id: call_answer
+        action: call_model
+        prompt_key: "e2e/answer_v1"
+        user_parts:
+          evidence:
+            source: context_blocks
+            template: "{}"
+          user_question:
+            source: user_query
+            template: "{}"
+        next: handle_answer
+
+      - id: handle_answer
+        action: prefix_router
+        routes:
+          answer:
+            prefix: "[Answer:]"
+            next: set_answer_from_last_model_response
+          followup:
+            prefix: "[Requesting data on:]"
+            next: set_answer_from_last_model_response
+        on_other: set_answer_from_last_model_response
+
+      - id: set_answer_from_last_model_response
+        action: set_variables
+        rules:
+          - set: answer_neutral
+            from: last_model_response
+          - set: answer_translated
+            value: null
+        next: finalize
+
+      - id: finalize
+        action: finalize
+        persist_turn: true
+        end: true
+
+
+  - name: P2
+    settings:
+      entry_step_id: translate_in
+      top_k: 2
+      test: true
+      max_turn_loops: 4
+      max_depth: 2
+      max_nodes: 200
+      node_texts_count: 3
+      prompts_dir: "tests/e2e/data/prompts"
+      max_context_tokens: 2000
+      graph_max_depth: 2
+      graph_max_nodes: 200
+      graph_edge_allowlist: null
+      behavior_version: "0.2.0"
+      compat_mode: latest
+
+    steps:
+      - id: translate_in
+        action: translate_in_if_needed
+        next: load_history
+
+      - id: load_history
+        action: load_conversation_history
+        next: call_router
+
+      - id: call_router
+        action: call_model
+        prompt_key: "e2e/router_v1"
+        user_parts:
+          user_question:
+            source: user_query
+            template: "{}"
+        next: handle_router
+
+      - id: handle_router
+        action: prefix_router
+        routes:
+          bm25:
+            prefix: "[BM25:]"
+            next: search
+          semantic:
+            prefix: "[SEMANTIC:]"
+            next: call_answer
+          hybrid:
+            prefix: "[HYBRID:]"
+            next: call_answer
+          direct:
+            prefix: "[DIRECT:]"
+            next: call_answer
+        on_other: call_answer
+
+      - id: search
+        action: search_nodes
+        search_type: bm25
+        next: expand
+
+      - id: expand
+        action: expand_dependency_tree
+        max_depth_from_settings: graph_max_depth
+        max_nodes_from_settings: graph_max_nodes
+        edge_allowlist_from_settings: graph_edge_allowlist
+        next: fetch_texts
+
+      - id: fetch_texts
+        action: fetch_node_texts
+        next: call_answer
+
+      - id: call_answer
+        action: call_model
+        prompt_key: "e2e/answer_v1"
+        user_parts:
+          evidence:
+            source: context_blocks
+            template: "{}"
+          user_question:
+            source: user_query
+            template: "{}"
+        next: handle_answer
+
+      - id: handle_answer
+        action: prefix_router
+        routes:
+          answer:
+            prefix: "[Answer:]"
+            next: set_answer_from_last_model_response
+          followup:
+            prefix: "[Requesting data on:]"
+            next: loop_guard
+        on_other: set_answer_from_last_model_response
+
+      - id: set_answer_from_last_model_response
+        action: set_variables
+        rules:
+          - set: answer_neutral
+            from: last_model_response
+          - set: answer_translated
+            value: null
+        next: finalize
+
+      - id: loop_guard
+        action: loop_guard
+        on_allow: search
+        on_deny: finalize
+
+      - id: finalize
+        action: finalize
+        end: true
+
+
+  - name: P3
+    settings:
+      entry_step_id: translate_in
+      test: true
+      max_turn_loops: 4
+      max_depth: 2
+      max_nodes: 200
+      node_texts_count: 3
+      prompts_dir: "tests/e2e/data/prompts"
+      max_context_tokens: 2000
+      graph_max_depth: 2
+      graph_max_nodes: 200
+      graph_edge_allowlist: null
+      behavior_version: "0.2.0"
+      compat_mode: latest
+
+    steps:
+      - id: translate_in
+        action: translate_in_if_needed
+        next: expand
+
+      - id: expand
+        action: expand_dependency_tree
+        max_depth_from_settings: graph_max_depth
+        max_nodes_from_settings: graph_max_nodes
+        edge_allowlist_from_settings: graph_edge_allowlist
+        next: fetch_texts
+
+      - id: fetch_texts
+        action: fetch_node_texts
+        next: call_answer
+
+      - id: call_answer
+        action: call_model
+        prompt_key: "e2e/answer_v1"
+        user_parts:
+          evidence:
+            source: context_blocks
+            template: "{}"
+          user_question:
+            source: user_query
+            template: "{}"
+        next: handle_answer
+
+      - id: handle_answer
+        action: prefix_router
+        routes:
+          answer:
+            prefix: "[Answer:]"
+            next: set_answer_from_last_model_response
+          followup:
+            prefix: "[Requesting data on:]"
+            next: set_answer_from_last_model_response
+        on_other: set_answer_from_last_model_response
+
+      - id: set_answer_from_last_model_response
+        action: set_variables
+        rules:
+          - set: answer_neutral
+            from: last_model_response
+          - set: answer_translated
+            value: null
+        next: finalize
+
+      - id: finalize
+        action: finalize
+        end: true
+
+
+  - name: P4
+    settings:
+      entry_step_id: load_history
+      test: true
+      context_budget_tokens: 100
+      history_budget_tokens: 50
+      prompts_dir: "tests/e2e/data/prompts"
+      max_context_tokens: 2000
+      graph_max_depth: 2
+      graph_max_nodes: 200
+      graph_edge_allowlist: null
+      behavior_version: "0.2.0"
+      compat_mode: latest
+
+    steps:
+      - id: load_history
+        action: load_conversation_history
+        next: call_answer
+
+      - id: call_answer
+        action: call_model
+        prompt_key: "e2e/answer_v1"
+        user_parts:
+          evidence:
+            source: context_blocks
+            template: "{}"
+          user_question:
+            source: user_query
+            template: "{}"
+        next: set_answer_from_last_model_response
+
+      - id: set_answer_from_last_model_response
+        action: set_variables
+        rules:
+          - set: answer_neutral
+            from: last_model_response
+          - set: answer_translated
+            value: null
+        next: finalize
+
+      - id: finalize
+        action: finalize
+        end: true

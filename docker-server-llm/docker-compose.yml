@@ -1,0 +1,22 @@
+services:
+  llama_cpp:
+    image: ghcr.io/ggml-org/llama.cpp:server-cuda
+    ports:
+      - "127.0.0.1:18081:8080"
+    gpus: all
+    volumes:
+      - ../models:/models:ro
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+    command:
+      - "--host"
+      - "0.0.0.0"
+      - "--port"
+      - "8080"
+      - "--jinja"
+      - "-ngl"
+      - "99"
+      - "-c"
+      - "32768"
+      - "-m"
+      - "/models/code_analysis/Devstrall-2-24B/Devstral-Small-2-24B-Instruct-2512-Q4_K_M.gguf"

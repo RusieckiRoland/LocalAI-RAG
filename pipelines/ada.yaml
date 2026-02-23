@@ -1,0 +1,130 @@
+YAMLpipeline:
+  name: ada
+
+  settings:
+    entry_step_id: maybe_translate_in
+    model_language: en
+    behavior_version: "0.2.0"
+    compat_mode: locked
+    snapshot_set_id: ""
+    max_history_tokens: 800
+    native_chat: true
+    stages_visibility: explicit
+
+  steps:
+    - id: maybe_translate_in
+      action: translate_in_if_needed
+      next: load_history
+
+    - id: load_history
+      action: load_conversation_history
+      next: call_model_diagram_router
+
+    - id: call_model_diagram_router
+      action: call_model
+      stages_visible: true
+      prompt_key: "ada/diagram_router_v1"
+      use_history: true
+      user_parts:
+        user_question:
+          source: user_question_neutral
+          template: "### User:\n{}\n\n"
+        context:
+          source: composed_context_for_prompt
+          template: "### Context:\n{}\n\n"
+        history:
+          source: history_for_prompt
+          template: "### History:\n{}\n\n"
+      next: route_diagram_decision
+
+    - id: route_diagram_decision
+      action: prefix_router
+      routes:
+        ask:
+          prefix: "[ASK:]"
+          next: set_answer_from_last_model_response
+        class:
+          prefix: "[CLASS:]"
+          next: call_model_class_diagram
+        sequence:
+          prefix: "[SEQUENCE:]"
+          next: call_model_sequence_diagram
+        use_case:
+          prefix: "[USE_CASE:]"
+          next: call_model_use_case_diagram
+      on_other: set_answer_from_last_model_response
+
+    - id: call_model_class_diagram
+      action: call_model
+      stages_visible: true
+      prompt_key: "ada/class_diagram_v1"
+      use_history: true
+      user_parts:
+        user_question:
+          source: user_question_neutral
+          template: "### User:\n{}\n\n"
+        context:
+          source: composed_context_for_prompt
+          template: "### Context:\n{}\n\n"
+        history:
+          source: history_for_prompt
+          template: "### History:\n{}\n\n"
+      next: set_answer_from_last_model_response
+
+    - id: call_model_sequence_diagram
+      action: call_model
+      stages_visible: true
+      prompt_key: "ada/sequence_diagram_v1"
+      use_history: true
+      user_parts:
+        user_question:
+          source: user_question_neutral
+          template: "### User:\n{}\n\n"
+        context:
+          source: composed_context_for_prompt
+          template: "### Context:\n{}\n\n"
+        history:
+          source: history_for_prompt
+          template: "### History:\n{}\n\n"
+      next: set_answer_from_last_model_response
+
+    - id: call_model_use_case_diagram
+      action: call_model
+      stages_visible: true
+      prompt_key: "ada/use_case_diagram_v1"
+      use_history: true
+      user_parts:
+        user_question:
+          source: user_question_neutral
+          template: "### User:\n{}\n\n"
+        context:
+          source: composed_context_for_prompt
+          template: "### Context:\n{}\n\n"
+        history:
+          source: history_for_prompt
+          template: "### History:\n{}\n\n"
+      next: set_answer_from_last_model_response
+
+    - id: set_answer_from_last_model_response
+      action: set_variables
+      rules:
+        - set: answer_neutral
+          from: last_model_response
+        - set: answer_translated
+          value: null
+      next: translate_out
+
+    - id: translate_out
+      action: translate_out_if_needed
+      next: add_commands
+
+    - id: add_commands
+      action: add_command_action
+      commands:
+        - type: "showDiagram"
+        - type: "ea_export"
+      next: finalize
+
+    - id: finalize
+      action: finalize
+      end: true

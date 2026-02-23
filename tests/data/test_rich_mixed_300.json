@@ -1,0 +1,1502 @@
+[
+  {
+    "id": "dotnet_072",
+    "kind": "dotnet",
+    "text": "using System;\nusing System.Collections.Generic;\nusing System.Linq;\nusing System.Threading;\nusing System.Threading.Tasks;\n\nnamespace MyApp.Feature072\n{\n    public interface IRepository072<T>\n    {\n        Task<T?> GetAsync(Guid id, CancellationToken ct);\n        Task SaveAsync(T entity, CancellationToken ct);\n    }\n\n    public sealed class InMemoryRepository072<T> : IRepository072<T>\n    {\n        private readonly Dictionary<Guid, T> _store = new();\n\n        public Task<T?> GetAsync(Guid id, CancellationToken ct)\n            => Task.FromResult(_store.TryGetValue(id, out var v) ? v : default);\n\n        public Task SaveAsync(T entity, CancellationToken ct)\n        {\n            _store[Guid.NewGuid()] = entity;\n            return Task.CompletedTask;\n        }\n    }\n}\n"
+  },
+  {
+    "id": "dotnet_with_sql_066",
+    "kind": "dotnet_with_sql",
+    "text": "public static class RawSql066\n{\n    public static string Q() =>\n        \"\"\"SELECT TOP (10) Id, Name\nFROM dbo.Users\nWHERE IsActive = 1\nORDER BY CreatedAt DESC;\"\"\";\n}\n"
+  },
+  {
+    "id": "dotnet_093",
+    "kind": "dotnet",
+    "text": "using System;\nusing System.Collections.Generic;\nusing System.Linq;\nusing System.Threading;\nusing System.Threading.Tasks;\n\nnamespace MyApp.Feature093\n{\n    public static class Guard093\n    {\n        public static void NotNull(object? value, string name)\n        {\n            if (value is null)\n                throw new ArgumentNullException(name);\n        }\n    }\n\n    public sealed class Service093\n    {\n        public string Execute(string input)\n        {\n            try\n            {\n                Guard093.NotNull(input, nameof(input));\n                return input.Trim().ToUpperInvariant();\n            }\n            catch (Exception ex)\n            {\n                // NOTE: no SQL here; just a message.\n                return $\"Error: {ex.GetType().Name}\";\n            }\n        }\n    }\n}\n"
+  },
+  {
+    "id": "dotnet_050",
+    "kind": "dotnet",
+    "text": "using System;\nusing System.Collections.Generic;\nusing System.Linq;\nusing System.Threading;\nusing System.Threading.Tasks;\n\nnamespace MyApp.Feature050\n{\n    public sealed class Processor050\n    {\n        private readonly IReadOnlyList<int> _values = new List<int> { 1, 7, 0 };\n\n        public async Task<int> RunAsync(CancellationToken ct)\n        {\n            await Task.Delay(30, ct).ConfigureAwait(false);\n\n            var result = _values\n                .Where(x => x >= 0)\n                .Select(x => x * 4)\n                .Sum();\n\n            return result;\n        }\n    }\n}\n"
+  },
+  {
+    "id": "dotnet_with_sql_079",
+    "kind": "dotnet_with_sql",
+    "text": "using System.Data;\nusing Dapper;\n\npublic sealed class UnitOfWork079\n{\n    private readonly IDbConnection _db;\n    private readonly IDbTransaction _tx;\n\n    public UnitOfWork079(IDbConnection db)\n    {\n        _db = db;\n        _tx = db.BeginTransaction();\n    }\n\n    public Task<int> InsertAsync(string code, string name)\n    {\n        var sql = @\"\n            INSERT INTO dbo.Items(Code, Name)\n            VALUES (@code, @name);\n        \";\n        return _db.ExecuteAsync(sql, new { code, name }, _tx);\n    }\n}\n"
+  },
+  {
+    "id": "sql_051",
+    "kind": "sql",
+    "text": "/* CTE + window function 051 */\nWITH cte AS (\n    SELECT\n        o.OrderId,\n        o.CustomerId,\n        o.Total,\n        ROW_NUMBER() OVER (PARTITION BY o.CustomerId ORDER BY o.CreatedAt DESC) AS rn\n    FROM dbo.Orders o\n    WHERE o.CreatedAt >= DATEADD(day, -28, GETDATE())\n)\nSELECT OrderId, CustomerId, Total\nFROM cte\nWHERE rn = 1;\n"
+  },
+  {
+    "id": "dotnet_016",
+    "kind": "dotnet",
+    "text": "using System;\nusing System.Collections.Generic;\nusing System.Linq;\nusing System.Threading;\nusing System.Threading.Tasks;\n\nnamespace MyApp.Feature016\n{\n    public static class EndpointMap016\n    {\n        public static void Map(WebApplication app)\n        {\n            app.MapGet(\"/health/1\", () => Results.Ok(new { status = \"ok\", ts = DateTimeOffset.UtcNow }));\n        }\n    }\n}\n"
+  },
+  {
+    "id": "sql_030",
+    "kind": "sql",
+    "text": "-- Stored procedure example 030\nCREATE OR ALTER PROCEDURE [dbo].[usp_DoWork_030]\n    @UserId INT,\n    @IsActive BIT = 1\nAS\nBEGIN\n    SET NOCOUNT ON;\n\n    DECLARE @Now DATETIME2 = SYSUTCDATETIME();\n\n    SELECT TOP (10) u.[Id], u.[Name], u.[CreatedAt]\n    FROM [dbo].[Users] u WITH (NOLOCK)\n    WHERE u.[Id] = @UserId\n      AND u.[IsActive] = @IsActive\n    ORDER BY u.[CreatedAt] DESC;\nEND\nGO\n"
+  },
+  {
+    "id": "dotnet_092",
+    "kind": "dotnet",
+    "text": "using System;\nusing System.Collections.Generic;\nusing System.Linq;\nusing System.Threading;\nusing System.Threading.Tasks;\n\nnamespace MyApp.Feature092\n{\n    public interface IRepository092<T>\n    {\n        Task<T?> GetAsync(Guid id, CancellationToken ct);\n        Task SaveAsync(T entity, CancellationToken ct);\n    }\n\n    public sealed class InMemoryRepository092<T> : IRepository092<T>\n    {\n        private readonly Dictionary<Guid, T> _store = new();\n\n        public Task<T?> GetAsync(Guid id, CancellationToken ct)\n            => Task.FromResult(_store.TryGetValue(id, out var v) ? v : default);\n\n        public Task SaveAsync(T entity, CancellationToken ct)\n        {\n            _store[Guid.NewGuid()] = entity;\n            return Task.CompletedTask;\n        }\n    }\n}\n"
+  },
+  {
+    "id": "dotnet_with_sql_050",
+    "kind": "dotnet_with_sql",
+    "text": "using System.Data;\nusing Dapper;\n\npublic sealed class Repo050\n{\n    private readonly IDbConnection _db;\n    public Repo050(IDbConnection db) => _db = db;\n\n    public Task<int> CountActiveAsync(int tenantId)\n    {\n        var sql = @\"\n            SELECT COUNT(1)\n            FROM dbo.Users u\n            WHERE u.IsActive = 1 AND u.TenantId = @tenantId;\n        \";\n        return _db.ExecuteScalarAsync<int>(sql, new { tenantId });\n    }\n}\n"
+  },
+  {
+    "id": "sql_047",
+    "kind": "sql",
+    "text": "-- Trigger 047\nCREATE OR ALTER TRIGGER dbo.trg_ItemsAudit_047\nON dbo.Items\nAFTER INSERT, UPDATE\nAS\nBEGIN\n    SET NOCOUNT ON;\n\n    INSERT INTO dbo.ItemsAudit(ItemId, ChangedAt)\n    SELECT i.Id, SYSUTCDATETIME()\n    FROM inserted i;\nEND\n"
+  },
+  {
+    "id": "sql_037",
+    "kind": "sql",
+    "text": "-- Trigger 037\nCREATE OR ALTER TRIGGER dbo.trg_ItemsAudit_037\nON dbo.Items\nAFTER INSERT, UPDATE\nAS\nBEGIN\n    SET NOCOUNT ON;\n\n    INSERT INTO dbo.ItemsAudit(ItemId, ChangedAt)\n    SELECT i.Id, SYSUTCDATETIME()\n    FROM inserted i;\nEND\n"
+  },
+  {
+    "id": "dotnet_with_sql_011",
+    "kind": "dotnet_with_sql",
+    "text": "using System.Data.SqlClient;\n\npublic static class Ado011\n{\n    public static int Run(string cs)\n    {\n        using var conn = new SqlConnection(cs);\n        conn.Open();\n\n        using var cmd = conn.CreateCommand();\n        cmd.CommandText = \"UPDATE dbo.Flags SET Value = 1 WHERE KeyName = @k;\";\n        cmd.Parameters.AddWithValue(\"@k\", \"feature_11\");\n        return cmd.ExecuteNonQuery();\n    }\n}\n"
+  },
+  {
+    "id": "dotnet_with_sql_039",
+    "kind": "dotnet_with_sql",
+    "text": "using System.Data;\nusing Dapper;\n\npublic sealed class UnitOfWork039\n{\n    private readonly IDbConnection _db;\n    private readonly IDbTransaction _tx;\n\n    public UnitOfWork039(IDbConnection db)\n    {\n        _db = db;\n        _tx = db.BeginTransaction();\n    }\n\n    public Task<int> InsertAsync(string code, string name)\n    {\n        var sql = @\"\n            INSERT INTO dbo.Items(Code, Name)\n            VALUES (@code, @name);\n        \";\n        return _db.ExecuteAsync(sql, new { code, name }, _tx);\n    }\n}\n"
+  },
+  {
+    "id": "dotnet_with_sql_029",
+    "kind": "dotnet_with_sql",
+    "text": "using System.Data;\nusing Dapper;\n\npublic sealed class UnitOfWork029\n{\n    private readonly IDbConnection _db;\n    private readonly IDbTransaction _tx;\n\n    public UnitOfWork029(IDbConnection db)\n    {\n        _db = db;\n        _tx = db.BeginTransaction();\n    }\n\n    public Task<int> InsertAsync(string code, string name)\n    {\n        var sql = @\"\n            INSERT INTO dbo.Items(Code, Name)\n            VALUES (@code, @name);\n        \";\n        return _db.ExecuteAsync(sql, new { code, name }, _tx);\n    }\n}\n"
+  },
+  {
+    "id": "dotnet_023",
+    "kind": "dotnet",
+    "text": "using System;\nusing System.Collections.Generic;\nusing System.Linq;\nusing System.Threading;\nusing System.Threading.Tasks;\n\nnamespace MyApp.Feature023\n{\n    public static class Guard023\n    {\n        public static void NotNull(object? value, string name)\n        {\n            if (value is null)\n                throw new ArgumentNullException(name);\n        }\n    }\n\n    public sealed class Service023\n    {\n        public string Execute(string input)\n        {\n            try\n            {\n                Guard023.NotNull(input, nameof(input));\n                return input.Trim().ToUpperInvariant();\n            }\n            catch (Exception ex)\n            {\n                // NOTE: no SQL here; just a message.\n                return $\"Error: {ex.GetType().Name}\";\n            }\n        }\n    }\n}\n"
+  },
+  {
+    "id": "sql_044",
+    "kind": "sql",
+    "text": "-- Transactional update 044\nBEGIN TRY\n    BEGIN TRAN;\n\n    UPDATE dbo.Accounts\n    SET Balance = Balance - 54\n    WHERE AccountId = @FromAccountId;\n\n    UPDATE dbo.Accounts\n    SET Balance = Balance + 54\n    WHERE AccountId = @ToAccountId;\n\n    COMMIT TRAN;\nEND TRY\nBEGIN CATCH\n    IF @@TRANCOUNT > 0 ROLLBACK TRAN;\n    THROW;\nEND CATCH\n"
+  },
+  {
+    "id": "dotnet_with_sql_096",
+    "kind": "dotnet_with_sql",
+    "text": "public static class RawSql096\n{\n    public static string Q() =>\n        \"\"\"SELECT TOP (10) Id, Name\nFROM dbo.Users\nWHERE IsActive = 1\nORDER BY CreatedAt DESC;\"\"\";\n}\n"
+  },
+  {
+    "id": "sql_082",
+    "kind": "sql",
+    "text": "-- DDL 082\nCREATE TABLE dbo.Items_082 (\n    Id INT IDENTITY(1,1) NOT NULL PRIMARY KEY,\n    Code NVARCHAR(50) NOT NULL,\n    Name NVARCHAR(200) NOT NULL,\n    CreatedAt DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME()\n);\n\nCREATE UNIQUE INDEX IX_Items_082_Code ON dbo.Items_082(Code);\n"
+  },
+  {
+    "id": "dotnet_001",
+    "kind": "dotnet",
+    "text": "using System;\nusing System.Collections.Generic;\nusing System.Linq;\nusing System.Threading;\nusing System.Threading.Tasks;\n\nnamespace MyApp.Feature001\n{\n    public record User001(Guid Id, string Name, int Age);\n\n    public static class UserRules001\n    {\n        public static string Classify(User001 u) =>\n            u switch\n            {\n                { Age: < 18 } => \"minor\",\n                { Age: >= 18 and < 65 } => \"adult\",\n                _ => \"senior\"\n            };\n    }\n}\n"
+  },
+  {
+    "id": "sql_076",
+    "kind": "sql",
+    "text": "-- Scalar function 076\nCREATE OR ALTER FUNCTION dbo.fn_NormalizeEmail_076(@Email NVARCHAR(320))\nRETURNS NVARCHAR(320)\nAS\nBEGIN\n    RETURN LOWER(LTRIM(RTRIM(@Email)));\nEND\n"
+  },
+  {
+    "id": "dotnet_079",
+    "kind": "dotnet",
+    "text": "using System;\nusing System.Collections.Generic;\nusing System.Linq;\nusing System.Threading;\nusing System.Threading.Tasks;\n\nnamespace MyApp.Feature079\n{\n    public static class MathUtil079\n    {\n        public static double Clamp(double x, double min, double max)\n            => x < min ? min : (x > max ? max : x);\n\n        public static double Lerp(double a, double b, double t)\n            => a + (b - a) * Clamp(t, 0.0, 1.0);\n    }\n}\n"
+  },
+  {
+    "id": "dotnet_061",
+    "kind": "dotnet",
+    "text": "using System;\nusing System.Collections.Generic;\nusing System.Linq;\nusing System.Threading;\nusing System.Threading.Tasks;\n\nnamespace MyApp.Feature061\n{\n    public record User061(Guid Id, string Name, int Age);\n\n    public static class UserRules061\n    {\n        public static string Classify(User061 u) =>\n            u switch\n            {\n                { Age: < 18 } => \"minor\",\n                { Age: >= 18 and < 65 } => \"adult\",\n                _ => \"senior\"\n            };\n    }\n}\n"
+  },
+  {
+    "id": "sql_072",
+    "kind": "sql",
+    "text": "-- DDL 072\nCREATE TABLE dbo.Items_072 (\n    Id INT IDENTITY(1,1) NOT NULL PRIMARY KEY,\n    Code NVARCHAR(50) NOT NULL,\n    Name NVARCHAR(200) NOT NULL,\n    CreatedAt DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME()\n);\n\nCREATE UNIQUE INDEX IX_Items_072_Code ON dbo.Items_072(Code);\n"
+  },
+  {
+    "id": "dotnet_with_sql_070",
+    "kind": "dotnet_with_sql",
+    "text": "using System.Data;\nusing Dapper;\n\npublic sealed class Repo070\n{\n    private readonly IDbConnection _db;\n    public Repo070(IDbConnection db) => _db = db;\n\n    public Task<int> CountActiveAsync(int tenantId)\n    {\n        var sql = @\"\n            SELECT COUNT(1)\n            FROM dbo.Users u\n            WHERE u.IsActive = 1 AND u.TenantId = @tenantId;\n        \";\n        return _db.ExecuteScalarAsync<int>(sql, new { tenantId });\n    }\n}\n"
+  },
+  {
+    "id": "dotnet_with_sql_064",
+    "kind": "dotnet_with_sql",
+    "text": "using Microsoft.EntityFrameworkCore.Migrations;\n\npublic partial class AddIndex_064 : Migration\n{\n    protected override void Up(MigrationBuilder migrationBuilder)\n    {\n        migrationBuilder.Sql(@\"\n            CREATE INDEX IX_Users_Email ON dbo.Users(Email);\n        \");\n    }\n\n    protected override void Down(MigrationBuilder migrationBuilder)\n    {\n        migrationBuilder.Sql(@\"\n            DROP INDEX IX_Users_Email ON dbo.Users;\n        \");\n    }\n}\n"
+  },
+  {
+    "id": "dotnet_with_sql_049",
+    "kind": "dotnet_with_sql",
+    "text": "using System.Data;\nusing Dapper;\n\npublic sealed class UnitOfWork049\n{\n    private readonly IDbConnection _db;\n    private readonly IDbTransaction _tx;\n\n    public UnitOfWork049(IDbConnection db)\n    {\n        _db = db;\n        _tx = db.BeginTransaction();\n    }\n\n    public Task<int> InsertAsync(string code, string name)\n    {\n        var sql = @\"\n            INSERT INTO dbo.Items(Code, Name)\n            VALUES (@code, @name);\n        \";\n        return _db.ExecuteAsync(sql, new { code, name }, _tx);\n    }\n}\n"
+  },
+  {
+    "id": "sql_015",
+    "kind": "sql",
+    "text": "-- View 015\nCREATE OR ALTER VIEW dbo.vw_ActiveUsers_015\nAS\nSELECT u.Id, u.Name, u.Email\nFROM dbo.Users u\nWHERE u.IsActive = 1;\n"
+  },
+  {
+    "id": "dotnet_044",
+    "kind": "dotnet",
+    "text": "using System;\nusing System.Collections.Generic;\nusing System.Linq;\nusing System.Threading;\nusing System.Threading.Tasks;\n\nnamespace MyApp.Feature044\n{\n    [System.Serializable]\n    public sealed class Dto044\n    {\n        public int Id { get; set; }\n        public string Name { get; set; } = string.Empty;\n    }\n\n    [ApiController]\n    [Route(\"api/items/4\")]\n    public sealed class ItemsController044 : ControllerBase\n    {\n        [HttpGet(\"2\")]\n        public ActionResult<Dto044> Get()\n            => new Dto044 { Id = 44, Name = \"item\" };\n    }\n}\n"
+  },
+  {
+    "id": "dotnet_077",
+    "kind": "dotnet",
+    "text": "using System;\nusing System.Collections.Generic;\nusing System.Linq;\nusing System.Threading;\nusing System.Threading.Tasks;\n\nnamespace MyApp.Feature077\n{\n    public static class FileOps077\n    {\n        public static string ReadSafe(string path)\n        {\n            if (!System.IO.File.Exists(path))\n                return string.Empty;\n\n            using var sr = System.IO.File.OpenText(path);\n            return sr.ReadToEnd();\n        }\n    }\n}\n"
+  },
+  {
+    "id": "dotnet_with_sql_076",
+    "kind": "dotnet_with_sql",
+    "text": "public static class RawSql076\n{\n    public static string Q() =>\n        \"\"\"SELECT TOP (10) Id, Name\nFROM dbo.Users\nWHERE IsActive = 1\nORDER BY CreatedAt DESC;\"\"\";\n}\n"
+  },
+  {
+    "id": "dotnet_032",
+    "kind": "dotnet",
+    "text": "using System;\nusing System.Collections.Generic;\nusing System.Linq;\nusing System.Threading;\nusing System.Threading.Tasks;\n\nnamespace MyApp.Feature032\n{\n    public interface IRepository032<T>\n    {\n        Task<T?> GetAsync(Guid id, CancellationToken ct);\n        Task SaveAsync(T entity, CancellationToken ct);\n    }\n\n    public sealed class InMemoryRepository032<T> : IRepository032<T>\n    {\n        private readonly Dictionary<Guid, T> _store = new();\n\n        public Task<T?> GetAsync(Guid id, CancellationToken ct)\n            => Task.FromResult(_store.TryGetValue(id, out var v) ? v : default);\n\n        public Task SaveAsync(T entity, CancellationToken ct)\n        {\n            _store[Guid.NewGuid()] = entity;\n            return Task.CompletedTask;\n        }\n    }\n}\n"
+  },
+  {
+    "id": "dotnet_with_sql_007",
+    "kind": "dotnet_with_sql",
+    "text": "using System.Data;\nusing Dapper;\n\npublic static class StoredProc007\n{\n    public static Task ExecAsync(IDbConnection db, int userId)\n    {\n        var sql = \"EXEC dbo.usp_DoWork_007 @UserId = @userId, @IsActive = 1;\";\n        return db.ExecuteAsync(sql, new { userId });\n    }\n}\n"
+  },
+  {
+    "id": "dotnet_with_sql_030",
+    "kind": "dotnet_with_sql",
+    "text": "using System.Data;\nusing Dapper;\n\npublic sealed class Repo030\n{\n    private readonly IDbConnection _db;\n    public Repo030(IDbConnection db) => _db = db;\n\n    public Task<int> CountActiveAsync(int tenantId)\n    {\n        var sql = @\"\n            SELECT COUNT(1)\n            FROM dbo.Users u\n            WHERE u.IsActive = 1 AND u.TenantId = @tenantId;\n        \";\n        return _db.ExecuteScalarAsync<int>(sql, new { tenantId });\n    }\n}\n"
+  },
+  {
+    "id": "dotnet_052",
+    "kind": "dotnet",
+    "text": "using System;\nusing System.Collections.Generic;\nusing System.Linq;\nusing System.Threading;\nusing System.Threading.Tasks;\n\nnamespace MyApp.Feature052\n{\n    public interface IRepository052<T>\n    {\n        Task<T?> GetAsync(Guid id, CancellationToken ct);\n        Task SaveAsync(T entity, CancellationToken ct);\n    }\n\n    public sealed class InMemoryRepository052<T> : IRepository052<T>\n    {\n        private readonly Dictionary<Guid, T> _store = new();\n\n        public Task<T?> GetAsync(Guid id, CancellationToken ct)\n            => Task.FromResult(_store.TryGetValue(id, out var v) ? v : default);\n\n        public Task SaveAsync(T entity, CancellationToken ct)\n        {\n            _store[Guid.NewGuid()] = entity;\n            return Task.CompletedTask;\n        }\n    }\n}\n"
+  },
+  {
+    "id": "dotnet_076",
+    "kind": "dotnet",
+    "text": "using System;\nusing System.Collections.Generic;\nusing System.Linq;\nusing System.Threading;\nusing System.Threading.Tasks;\n\nnamespace MyApp.Feature076\n{\n    public static class EndpointMap076\n    {\n        public static void Map(WebApplication app)\n        {\n            app.MapGet(\"/health/1\", () => Results.Ok(new { status = \"ok\", ts = DateTimeOffset.UtcNow }));\n        }\n    }\n}\n"
+  },
+  {
+    "id": "dotnet_029",
+    "kind": "dotnet",
+    "text": "using System;\nusing System.Collections.Generic;\nusing System.Linq;\nusing System.Threading;\nusing System.Threading.Tasks;\n\nnamespace MyApp.Feature029\n{\n    public static class MathUtil029\n    {\n        public static double Clamp(double x, double min, double max)\n            => x < min ? min : (x > max ? max : x);\n\n        public static double Lerp(double a, double b, double t)\n            => a + (b - a) * Clamp(t, 0.0, 1.0);\n    }\n}\n"
+  },
+  {
+    "id": "sql_021",
+    "kind": "sql",
+    "text": "/* CTE + window function 021 */\nWITH cte AS (\n    SELECT\n        o.OrderId,\n        o.CustomerId,\n        o.Total,\n        ROW_NUMBER() OVER (PARTITION BY o.CustomerId ORDER BY o.CreatedAt DESC) AS rn\n    FROM dbo.Orders o\n    WHERE o.CreatedAt >= DATEADD(day, -28, GETDATE())\n)\nSELECT OrderId, CustomerId, Total\nFROM cte\nWHERE rn = 1;\n"
+  },
+  {
+    "id": "sql_028",
+    "kind": "sql",
+    "text": "-- Temp tables 028\nCREATE TABLE #t (Id INT, Val NVARCHAR(50));\n\nINSERT INTO #t(Id, Val)\nSELECT TOP (5) Id, Name\nFROM dbo.Users\nORDER BY Id DESC;\n\nSELECT * FROM #t;\n"
+  },
+  {
+    "id": "dotnet_026",
+    "kind": "dotnet",
+    "text": "using System;\nusing System.Collections.Generic;\nusing System.Linq;\nusing System.Threading;\nusing System.Threading.Tasks;\n\nnamespace MyApp.Feature026\n{\n    public static class EndpointMap026\n    {\n        public static void Map(WebApplication app)\n        {\n            app.MapGet(\"/health/1\", () => Results.Ok(new { status = \"ok\", ts = DateTimeOffset.UtcNow }));\n        }\n    }\n}\n"
+  },
+  {
+    "id": "dotnet_with_sql_037",
+    "kind": "dotnet_with_sql",
+    "text": "using System.Data;\nusing Dapper;\n\npublic static class StoredProc037\n{\n    public static Task ExecAsync(IDbConnection db, int userId)\n    {\n        var sql = \"EXEC dbo.usp_DoWork_037 @UserId = @userId, @IsActive = 1;\";\n        return db.ExecuteAsync(sql, new { userId });\n    }\n}\n"
+  },
+  {
+    "id": "sql_029",
+    "kind": "sql",
+    "text": "-- Cursor-like loop 029\nDECLARE @Id INT;\n\nDECLARE cur CURSOR LOCAL FAST_FORWARD FOR\nSELECT TOP (3) Id FROM dbo.Users ORDER BY Id;\n\nOPEN cur;\nFETCH NEXT FROM cur INTO @Id;\n\nWHILE @@FETCH_STATUS = 0\nBEGIN\n    EXEC dbo.usp_ProcessUser @UserId = @Id;\n    FETCH NEXT FROM cur INTO @Id;\nEND\n\nCLOSE cur;\nDEALLOCATE cur;\n"
+  },
+  {
+    "id": "sql_007",
+    "kind": "sql",
+    "text": "-- Trigger 007\nCREATE OR ALTER TRIGGER dbo.trg_ItemsAudit_007\nON dbo.Items\nAFTER INSERT, UPDATE\nAS\nBEGIN\n    SET NOCOUNT ON;\n\n    INSERT INTO dbo.ItemsAudit(ItemId, ChangedAt)\n    SELECT i.Id, SYSUTCDATETIME()\n    FROM inserted i;\nEND\n"
+  },
+  {
+    "id": "dotnet_with_sql_024",
+    "kind": "dotnet_with_sql",
+    "text": "using Microsoft.EntityFrameworkCore.Migrations;\n\npublic partial class AddIndex_024 : Migration\n{\n    protected override void Up(MigrationBuilder migrationBuilder)\n    {\n        migrationBuilder.Sql(@\"\n            CREATE INDEX IX_Users_Email ON dbo.Users(Email);\n        \");\n    }\n\n    protected override void Down(MigrationBuilder migrationBuilder)\n    {\n        migrationBuilder.Sql(@\"\n            DROP INDEX IX_Users_Email ON dbo.Users;\n        \");\n    }\n}\n"
+  },
+  {
+    "id": "sql_014",
+    "kind": "sql",
+    "text": "-- Transactional update 014\nBEGIN TRY\n    BEGIN TRAN;\n\n    UPDATE dbo.Accounts\n    SET Balance = Balance - 24\n    WHERE AccountId = @FromAccountId;\n\n    UPDATE dbo.Accounts\n    SET Balance = Balance + 24\n    WHERE AccountId = @ToAccountId;\n\n    COMMIT TRAN;\nEND TRY\nBEGIN CATCH\n    IF @@TRANCOUNT > 0 ROLLBACK TRAN;\n    THROW;\nEND CATCH\n"
+  },
+  {
+    "id": "sql_048",
+    "kind": "sql",
+    "text": "-- Temp tables 048\nCREATE TABLE #t (Id INT, Val NVARCHAR(50));\n\nINSERT INTO #t(Id, Val)\nSELECT TOP (5) Id, Name\nFROM dbo.Users\nORDER BY Id DESC;\n\nSELECT * FROM #t;\n"
+  },
+  {
+    "id": "dotnet_with_sql_022",
+    "kind": "dotnet_with_sql",
+    "text": "using Microsoft.EntityFrameworkCore;\n\npublic sealed class Ctx022 : DbContext\n{\n    public DbSet<UserRow> Users => Set<UserRow>();\n}\n\npublic sealed record UserRow(int Id, string Name);\n\npublic static class EfQueries022\n{\n    public static IQueryable<UserRow> Latest(Ctx022 db)\n    {\n        return db.Users.FromSqlRaw(@\"\n            SELECT TOP (5) u.Id, u.Name\n            FROM dbo.Users u\n            ORDER BY u.CreatedAt DESC;\n        \");\n    }\n}\n"
+  },
+  {
+    "id": "dotnet_041",
+    "kind": "dotnet",
+    "text": "using System;\nusing System.Collections.Generic;\nusing System.Linq;\nusing System.Threading;\nusing System.Threading.Tasks;\n\nnamespace MyApp.Feature041\n{\n    public record User041(Guid Id, string Name, int Age);\n\n    public static class UserRules041\n    {\n        public static string Classify(User041 u) =>\n            u switch\n            {\n                { Age: < 18 } => \"minor\",\n                { Age: >= 18 and < 65 } => \"adult\",\n                _ => \"senior\"\n            };\n    }\n}\n"
+  },
+  {
+    "id": "sql_005",
+    "kind": "sql",
+    "text": "-- View 005\nCREATE OR ALTER VIEW dbo.vw_ActiveUsers_005\nAS\nSELECT u.Id, u.Name, u.Email\nFROM dbo.Users u\nWHERE u.IsActive = 1;\n"
+  },
+  {
+    "id": "sql_089",
+    "kind": "sql",
+    "text": "-- Cursor-like loop 089\nDECLARE @Id INT;\n\nDECLARE cur CURSOR LOCAL FAST_FORWARD FOR\nSELECT TOP (3) Id FROM dbo.Users ORDER BY Id;\n\nOPEN cur;\nFETCH NEXT FROM cur INTO @Id;\n\nWHILE @@FETCH_STATUS = 0\nBEGIN\n    EXEC dbo.usp_ProcessUser @UserId = @Id;\n    FETCH NEXT FROM cur INTO @Id;\nEND\n\nCLOSE cur;\nDEALLOCATE cur;\n"
+  },
+  {
+    "id": "dotnet_with_sql_090",
+    "kind": "dotnet_with_sql",
+    "text": "using System.Data;\nusing Dapper;\n\npublic sealed class Repo090\n{\n    private readonly IDbConnection _db;\n    public Repo090(IDbConnection db) => _db = db;\n\n    public Task<int> CountActiveAsync(int tenantId)\n    {\n        var sql = @\"\n            SELECT COUNT(1)\n            FROM dbo.Users u\n            WHERE u.IsActive = 1 AND u.TenantId = @tenantId;\n        \";\n        return _db.ExecuteScalarAsync<int>(sql, new { tenantId });\n    }\n}\n"
+  },
+  {
+    "id": "sql_013",
+    "kind": "sql",
+    "text": "-- MERGE upsert 013\nMERGE dbo.Inventory AS tgt\nUSING (SELECT @Sku AS Sku, @Qty AS Qty) AS src\nON (tgt.Sku = src.Sku)\nWHEN MATCHED THEN\n    UPDATE SET tgt.Qty = src.Qty, tgt.UpdatedAt = SYSUTCDATETIME()\nWHEN NOT MATCHED THEN\n    INSERT (Sku, Qty, CreatedAt) VALUES (src.Sku, src.Qty, SYSUTCDATETIME());\n"
+  },
+  {
+    "id": "dotnet_with_sql_088",
+    "kind": "dotnet_with_sql",
+    "text": "public static class SqlText088\n{\n    public const string Query = @\"\n        SELECT i.Id, i.Name\n        FROM dbo.Items i WITH (NOLOCK)\n        WHERE i.Code LIKE @prefix + '%'\n        ORDER BY i.Id;\n    \";\n}\n"
+  },
+  {
+    "id": "dotnet_with_sql_005",
+    "kind": "dotnet_with_sql",
+    "text": "public static class InterpolatedSql005\n{\n    public static string Build(int days)\n    {\n        // Note: intentionally embedded SQL string\n        return $@\"\n            SELECT u.Id, u.Name\n            FROM dbo.Users u\n            WHERE u.CreatedAt >= DATEADD(day, -{days}, GETDATE())\n            ORDER BY u.CreatedAt DESC;\n        \";\n    }\n}\n"
+  },
+  {
+    "id": "sql_090",
+    "kind": "sql",
+    "text": "-- Stored procedure example 090\nCREATE OR ALTER PROCEDURE [dbo].[usp_DoWork_090]\n    @UserId INT,\n    @IsActive BIT = 1\nAS\nBEGIN\n    SET NOCOUNT ON;\n\n    DECLARE @Now DATETIME2 = SYSUTCDATETIME();\n\n    SELECT TOP (10) u.[Id], u.[Name], u.[CreatedAt]\n    FROM [dbo].[Users] u WITH (NOLOCK)\n    WHERE u.[Id] = @UserId\n      AND u.[IsActive] = @IsActive\n    ORDER BY u.[CreatedAt] DESC;\nEND\nGO\n"
+  },
+  {
+    "id": "dotnet_with_sql_032",
+    "kind": "dotnet_with_sql",
+    "text": "using Microsoft.EntityFrameworkCore;\n\npublic sealed class Ctx032 : DbContext\n{\n    public DbSet<UserRow> Users => Set<UserRow>();\n}\n\npublic sealed record UserRow(int Id, string Name);\n\npublic static class EfQueries032\n{\n    public static IQueryable<UserRow> Latest(Ctx032 db)\n    {\n        return db.Users.FromSqlRaw(@\"\n            SELECT TOP (5) u.Id, u.Name\n            FROM dbo.Users u\n            ORDER BY u.CreatedAt DESC;\n        \");\n    }\n}\n"
+  },
+  {
+    "id": "sql_075",
+    "kind": "sql",
+    "text": "-- View 075\nCREATE OR ALTER VIEW dbo.vw_ActiveUsers_075\nAS\nSELECT u.Id, u.Name, u.Email\nFROM dbo.Users u\nWHERE u.IsActive = 1;\n"
+  },
+  {
+    "id": "sql_058",
+    "kind": "sql",
+    "text": "-- Temp tables 058\nCREATE TABLE #t (Id INT, Val NVARCHAR(50));\n\nINSERT INTO #t(Id, Val)\nSELECT TOP (5) Id, Name\nFROM dbo.Users\nORDER BY Id DESC;\n\nSELECT * FROM #t;\n"
+  },
+  {
+    "id": "dotnet_069",
+    "kind": "dotnet",
+    "text": "using System;\nusing System.Collections.Generic;\nusing System.Linq;\nusing System.Threading;\nusing System.Threading.Tasks;\n\nnamespace MyApp.Feature069\n{\n    public static class MathUtil069\n    {\n        public static double Clamp(double x, double min, double max)\n            => x < min ? min : (x > max ? max : x);\n\n        public static double Lerp(double a, double b, double t)\n            => a + (b - a) * Clamp(t, 0.0, 1.0);\n    }\n}\n"
+  },
+  {
+    "id": "dotnet_with_sql_093",
+    "kind": "dotnet_with_sql",
+    "text": "using Microsoft.EntityFrameworkCore;\n\npublic static class EfCommands093\n{\n    public static Task<int> CleanupAsync(DbContext db)\n    {\n        return db.Database.ExecuteSqlRawAsync(@\"\n            DELETE FROM dbo.Sessions\n            WHERE ExpiresAt < SYSUTCDATETIME();\n        \");\n    }\n}\n"
+  },
+  {
+    "id": "sql_019",
+    "kind": "sql",
+    "text": "-- Cursor-like loop 019\nDECLARE @Id INT;\n\nDECLARE cur CURSOR LOCAL FAST_FORWARD FOR\nSELECT TOP (3) Id FROM dbo.Users ORDER BY Id;\n\nOPEN cur;\nFETCH NEXT FROM cur INTO @Id;\n\nWHILE @@FETCH_STATUS = 0\nBEGIN\n    EXEC dbo.usp_ProcessUser @UserId = @Id;\n    FETCH NEXT FROM cur INTO @Id;\nEND\n\nCLOSE cur;\nDEALLOCATE cur;\n"
+  },
+  {
+    "id": "dotnet_with_sql_023",
+    "kind": "dotnet_with_sql",
+    "text": "using Microsoft.EntityFrameworkCore;\n\npublic static class EfCommands023\n{\n    public static Task<int> CleanupAsync(DbContext db)\n    {\n        return db.Database.ExecuteSqlRawAsync(@\"\n            DELETE FROM dbo.Sessions\n            WHERE ExpiresAt < SYSUTCDATETIME();\n        \");\n    }\n}\n"
+  },
+  {
+    "id": "dotnet_066",
+    "kind": "dotnet",
+    "text": "using System;\nusing System.Collections.Generic;\nusing System.Linq;\nusing System.Threading;\nusing System.Threading.Tasks;\n\nnamespace MyApp.Feature066\n{\n    public static class EndpointMap066\n    {\n        public static void Map(WebApplication app)\n        {\n            app.MapGet(\"/health/1\", () => Results.Ok(new { status = \"ok\", ts = DateTimeOffset.UtcNow }));\n        }\n    }\n}\n"
+  },
+  {
+    "id": "dotnet_096",
+    "kind": "dotnet",
+    "text": "using System;\nusing System.Collections.Generic;\nusing System.Linq;\nusing System.Threading;\nusing System.Threading.Tasks;\n\nnamespace MyApp.Feature096\n{\n    public static class EndpointMap096\n    {\n        public static void Map(WebApplication app)\n        {\n            app.MapGet(\"/health/1\", () => Results.Ok(new { status = \"ok\", ts = DateTimeOffset.UtcNow }));\n        }\n    }\n}\n"
+  },
+  {
+    "id": "sql_031",
+    "kind": "sql",
+    "text": "/* CTE + window function 031 */\nWITH cte AS (\n    SELECT\n        o.OrderId,\n        o.CustomerId,\n        o.Total,\n        ROW_NUMBER() OVER (PARTITION BY o.CustomerId ORDER BY o.CreatedAt DESC) AS rn\n    FROM dbo.Orders o\n    WHERE o.CreatedAt >= DATEADD(day, -8, GETDATE())\n)\nSELECT OrderId, CustomerId, Total\nFROM cte\nWHERE rn = 1;\n"
+  },
+  {
+    "id": "dotnet_with_sql_053",
+    "kind": "dotnet_with_sql",
+    "text": "using Microsoft.EntityFrameworkCore;\n\npublic static class EfCommands053\n{\n    public static Task<int> CleanupAsync(DbContext db)\n    {\n        return db.Database.ExecuteSqlRawAsync(@\"\n            DELETE FROM dbo.Sessions\n            WHERE ExpiresAt < SYSUTCDATETIME();\n        \");\n    }\n}\n"
+  },
+  {
+    "id": "sql_008",
+    "kind": "sql",
+    "text": "-- Temp tables 008\nCREATE TABLE #t (Id INT, Val NVARCHAR(50));\n\nINSERT INTO #t(Id, Val)\nSELECT TOP (5) Id, Name\nFROM dbo.Users\nORDER BY Id DESC;\n\nSELECT * FROM #t;\n"
+  },
+  {
+    "id": "sql_074",
+    "kind": "sql",
+    "text": "-- Transactional update 074\nBEGIN TRY\n    BEGIN TRAN;\n\n    UPDATE dbo.Accounts\n    SET Balance = Balance - 34\n    WHERE AccountId = @FromAccountId;\n\n    UPDATE dbo.Accounts\n    SET Balance = Balance + 34\n    WHERE AccountId = @ToAccountId;\n\n    COMMIT TRAN;\nEND TRY\nBEGIN CATCH\n    IF @@TRANCOUNT > 0 ROLLBACK TRAN;\n    THROW;\nEND CATCH\n"
+  },
+  {
+    "id": "dotnet_003",
+    "kind": "dotnet",
+    "text": "using System;\nusing System.Collections.Generic;\nusing System.Linq;\nusing System.Threading;\nusing System.Threading.Tasks;\n\nnamespace MyApp.Feature003\n{\n    public static class Guard003\n    {\n        public static void NotNull(object? value, string name)\n        {\n            if (value is null)\n                throw new ArgumentNullException(name);\n        }\n    }\n\n    public sealed class Service003\n    {\n        public string Execute(string input)\n        {\n            try\n            {\n                Guard003.NotNull(input, nameof(input));\n                return input.Trim().ToUpperInvariant();\n            }\n            catch (Exception ex)\n            {\n                // NOTE: no SQL here; just a message.\n                return $\"Error: {ex.GetType().Name}\";\n            }\n        }\n    }\n}\n"
+  },
+  {
+    "id": "dotnet_with_sql_097",
+    "kind": "dotnet_with_sql",
+    "text": "using System.Data;\nusing Dapper;\n\npublic static class StoredProc097\n{\n    public static Task ExecAsync(IDbConnection db, int userId)\n    {\n        var sql = \"EXEC dbo.usp_DoWork_097 @UserId = @userId, @IsActive = 1;\";\n        return db.ExecuteAsync(sql, new { userId });\n    }\n}\n"
+  },
+  {
+    "id": "dotnet_with_sql_016",
+    "kind": "dotnet_with_sql",
+    "text": "public static class RawSql016\n{\n    public static string Q() =>\n        \"\"\"SELECT TOP (10) Id, Name\nFROM dbo.Users\nWHERE IsActive = 1\nORDER BY CreatedAt DESC;\"\"\";\n}\n"
+  },
+  {
+    "id": "dotnet_051",
+    "kind": "dotnet",
+    "text": "using System;\nusing System.Collections.Generic;\nusing System.Linq;\nusing System.Threading;\nusing System.Threading.Tasks;\n\nnamespace MyApp.Feature051\n{\n    public record User051(Guid Id, string Name, int Age);\n\n    public static class UserRules051\n    {\n        public static string Classify(User051 u) =>\n            u switch\n            {\n                { Age: < 18 } => \"minor\",\n                { Age: >= 18 and < 65 } => \"adult\",\n                _ => \"senior\"\n            };\n    }\n}\n"
+  },
+  {
+    "id": "sql_050",
+    "kind": "sql",
+    "text": "-- Stored procedure example 050\nCREATE OR ALTER PROCEDURE [dbo].[usp_DoWork_050]\n    @UserId INT,\n    @IsActive BIT = 1\nAS\nBEGIN\n    SET NOCOUNT ON;\n\n    DECLARE @Now DATETIME2 = SYSUTCDATETIME();\n\n    SELECT TOP (10) u.[Id], u.[Name], u.[CreatedAt]\n    FROM [dbo].[Users] u WITH (NOLOCK)\n    WHERE u.[Id] = @UserId\n      AND u.[IsActive] = @IsActive\n    ORDER BY u.[CreatedAt] DESC;\nEND\nGO\n"
+  },
+  {
+    "id": "dotnet_with_sql_046",
+    "kind": "dotnet_with_sql",
+    "text": "public static class RawSql046\n{\n    public static string Q() =>\n        \"\"\"SELECT TOP (10) Id, Name\nFROM dbo.Users\nWHERE IsActive = 1\nORDER BY CreatedAt DESC;\"\"\";\n}\n"
+  },
+  {
+    "id": "dotnet_094",
+    "kind": "dotnet",
+    "text": "using System;\nusing System.Collections.Generic;\nusing System.Linq;\nusing System.Threading;\nusing System.Threading.Tasks;\n\nnamespace MyApp.Feature094\n{\n    [System.Serializable]\n    public sealed class Dto094\n    {\n        public int Id { get; set; }\n        public string Name { get; set; } = string.Empty;\n    }\n\n    [ApiController]\n    [Route(\"api/items/4\")]\n    public sealed class ItemsController094 : ControllerBase\n    {\n        [HttpGet(\"3\")]\n        public ActionResult<Dto094> Get()\n            => new Dto094 { Id = 94, Name = \"item\" };\n    }\n}\n"
+  },
+  {
+    "id": "dotnet_028",
+    "kind": "dotnet",
+    "text": "using System;\nusing System.Collections.Generic;\nusing System.Linq;\nusing System.Threading;\nusing System.Threading.Tasks;\n\nnamespace MyApp.Feature028\n{\n    public sealed class Settings028\n    {\n        public string Mode { get; init; } = \"dev\";\n        public int Retries { get; init; } = 4;\n    }\n\n    public static class SettingsParser028\n    {\n        public static Settings028 Parse(string json)\n            => System.Text.Json.JsonSerializer.Deserialize<Settings028>(json) ?? new Settings028();\n    }\n}\n"
+  },
+  {
+    "id": "dotnet_030",
+    "kind": "dotnet",
+    "text": "using System;\nusing System.Collections.Generic;\nusing System.Linq;\nusing System.Threading;\nusing System.Threading.Tasks;\n\nnamespace MyApp.Feature030\n{\n    public sealed class Processor030\n    {\n        private readonly IReadOnlyList<int> _values = new List<int> { 2, 9, 6 };\n\n        public async Task<int> RunAsync(CancellationToken ct)\n        {\n            await Task.Delay(10, ct).ConfigureAwait(false);\n\n            var result = _values\n                .Where(x => x >= 0)\n                .Select(x => x * 2)\n                .Sum();\n\n            return result;\n        }\n    }\n}\n"
+  },
+  {
+    "id": "dotnet_with_sql_003",
+    "kind": "dotnet_with_sql",
+    "text": "using Microsoft.EntityFrameworkCore;\n\npublic static class EfCommands003\n{\n    public static Task<int> CleanupAsync(DbContext db)\n    {\n        return db.Database.ExecuteSqlRawAsync(@\"\n            DELETE FROM dbo.Sessions\n            WHERE ExpiresAt < SYSUTCDATETIME();\n        \");\n    }\n}\n"
+  },
+  {
+    "id": "dotnet_024",
+    "kind": "dotnet",
+    "text": "using System;\nusing System.Collections.Generic;\nusing System.Linq;\nusing System.Threading;\nusing System.Threading.Tasks;\n\nnamespace MyApp.Feature024\n{\n    [System.Serializable]\n    public sealed class Dto024\n    {\n        public int Id { get; set; }\n        public string Name { get; set; } = string.Empty;\n    }\n\n    [ApiController]\n    [Route(\"api/items/4\")]\n    public sealed class ItemsController024 : ControllerBase\n    {\n        [HttpGet(\"3\")]\n        public ActionResult<Dto024> Get()\n            => new Dto024 { Id = 24, Name = \"item\" };\n    }\n}\n"
+  },
+  {
+    "id": "dotnet_with_sql_068",
+    "kind": "dotnet_with_sql",
+    "text": "public static class SqlText068\n{\n    public const string Query = @\"\n        SELECT i.Id, i.Name\n        FROM dbo.Items i WITH (NOLOCK)\n        WHERE i.Code LIKE @prefix + '%'\n        ORDER BY i.Id;\n    \";\n}\n"
+  },
+  {
+    "id": "sql_094",
+    "kind": "sql",
+    "text": "-- Transactional update 094\nBEGIN TRY\n    BEGIN TRAN;\n\n    UPDATE dbo.Accounts\n    SET Balance = Balance - 54\n    WHERE AccountId = @FromAccountId;\n\n    UPDATE dbo.Accounts\n    SET Balance = Balance + 54\n    WHERE AccountId = @ToAccountId;\n\n    COMMIT TRAN;\nEND TRY\nBEGIN CATCH\n    IF @@TRANCOUNT > 0 ROLLBACK TRAN;\n    THROW;\nEND CATCH\n"
+  },
+  {
+    "id": "dotnet_with_sql_051",
+    "kind": "dotnet_with_sql",
+    "text": "using System.Data.SqlClient;\n\npublic static class Ado051\n{\n    public static int Run(string cs)\n    {\n        using var conn = new SqlConnection(cs);\n        conn.Open();\n\n        using var cmd = conn.CreateCommand();\n        cmd.CommandText = \"UPDATE dbo.Flags SET Value = 1 WHERE KeyName = @k;\";\n        cmd.Parameters.AddWithValue(\"@k\", \"feature_1\");\n        return cmd.ExecuteNonQuery();\n    }\n}\n"
+  },
+  {
+    "id": "dotnet_with_sql_015",
+    "kind": "dotnet_with_sql",
+    "text": "public static class InterpolatedSql015\n{\n    public static string Build(int days)\n    {\n        // Note: intentionally embedded SQL string\n        return $@\"\n            SELECT u.Id, u.Name\n            FROM dbo.Users u\n            WHERE u.CreatedAt >= DATEADD(day, -{days}, GETDATE())\n            ORDER BY u.CreatedAt DESC;\n        \";\n    }\n}\n"
+  },
+  {
+    "id": "sql_043",
+    "kind": "sql",
+    "text": "-- MERGE upsert 043\nMERGE dbo.Inventory AS tgt\nUSING (SELECT @Sku AS Sku, @Qty AS Qty) AS src\nON (tgt.Sku = src.Sku)\nWHEN MATCHED THEN\n    UPDATE SET tgt.Qty = src.Qty, tgt.UpdatedAt = SYSUTCDATETIME()\nWHEN NOT MATCHED THEN\n    INSERT (Sku, Qty, CreatedAt) VALUES (src.Sku, src.Qty, SYSUTCDATETIME());\n"
+  },
+  {
+    "id": "dotnet_083",
+    "kind": "dotnet",
+    "text": "using System;\nusing System.Collections.Generic;\nusing System.Linq;\nusing System.Threading;\nusing System.Threading.Tasks;\n\nnamespace MyApp.Feature083\n{\n    public static class Guard083\n    {\n        public static void NotNull(object? value, string name)\n        {\n            if (value is null)\n                throw new ArgumentNullException(name);\n        }\n    }\n\n    public sealed class Service083\n    {\n        public string Execute(string input)\n        {\n            try\n            {\n                Guard083.NotNull(input, nameof(input));\n                return input.Trim().ToUpperInvariant();\n            }\n            catch (Exception ex)\n            {\n                // NOTE: no SQL here; just a message.\n                return $\"Error: {ex.GetType().Name}\";\n            }\n        }\n    }\n}\n"
+  },
+  {
+    "id": "sql_054",
+    "kind": "sql",
+    "text": "-- Transactional update 054\nBEGIN TRY\n    BEGIN TRAN;\n\n    UPDATE dbo.Accounts\n    SET Balance = Balance - 14\n    WHERE AccountId = @FromAccountId;\n\n    UPDATE dbo.Accounts\n    SET Balance = Balance + 14\n    WHERE AccountId = @ToAccountId;\n\n    COMMIT TRAN;\nEND TRY\nBEGIN CATCH\n    IF @@TRANCOUNT > 0 ROLLBACK TRAN;\n    THROW;\nEND CATCH\n"
+  },
+  {
+    "id": "dotnet_059",
+    "kind": "dotnet",
+    "text": "using System;\nusing System.Collections.Generic;\nusing System.Linq;\nusing System.Threading;\nusing System.Threading.Tasks;\n\nnamespace MyApp.Feature059\n{\n    public static class MathUtil059\n    {\n        public static double Clamp(double x, double min, double max)\n            => x < min ? min : (x > max ? max : x);\n\n        public static double Lerp(double a, double b, double t)\n            => a + (b - a) * Clamp(t, 0.0, 1.0);\n    }\n}\n"
+  },
+  {
+    "id": "dotnet_018",
+    "kind": "dotnet",
+    "text": "using System;\nusing System.Collections.Generic;\nusing System.Linq;\nusing System.Threading;\nusing System.Threading.Tasks;\n\nnamespace MyApp.Feature018\n{\n    public sealed class Settings018\n    {\n        public string Mode { get; init; } = \"dev\";\n        public int Retries { get; init; } = 4;\n    }\n\n    public static class SettingsParser018\n    {\n        public static Settings018 Parse(string json)\n            => System.Text.Json.JsonSerializer.Deserialize<Settings018>(json) ?? new Settings018();\n    }\n}\n"
+  },
+  {
+    "id": "dotnet_with_sql_018",
+    "kind": "dotnet_with_sql",
+    "text": "public static class SqlText018\n{\n    public const string Query = @\"\n        SELECT i.Id, i.Name\n        FROM dbo.Items i WITH (NOLOCK)\n        WHERE i.Code LIKE @prefix + '%'\n        ORDER BY i.Id;\n    \";\n}\n"
+  },
+  {
+    "id": "dotnet_002",
+    "kind": "dotnet",
+    "text": "using System;\nusing System.Collections.Generic;\nusing System.Linq;\nusing System.Threading;\nusing System.Threading.Tasks;\n\nnamespace MyApp.Feature002\n{\n    public interface IRepository002<T>\n    {\n        Task<T?> GetAsync(Guid id, CancellationToken ct);\n        Task SaveAsync(T entity, CancellationToken ct);\n    }\n\n    public sealed class InMemoryRepository002<T> : IRepository002<T>\n    {\n        private readonly Dictionary<Guid, T> _store = new();\n\n        public Task<T?> GetAsync(Guid id, CancellationToken ct)\n            => Task.FromResult(_store.TryGetValue(id, out var v) ? v : default);\n\n        public Task SaveAsync(T entity, CancellationToken ct)\n        {\n            _store[Guid.NewGuid()] = entity;\n            return Task.CompletedTask;\n        }\n    }\n}\n"
+  },
+  {
+    "id": "dotnet_037",
+    "kind": "dotnet",
+    "text": "using System;\nusing System.Collections.Generic;\nusing System.Linq;\nusing System.Threading;\nusing System.Threading.Tasks;\n\nnamespace MyApp.Feature037\n{\n    public static class FileOps037\n    {\n        public static string ReadSafe(string path)\n        {\n            if (!System.IO.File.Exists(path))\n                return string.Empty;\n\n            using var sr = System.IO.File.OpenText(path);\n            return sr.ReadToEnd();\n        }\n    }\n}\n"
+  },
+  {
+    "id": "dotnet_063",
+    "kind": "dotnet",
+    "text": "using System;\nusing System.Collections.Generic;\nusing System.Linq;\nusing System.Threading;\nusing System.Threading.Tasks;\n\nnamespace MyApp.Feature063\n{\n    public static class Guard063\n    {\n        public static void NotNull(object? value, string name)\n        {\n            if (value is null)\n                throw new ArgumentNullException(name);\n        }\n    }\n\n    public sealed class Service063\n    {\n        public string Execute(string input)\n        {\n            try\n            {\n                Guard063.NotNull(input, nameof(input));\n                return input.Trim().ToUpperInvariant();\n            }\n            catch (Exception ex)\n            {\n                // NOTE: no SQL here; just a message.\n                return $\"Error: {ex.GetType().Name}\";\n            }\n        }\n    }\n}\n"
+  },
+  {
+    "id": "dotnet_071",
+    "kind": "dotnet",
+    "text": "using System;\nusing System.Collections.Generic;\nusing System.Linq;\nusing System.Threading;\nusing System.Threading.Tasks;\n\nnamespace MyApp.Feature071\n{\n    public record User071(Guid Id, string Name, int Age);\n\n    public static class UserRules071\n    {\n        public static string Classify(User071 u) =>\n            u switch\n            {\n                { Age: < 18 } => \"minor\",\n                { Age: >= 18 and < 65 } => \"adult\",\n                _ => \"senior\"\n            };\n    }\n}\n"
+  },
+  {
+    "id": "dotnet_095",
+    "kind": "dotnet",
+    "text": "using System;\nusing System.Collections.Generic;\nusing System.Linq;\nusing System.Threading;\nusing System.Threading.Tasks;\n\nnamespace MyApp.Feature095\n{\n    public sealed class ViewModel095 : System.ComponentModel.INotifyPropertyChanged\n    {\n        public event System.ComponentModel.PropertyChangedEventHandler? PropertyChanged;\n\n        private string _title = \"Hello\";\n        public string Title\n        {\n            get => _title;\n            set\n            {\n                if (_title == value) return;\n                _title = value;\n                PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs(nameof(Title)));\n            }\n        }\n    }\n}\n"
+  },
+  {
+    "id": "dotnet_005",
+    "kind": "dotnet",
+    "text": "using System;\nusing System.Collections.Generic;\nusing System.Linq;\nusing System.Threading;\nusing System.Threading.Tasks;\n\nnamespace MyApp.Feature005\n{\n    public sealed class ViewModel005 : System.ComponentModel.INotifyPropertyChanged\n    {\n        public event System.ComponentModel.PropertyChangedEventHandler? PropertyChanged;\n\n        private string _title = \"Hello\";\n        public string Title\n        {\n            get => _title;\n            set\n            {\n                if (_title == value) return;\n                _title = value;\n                PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs(nameof(Title)));\n            }\n        }\n    }\n}\n"
+  },
+  {
+    "id": "sql_093",
+    "kind": "sql",
+    "text": "-- MERGE upsert 093\nMERGE dbo.Inventory AS tgt\nUSING (SELECT @Sku AS Sku, @Qty AS Qty) AS src\nON (tgt.Sku = src.Sku)\nWHEN MATCHED THEN\n    UPDATE SET tgt.Qty = src.Qty, tgt.UpdatedAt = SYSUTCDATETIME()\nWHEN NOT MATCHED THEN\n    INSERT (Sku, Qty, CreatedAt) VALUES (src.Sku, src.Qty, SYSUTCDATETIME());\n"
+  },
+  {
+    "id": "dotnet_with_sql_026",
+    "kind": "dotnet_with_sql",
+    "text": "public static class RawSql026\n{\n    public static string Q() =>\n        \"\"\"SELECT TOP (10) Id, Name\nFROM dbo.Users\nWHERE IsActive = 1\nORDER BY CreatedAt DESC;\"\"\";\n}\n"
+  },
+  {
+    "id": "dotnet_075",
+    "kind": "dotnet",
+    "text": "using System;\nusing System.Collections.Generic;\nusing System.Linq;\nusing System.Threading;\nusing System.Threading.Tasks;\n\nnamespace MyApp.Feature075\n{\n    public sealed class ViewModel075 : System.ComponentModel.INotifyPropertyChanged\n    {\n        public event System.ComponentModel.PropertyChangedEventHandler? PropertyChanged;\n\n        private string _title = \"Hello\";\n        public string Title\n        {\n            get => _title;\n            set\n            {\n                if (_title == value) return;\n                _title = value;\n                PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs(nameof(Title)));\n            }\n        }\n    }\n}\n"
+  },
+  {
+    "id": "sql_036",
+    "kind": "sql",
+    "text": "-- Scalar function 036\nCREATE OR ALTER FUNCTION dbo.fn_NormalizeEmail_036(@Email NVARCHAR(320))\nRETURNS NVARCHAR(320)\nAS\nBEGIN\n    RETURN LOWER(LTRIM(RTRIM(@Email)));\nEND\n"
+  },
+  {
+    "id": "sql_071",
+    "kind": "sql",
+    "text": "/* CTE + window function 071 */\nWITH cte AS (\n    SELECT\n        o.OrderId,\n        o.CustomerId,\n        o.Total,\n        ROW_NUMBER() OVER (PARTITION BY o.CustomerId ORDER BY o.CreatedAt DESC) AS rn\n    FROM dbo.Orders o\n    WHERE o.CreatedAt >= DATEADD(day, -18, GETDATE())\n)\nSELECT OrderId, CustomerId, Total\nFROM cte\nWHERE rn = 1;\n"
+  },
+  {
+    "id": "dotnet_019",
+    "kind": "dotnet",
+    "text": "using System;\nusing System.Collections.Generic;\nusing System.Linq;\nusing System.Threading;\nusing System.Threading.Tasks;\n\nnamespace MyApp.Feature019\n{\n    public static class MathUtil019\n    {\n        public static double Clamp(double x, double min, double max)\n            => x < min ? min : (x > max ? max : x);\n\n        public static double Lerp(double a, double b, double t)\n            => a + (b - a) * Clamp(t, 0.0, 1.0);\n    }\n}\n"
+  },
+  {
+    "id": "dotnet_086",
+    "kind": "dotnet",
+    "text": "using System;\nusing System.Collections.Generic;\nusing System.Linq;\nusing System.Threading;\nusing System.Threading.Tasks;\n\nnamespace MyApp.Feature086\n{\n    public static class EndpointMap086\n    {\n        public static void Map(WebApplication app)\n        {\n            app.MapGet(\"/health/1\", () => Results.Ok(new { status = \"ok\", ts = DateTimeOffset.UtcNow }));\n        }\n    }\n}\n"
+  },
+  {
+    "id": "sql_032",
+    "kind": "sql",
+    "text": "-- DDL 032\nCREATE TABLE dbo.Items_032 (\n    Id INT IDENTITY(1,1) NOT NULL PRIMARY KEY,\n    Code NVARCHAR(50) NOT NULL,\n    Name NVARCHAR(200) NOT NULL,\n    CreatedAt DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME()\n);\n\nCREATE UNIQUE INDEX IX_Items_032_Code ON dbo.Items_032(Code);\n"
+  },
+  {
+    "id": "dotnet_with_sql_072",
+    "kind": "dotnet_with_sql",
+    "text": "using Microsoft.EntityFrameworkCore;\n\npublic sealed class Ctx072 : DbContext\n{\n    public DbSet<UserRow> Users => Set<UserRow>();\n}\n\npublic sealed record UserRow(int Id, string Name);\n\npublic static class EfQueries072\n{\n    public static IQueryable<UserRow> Latest(Ctx072 db)\n    {\n        return db.Users.FromSqlRaw(@\"\n            SELECT TOP (5) u.Id, u.Name\n            FROM dbo.Users u\n            ORDER BY u.CreatedAt DESC;\n        \");\n    }\n}\n"
+  },
+  {
+    "id": "sql_022",
+    "kind": "sql",
+    "text": "-- DDL 022\nCREATE TABLE dbo.Items_022 (\n    Id INT IDENTITY(1,1) NOT NULL PRIMARY KEY,\n    Code NVARCHAR(50) NOT NULL,\n    Name NVARCHAR(200) NOT NULL,\n    CreatedAt DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME()\n);\n\nCREATE UNIQUE INDEX IX_Items_022_Code ON dbo.Items_022(Code);\n"
+  },
+  {
+    "id": "sql_027",
+    "kind": "sql",
+    "text": "-- Trigger 027\nCREATE OR ALTER TRIGGER dbo.trg_ItemsAudit_027\nON dbo.Items\nAFTER INSERT, UPDATE\nAS\nBEGIN\n    SET NOCOUNT ON;\n\n    INSERT INTO dbo.ItemsAudit(ItemId, ChangedAt)\n    SELECT i.Id, SYSUTCDATETIME()\n    FROM inserted i;\nEND\n"
+  },
+  {
+    "id": "dotnet_042",
+    "kind": "dotnet",
+    "text": "using System;\nusing System.Collections.Generic;\nusing System.Linq;\nusing System.Threading;\nusing System.Threading.Tasks;\n\nnamespace MyApp.Feature042\n{\n    public interface IRepository042<T>\n    {\n        Task<T?> GetAsync(Guid id, CancellationToken ct);\n        Task SaveAsync(T entity, CancellationToken ct);\n    }\n\n    public sealed class InMemoryRepository042<T> : IRepository042<T>\n    {\n        private readonly Dictionary<Guid, T> _store = new();\n\n        public Task<T?> GetAsync(Guid id, CancellationToken ct)\n            => Task.FromResult(_store.TryGetValue(id, out var v) ? v : default);\n\n        public Task SaveAsync(T entity, CancellationToken ct)\n        {\n            _store[Guid.NewGuid()] = entity;\n            return Task.CompletedTask;\n        }\n    }\n}\n"
+  },
+  {
+    "id": "dotnet_068",
+    "kind": "dotnet",
+    "text": "using System;\nusing System.Collections.Generic;\nusing System.Linq;\nusing System.Threading;\nusing System.Threading.Tasks;\n\nnamespace MyApp.Feature068\n{\n    public sealed class Settings068\n    {\n        public string Mode { get; init; } = \"dev\";\n        public int Retries { get; init; } = 4;\n    }\n\n    public static class SettingsParser068\n    {\n        public static Settings068 Parse(string json)\n            => System.Text.Json.JsonSerializer.Deserialize<Settings068>(json) ?? new Settings068();\n    }\n}\n"
+  },
+  {
+    "id": "dotnet_045",
+    "kind": "dotnet",
+    "text": "using System;\nusing System.Collections.Generic;\nusing System.Linq;\nusing System.Threading;\nusing System.Threading.Tasks;\n\nnamespace MyApp.Feature045\n{\n    public sealed class ViewModel045 : System.ComponentModel.INotifyPropertyChanged\n    {\n        public event System.ComponentModel.PropertyChangedEventHandler? PropertyChanged;\n\n        private string _title = \"Hello\";\n        public string Title\n        {\n            get => _title;\n            set\n            {\n                if (_title == value) return;\n                _title = value;\n                PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs(nameof(Title)));\n            }\n        }\n    }\n}\n"
+  },
+  {
+    "id": "dotnet_with_sql_065",
+    "kind": "dotnet_with_sql",
+    "text": "public static class InterpolatedSql065\n{\n    public static string Build(int days)\n    {\n        // Note: intentionally embedded SQL string\n        return $@\"\n            SELECT u.Id, u.Name\n            FROM dbo.Users u\n            WHERE u.CreatedAt >= DATEADD(day, -{days}, GETDATE())\n            ORDER BY u.CreatedAt DESC;\n        \";\n    }\n}\n"
+  },
+  {
+    "id": "dotnet_with_sql_013",
+    "kind": "dotnet_with_sql",
+    "text": "using Microsoft.EntityFrameworkCore;\n\npublic static class EfCommands013\n{\n    public static Task<int> CleanupAsync(DbContext db)\n    {\n        return db.Database.ExecuteSqlRawAsync(@\"\n            DELETE FROM dbo.Sessions\n            WHERE ExpiresAt < SYSUTCDATETIME();\n        \");\n    }\n}\n"
+  },
+  {
+    "id": "sql_001",
+    "kind": "sql",
+    "text": "/* CTE + window function 001 */\nWITH cte AS (\n    SELECT\n        o.OrderId,\n        o.CustomerId,\n        o.Total,\n        ROW_NUMBER() OVER (PARTITION BY o.CustomerId ORDER BY o.CreatedAt DESC) AS rn\n    FROM dbo.Orders o\n    WHERE o.CreatedAt >= DATEADD(day, -8, GETDATE())\n)\nSELECT OrderId, CustomerId, Total\nFROM cte\nWHERE rn = 1;\n"
+  },
+  {
+    "id": "dotnet_062",
+    "kind": "dotnet",
+    "text": "using System;\nusing System.Collections.Generic;\nusing System.Linq;\nusing System.Threading;\nusing System.Threading.Tasks;\n\nnamespace MyApp.Feature062\n{\n    public interface IRepository062<T>\n    {\n        Task<T?> GetAsync(Guid id, CancellationToken ct);\n        Task SaveAsync(T entity, CancellationToken ct);\n    }\n\n    public sealed class InMemoryRepository062<T> : IRepository062<T>\n    {\n        private readonly Dictionary<Guid, T> _store = new();\n\n        public Task<T?> GetAsync(Guid id, CancellationToken ct)\n            => Task.FromResult(_store.TryGetValue(id, out var v) ? v : default);\n\n        public Task SaveAsync(T entity, CancellationToken ct)\n        {\n            _store[Guid.NewGuid()] = entity;\n            return Task.CompletedTask;\n        }\n    }\n}\n"
+  },
+  {
+    "id": "dotnet_with_sql_025",
+    "kind": "dotnet_with_sql",
+    "text": "public static class InterpolatedSql025\n{\n    public static string Build(int days)\n    {\n        // Note: intentionally embedded SQL string\n        return $@\"\n            SELECT u.Id, u.Name\n            FROM dbo.Users u\n            WHERE u.CreatedAt >= DATEADD(day, -{days}, GETDATE())\n            ORDER BY u.CreatedAt DESC;\n        \";\n    }\n}\n"
+  },
+  {
+    "id": "dotnet_with_sql_094",
+    "kind": "dotnet_with_sql",
+    "text": "using Microsoft.EntityFrameworkCore.Migrations;\n\npublic partial class AddIndex_094 : Migration\n{\n    protected override void Up(MigrationBuilder migrationBuilder)\n    {\n        migrationBuilder.Sql(@\"\n            CREATE INDEX IX_Users_Email ON dbo.Users(Email);\n        \");\n    }\n\n    protected override void Down(MigrationBuilder migrationBuilder)\n    {\n        migrationBuilder.Sql(@\"\n            DROP INDEX IX_Users_Email ON dbo.Users;\n        \");\n    }\n}\n"
+  },
+  {
+    "id": "dotnet_031",
+    "kind": "dotnet",
+    "text": "using System;\nusing System.Collections.Generic;\nusing System.Linq;\nusing System.Threading;\nusing System.Threading.Tasks;\n\nnamespace MyApp.Feature031\n{\n    public record User031(Guid Id, string Name, int Age);\n\n    public static class UserRules031\n    {\n        public static string Classify(User031 u) =>\n            u switch\n            {\n                { Age: < 18 } => \"minor\",\n                { Age: >= 18 and < 65 } => \"adult\",\n                _ => \"senior\"\n            };\n    }\n}\n"
+  },
+  {
+    "id": "sql_063",
+    "kind": "sql",
+    "text": "-- MERGE upsert 063\nMERGE dbo.Inventory AS tgt\nUSING (SELECT @Sku AS Sku, @Qty AS Qty) AS src\nON (tgt.Sku = src.Sku)\nWHEN MATCHED THEN\n    UPDATE SET tgt.Qty = src.Qty, tgt.UpdatedAt = SYSUTCDATETIME()\nWHEN NOT MATCHED THEN\n    INSERT (Sku, Qty, CreatedAt) VALUES (src.Sku, src.Qty, SYSUTCDATETIME());\n"
+  },
+  {
+    "id": "dotnet_with_sql_098",
+    "kind": "dotnet_with_sql",
+    "text": "public static class SqlText098\n{\n    public const string Query = @\"\n        SELECT i.Id, i.Name\n        FROM dbo.Items i WITH (NOLOCK)\n        WHERE i.Code LIKE @prefix + '%'\n        ORDER BY i.Id;\n    \";\n}\n"
+  },
+  {
+    "id": "sql_077",
+    "kind": "sql",
+    "text": "-- Trigger 077\nCREATE OR ALTER TRIGGER dbo.trg_ItemsAudit_077\nON dbo.Items\nAFTER INSERT, UPDATE\nAS\nBEGIN\n    SET NOCOUNT ON;\n\n    INSERT INTO dbo.ItemsAudit(ItemId, ChangedAt)\n    SELECT i.Id, SYSUTCDATETIME()\n    FROM inserted i;\nEND\n"
+  },
+  {
+    "id": "dotnet_081",
+    "kind": "dotnet",
+    "text": "using System;\nusing System.Collections.Generic;\nusing System.Linq;\nusing System.Threading;\nusing System.Threading.Tasks;\n\nnamespace MyApp.Feature081\n{\n    public record User081(Guid Id, string Name, int Age);\n\n    public static class UserRules081\n    {\n        public static string Classify(User081 u) =>\n            u switch\n            {\n                { Age: < 18 } => \"minor\",\n                { Age: >= 18 and < 65 } => \"adult\",\n                _ => \"senior\"\n            };\n    }\n}\n"
+  },
+  {
+    "id": "dotnet_025",
+    "kind": "dotnet",
+    "text": "using System;\nusing System.Collections.Generic;\nusing System.Linq;\nusing System.Threading;\nusing System.Threading.Tasks;\n\nnamespace MyApp.Feature025\n{\n    public sealed class ViewModel025 : System.ComponentModel.INotifyPropertyChanged\n    {\n        public event System.ComponentModel.PropertyChangedEventHandler? PropertyChanged;\n\n        private string _title = \"Hello\";\n        public string Title\n        {\n            get => _title;\n            set\n            {\n                if (_title == value) return;\n                _title = value;\n                PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs(nameof(Title)));\n            }\n        }\n    }\n}\n"
+  },
+  {
+    "id": "dotnet_048",
+    "kind": "dotnet",
+    "text": "using System;\nusing System.Collections.Generic;\nusing System.Linq;\nusing System.Threading;\nusing System.Threading.Tasks;\n\nnamespace MyApp.Feature048\n{\n    public sealed class Settings048\n    {\n        public string Mode { get; init; } = \"dev\";\n        public int Retries { get; init; } = 4;\n    }\n\n    public static class SettingsParser048\n    {\n        public static Settings048 Parse(string json)\n            => System.Text.Json.JsonSerializer.Deserialize<Settings048>(json) ?? new Settings048();\n    }\n}\n"
+  },
+  {
+    "id": "dotnet_074",
+    "kind": "dotnet",
+    "text": "using System;\nusing System.Collections.Generic;\nusing System.Linq;\nusing System.Threading;\nusing System.Threading.Tasks;\n\nnamespace MyApp.Feature074\n{\n    [System.Serializable]\n    public sealed class Dto074\n    {\n        public int Id { get; set; }\n        public string Name { get; set; } = string.Empty;\n    }\n\n    [ApiController]\n    [Route(\"api/items/4\")]\n    public sealed class ItemsController074 : ControllerBase\n    {\n        [HttpGet(\"4\")]\n        public ActionResult<Dto074> Get()\n            => new Dto074 { Id = 74, Name = \"item\" };\n    }\n}\n"
+  },
+  {
+    "id": "sql_066",
+    "kind": "sql",
+    "text": "-- Scalar function 066\nCREATE OR ALTER FUNCTION dbo.fn_NormalizeEmail_066(@Email NVARCHAR(320))\nRETURNS NVARCHAR(320)\nAS\nBEGIN\n    RETURN LOWER(LTRIM(RTRIM(@Email)));\nEND\n"
+  },
+  {
+    "id": "dotnet_with_sql_033",
+    "kind": "dotnet_with_sql",
+    "text": "using Microsoft.EntityFrameworkCore;\n\npublic static class EfCommands033\n{\n    public static Task<int> CleanupAsync(DbContext db)\n    {\n        return db.Database.ExecuteSqlRawAsync(@\"\n            DELETE FROM dbo.Sessions\n            WHERE ExpiresAt < SYSUTCDATETIME();\n        \");\n    }\n}\n"
+  },
+  {
+    "id": "sql_079",
+    "kind": "sql",
+    "text": "-- Cursor-like loop 079\nDECLARE @Id INT;\n\nDECLARE cur CURSOR LOCAL FAST_FORWARD FOR\nSELECT TOP (3) Id FROM dbo.Users ORDER BY Id;\n\nOPEN cur;\nFETCH NEXT FROM cur INTO @Id;\n\nWHILE @@FETCH_STATUS = 0\nBEGIN\n    EXEC dbo.usp_ProcessUser @UserId = @Id;\n    FETCH NEXT FROM cur INTO @Id;\nEND\n\nCLOSE cur;\nDEALLOCATE cur;\n"
+  },
+  {
+    "id": "dotnet_004",
+    "kind": "dotnet",
+    "text": "using System;\nusing System.Collections.Generic;\nusing System.Linq;\nusing System.Threading;\nusing System.Threading.Tasks;\n\nnamespace MyApp.Feature004\n{\n    [System.Serializable]\n    public sealed class Dto004\n    {\n        public int Id { get; set; }\n        public string Name { get; set; } = string.Empty;\n    }\n\n    [ApiController]\n    [Route(\"api/items/4\")]\n    public sealed class ItemsController004 : ControllerBase\n    {\n        [HttpGet(\"4\")]\n        public ActionResult<Dto004> Get()\n            => new Dto004 { Id = 4, Name = \"item\" };\n    }\n}\n"
+  },
+  {
+    "id": "dotnet_035",
+    "kind": "dotnet",
+    "text": "using System;\nusing System.Collections.Generic;\nusing System.Linq;\nusing System.Threading;\nusing System.Threading.Tasks;\n\nnamespace MyApp.Feature035\n{\n    public sealed class ViewModel035 : System.ComponentModel.INotifyPropertyChanged\n    {\n        public event System.ComponentModel.PropertyChangedEventHandler? PropertyChanged;\n\n        private string _title = \"Hello\";\n        public string Title\n        {\n            get => _title;\n            set\n            {\n                if (_title == value) return;\n                _title = value;\n                PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs(nameof(Title)));\n            }\n        }\n    }\n}\n"
+  },
+  {
+    "id": "dotnet_099",
+    "kind": "dotnet",
+    "text": "using System;\nusing System.Collections.Generic;\nusing System.Linq;\nusing System.Threading;\nusing System.Threading.Tasks;\n\nnamespace MyApp.Feature099\n{\n    public static class MathUtil099\n    {\n        public static double Clamp(double x, double min, double max)\n            => x < min ? min : (x > max ? max : x);\n\n        public static double Lerp(double a, double b, double t)\n            => a + (b - a) * Clamp(t, 0.0, 1.0);\n    }\n}\n"
+  },
+  {
+    "id": "sql_025",
+    "kind": "sql",
+    "text": "-- View 025\nCREATE OR ALTER VIEW dbo.vw_ActiveUsers_025\nAS\nSELECT u.Id, u.Name, u.Email\nFROM dbo.Users u\nWHERE u.IsActive = 1;\n"
+  },
+  {
+    "id": "sql_052",
+    "kind": "sql",
+    "text": "-- DDL 052\nCREATE TABLE dbo.Items_052 (\n    Id INT IDENTITY(1,1) NOT NULL PRIMARY KEY,\n    Code NVARCHAR(50) NOT NULL,\n    Name NVARCHAR(200) NOT NULL,\n    CreatedAt DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME()\n);\n\nCREATE UNIQUE INDEX IX_Items_052_Code ON dbo.Items_052(Code);\n"
+  },
+  {
+    "id": "dotnet_with_sql_036",
+    "kind": "dotnet_with_sql",
+    "text": "public static class RawSql036\n{\n    public static string Q() =>\n        \"\"\"SELECT TOP (10) Id, Name\nFROM dbo.Users\nWHERE IsActive = 1\nORDER BY CreatedAt DESC;\"\"\";\n}\n"
+  },
+  {
+    "id": "dotnet_with_sql_074",
+    "kind": "dotnet_with_sql",
+    "text": "using Microsoft.EntityFrameworkCore.Migrations;\n\npublic partial class AddIndex_074 : Migration\n{\n    protected override void Up(MigrationBuilder migrationBuilder)\n    {\n        migrationBuilder.Sql(@\"\n            CREATE INDEX IX_Users_Email ON dbo.Users(Email);\n        \");\n    }\n\n    protected override void Down(MigrationBuilder migrationBuilder)\n    {\n        migrationBuilder.Sql(@\"\n            DROP INDEX IX_Users_Email ON dbo.Users;\n        \");\n    }\n}\n"
+  },
+  {
+    "id": "dotnet_000",
+    "kind": "dotnet",
+    "text": "using System;\nusing System.Collections.Generic;\nusing System.Linq;\nusing System.Threading;\nusing System.Threading.Tasks;\n\nnamespace MyApp.Feature000\n{\n    public sealed class Processor000\n    {\n        private readonly IReadOnlyList<int> _values = new List<int> { 0, 1, 2 };\n\n        public async Task<int> RunAsync(CancellationToken ct)\n        {\n            await Task.Delay(10, ct).ConfigureAwait(false);\n\n            var result = _values\n                .Where(x => x >= 0)\n                .Select(x => x * 2)\n                .Sum();\n\n            return result;\n        }\n    }\n}\n"
+  },
+  {
+    "id": "sql_017",
+    "kind": "sql",
+    "text": "-- Trigger 017\nCREATE OR ALTER TRIGGER dbo.trg_ItemsAudit_017\nON dbo.Items\nAFTER INSERT, UPDATE\nAS\nBEGIN\n    SET NOCOUNT ON;\n\n    INSERT INTO dbo.ItemsAudit(ItemId, ChangedAt)\n    SELECT i.Id, SYSUTCDATETIME()\n    FROM inserted i;\nEND\n"
+  },
+  {
+    "id": "dotnet_021",
+    "kind": "dotnet",
+    "text": "using System;\nusing System.Collections.Generic;\nusing System.Linq;\nusing System.Threading;\nusing System.Threading.Tasks;\n\nnamespace MyApp.Feature021\n{\n    public record User021(Guid Id, string Name, int Age);\n\n    public static class UserRules021\n    {\n        public static string Classify(User021 u) =>\n            u switch\n            {\n                { Age: < 18 } => \"minor\",\n                { Age: >= 18 and < 65 } => \"adult\",\n                _ => \"senior\"\n            };\n    }\n}\n"
+  },
+  {
+    "id": "dotnet_098",
+    "kind": "dotnet",
+    "text": "using System;\nusing System.Collections.Generic;\nusing System.Linq;\nusing System.Threading;\nusing System.Threading.Tasks;\n\nnamespace MyApp.Feature098\n{\n    public sealed class Settings098\n    {\n        public string Mode { get; init; } = \"dev\";\n        public int Retries { get; init; } = 4;\n    }\n\n    public static class SettingsParser098\n    {\n        public static Settings098 Parse(string json)\n            => System.Text.Json.JsonSerializer.Deserialize<Settings098>(json) ?? new Settings098();\n    }\n}\n"
+  },
+  {
+    "id": "dotnet_with_sql_077",
+    "kind": "dotnet_with_sql",
+    "text": "using System.Data;\nusing Dapper;\n\npublic static class StoredProc077\n{\n    public static Task ExecAsync(IDbConnection db, int userId)\n    {\n        var sql = \"EXEC dbo.usp_DoWork_077 @UserId = @userId, @IsActive = 1;\";\n        return db.ExecuteAsync(sql, new { userId });\n    }\n}\n"
+  },
+  {
+    "id": "dotnet_070",
+    "kind": "dotnet",
+    "text": "using System;\nusing System.Collections.Generic;\nusing System.Linq;\nusing System.Threading;\nusing System.Threading.Tasks;\n\nnamespace MyApp.Feature070\n{\n    public sealed class Processor070\n    {\n        private readonly IReadOnlyList<int> _values = new List<int> { 0, 5, 7 };\n\n        public async Task<int> RunAsync(CancellationToken ct)\n        {\n            await Task.Delay(20, ct).ConfigureAwait(false);\n\n            var result = _values\n                .Where(x => x >= 0)\n                .Select(x => x * 3)\n                .Sum();\n\n            return result;\n        }\n    }\n}\n"
+  },
+  {
+    "id": "dotnet_with_sql_067",
+    "kind": "dotnet_with_sql",
+    "text": "using System.Data;\nusing Dapper;\n\npublic static class StoredProc067\n{\n    public static Task ExecAsync(IDbConnection db, int userId)\n    {\n        var sql = \"EXEC dbo.usp_DoWork_067 @UserId = @userId, @IsActive = 1;\";\n        return db.ExecuteAsync(sql, new { userId });\n    }\n}\n"
+  },
+  {
+    "id": "dotnet_with_sql_019",
+    "kind": "dotnet_with_sql",
+    "text": "using System.Data;\nusing Dapper;\n\npublic sealed class UnitOfWork019\n{\n    private readonly IDbConnection _db;\n    private readonly IDbTransaction _tx;\n\n    public UnitOfWork019(IDbConnection db)\n    {\n        _db = db;\n        _tx = db.BeginTransaction();\n    }\n\n    public Task<int> InsertAsync(string code, string name)\n    {\n        var sql = @\"\n            INSERT INTO dbo.Items(Code, Name)\n            VALUES (@code, @name);\n        \";\n        return _db.ExecuteAsync(sql, new { code, name }, _tx);\n    }\n}\n"
+  },
+  {
+    "id": "dotnet_with_sql_020",
+    "kind": "dotnet_with_sql",
+    "text": "using System.Data;\nusing Dapper;\n\npublic sealed class Repo020\n{\n    private readonly IDbConnection _db;\n    public Repo020(IDbConnection db) => _db = db;\n\n    public Task<int> CountActiveAsync(int tenantId)\n    {\n        var sql = @\"\n            SELECT COUNT(1)\n            FROM dbo.Users u\n            WHERE u.IsActive = 1 AND u.TenantId = @tenantId;\n        \";\n        return _db.ExecuteScalarAsync<int>(sql, new { tenantId });\n    }\n}\n"
+  },
+  {
+    "id": "dotnet_with_sql_001",
+    "kind": "dotnet_with_sql",
+    "text": "using System.Data.SqlClient;\n\npublic static class Ado001\n{\n    public static int Run(string cs)\n    {\n        using var conn = new SqlConnection(cs);\n        conn.Open();\n\n        using var cmd = conn.CreateCommand();\n        cmd.CommandText = \"UPDATE dbo.Flags SET Value = 1 WHERE KeyName = @k;\";\n        cmd.Parameters.AddWithValue(\"@k\", \"feature_1\");\n        return cmd.ExecuteNonQuery();\n    }\n}\n"
+  },
+  {
+    "id": "dotnet_with_sql_027",
+    "kind": "dotnet_with_sql",
+    "text": "using System.Data;\nusing Dapper;\n\npublic static class StoredProc027\n{\n    public static Task ExecAsync(IDbConnection db, int userId)\n    {\n        var sql = \"EXEC dbo.usp_DoWork_027 @UserId = @userId, @IsActive = 1;\";\n        return db.ExecuteAsync(sql, new { userId });\n    }\n}\n"
+  },
+  {
+    "id": "dotnet_057",
+    "kind": "dotnet",
+    "text": "using System;\nusing System.Collections.Generic;\nusing System.Linq;\nusing System.Threading;\nusing System.Threading.Tasks;\n\nnamespace MyApp.Feature057\n{\n    public static class FileOps057\n    {\n        public static string ReadSafe(string path)\n        {\n            if (!System.IO.File.Exists(path))\n                return string.Empty;\n\n            using var sr = System.IO.File.OpenText(path);\n            return sr.ReadToEnd();\n        }\n    }\n}\n"
+  },
+  {
+    "id": "dotnet_091",
+    "kind": "dotnet",
+    "text": "using System;\nusing System.Collections.Generic;\nusing System.Linq;\nusing System.Threading;\nusing System.Threading.Tasks;\n\nnamespace MyApp.Feature091\n{\n    public record User091(Guid Id, string Name, int Age);\n\n    public static class UserRules091\n    {\n        public static string Classify(User091 u) =>\n            u switch\n            {\n                { Age: < 18 } => \"minor\",\n                { Age: >= 18 and < 65 } => \"adult\",\n                _ => \"senior\"\n            };\n    }\n}\n"
+  },
+  {
+    "id": "sql_003",
+    "kind": "sql",
+    "text": "-- MERGE upsert 003\nMERGE dbo.Inventory AS tgt\nUSING (SELECT @Sku AS Sku, @Qty AS Qty) AS src\nON (tgt.Sku = src.Sku)\nWHEN MATCHED THEN\n    UPDATE SET tgt.Qty = src.Qty, tgt.UpdatedAt = SYSUTCDATETIME()\nWHEN NOT MATCHED THEN\n    INSERT (Sku, Qty, CreatedAt) VALUES (src.Sku, src.Qty, SYSUTCDATETIME());\n"
+  },
+  {
+    "id": "dotnet_with_sql_014",
+    "kind": "dotnet_with_sql",
+    "text": "using Microsoft.EntityFrameworkCore.Migrations;\n\npublic partial class AddIndex_014 : Migration\n{\n    protected override void Up(MigrationBuilder migrationBuilder)\n    {\n        migrationBuilder.Sql(@\"\n            CREATE INDEX IX_Users_Email ON dbo.Users(Email);\n        \");\n    }\n\n    protected override void Down(MigrationBuilder migrationBuilder)\n    {\n        migrationBuilder.Sql(@\"\n            DROP INDEX IX_Users_Email ON dbo.Users;\n        \");\n    }\n}\n"
+  },
+  {
+    "id": "sql_039",
+    "kind": "sql",
+    "text": "-- Cursor-like loop 039\nDECLARE @Id INT;\n\nDECLARE cur CURSOR LOCAL FAST_FORWARD FOR\nSELECT TOP (3) Id FROM dbo.Users ORDER BY Id;\n\nOPEN cur;\nFETCH NEXT FROM cur INTO @Id;\n\nWHILE @@FETCH_STATUS = 0\nBEGIN\n    EXEC dbo.usp_ProcessUser @UserId = @Id;\n    FETCH NEXT FROM cur INTO @Id;\nEND\n\nCLOSE cur;\nDEALLOCATE cur;\n"
+  },
+  {
+    "id": "dotnet_with_sql_044",
+    "kind": "dotnet_with_sql",
+    "text": "using Microsoft.EntityFrameworkCore.Migrations;\n\npublic partial class AddIndex_044 : Migration\n{\n    protected override void Up(MigrationBuilder migrationBuilder)\n    {\n        migrationBuilder.Sql(@\"\n            CREATE INDEX IX_Users_Email ON dbo.Users(Email);\n        \");\n    }\n\n    protected override void Down(MigrationBuilder migrationBuilder)\n    {\n        migrationBuilder.Sql(@\"\n            DROP INDEX IX_Users_Email ON dbo.Users;\n        \");\n    }\n}\n"
+  },
+  {
+    "id": "sql_011",
+    "kind": "sql",
+    "text": "/* CTE + window function 011 */\nWITH cte AS (\n    SELECT\n        o.OrderId,\n        o.CustomerId,\n        o.Total,\n        ROW_NUMBER() OVER (PARTITION BY o.CustomerId ORDER BY o.CreatedAt DESC) AS rn\n    FROM dbo.Orders o\n    WHERE o.CreatedAt >= DATEADD(day, -18, GETDATE())\n)\nSELECT OrderId, CustomerId, Total\nFROM cte\nWHERE rn = 1;\n"
+  },
+  {
+    "id": "dotnet_with_sql_057",
+    "kind": "dotnet_with_sql",
+    "text": "using System.Data;\nusing Dapper;\n\npublic static class StoredProc057\n{\n    public static Task ExecAsync(IDbConnection db, int userId)\n    {\n        var sql = \"EXEC dbo.usp_DoWork_057 @UserId = @userId, @IsActive = 1;\";\n        return db.ExecuteAsync(sql, new { userId });\n    }\n}\n"
+  },
+  {
+    "id": "dotnet_with_sql_091",
+    "kind": "dotnet_with_sql",
+    "text": "using System.Data.SqlClient;\n\npublic static class Ado091\n{\n    public static int Run(string cs)\n    {\n        using var conn = new SqlConnection(cs);\n        conn.Open();\n\n        using var cmd = conn.CreateCommand();\n        cmd.CommandText = \"UPDATE dbo.Flags SET Value = 1 WHERE KeyName = @k;\";\n        cmd.Parameters.AddWithValue(\"@k\", \"feature_41\");\n        return cmd.ExecuteNonQuery();\n    }\n}\n"
+  },
+  {
+    "id": "dotnet_007",
+    "kind": "dotnet",
+    "text": "using System;\nusing System.Collections.Generic;\nusing System.Linq;\nusing System.Threading;\nusing System.Threading.Tasks;\n\nnamespace MyApp.Feature007\n{\n    public static class FileOps007\n    {\n        public static string ReadSafe(string path)\n        {\n            if (!System.IO.File.Exists(path))\n                return string.Empty;\n\n            using var sr = System.IO.File.OpenText(path);\n            return sr.ReadToEnd();\n        }\n    }\n}\n"
+  },
+  {
+    "id": "dotnet_with_sql_084",
+    "kind": "dotnet_with_sql",
+    "text": "using Microsoft.EntityFrameworkCore.Migrations;\n\npublic partial class AddIndex_084 : Migration\n{\n    protected override void Up(MigrationBuilder migrationBuilder)\n    {\n        migrationBuilder.Sql(@\"\n            CREATE INDEX IX_Users_Email ON dbo.Users(Email);\n        \");\n    }\n\n    protected override void Down(MigrationBuilder migrationBuilder)\n    {\n        migrationBuilder.Sql(@\"\n            DROP INDEX IX_Users_Email ON dbo.Users;\n        \");\n    }\n}\n"
+  },
+  {
+    "id": "dotnet_082",
+    "kind": "dotnet",
+    "text": "using System;\nusing System.Collections.Generic;\nusing System.Linq;\nusing System.Threading;\nusing System.Threading.Tasks;\n\nnamespace MyApp.Feature082\n{\n    public interface IRepository082<T>\n    {\n        Task<T?> GetAsync(Guid id, CancellationToken ct);\n        Task SaveAsync(T entity, CancellationToken ct);\n    }\n\n    public sealed class InMemoryRepository082<T> : IRepository082<T>\n    {\n        private readonly Dictionary<Guid, T> _store = new();\n\n        public Task<T?> GetAsync(Guid id, CancellationToken ct)\n            => Task.FromResult(_store.TryGetValue(id, out var v) ? v : default);\n\n        public Task SaveAsync(T entity, CancellationToken ct)\n        {\n            _store[Guid.NewGuid()] = entity;\n            return Task.CompletedTask;\n        }\n    }\n}\n"
+  },
+  {
+    "id": "sql_020",
+    "kind": "sql",
+    "text": "-- Stored procedure example 020\nCREATE OR ALTER PROCEDURE [dbo].[usp_DoWork_020]\n    @UserId INT,\n    @IsActive BIT = 1\nAS\nBEGIN\n    SET NOCOUNT ON;\n\n    DECLARE @Now DATETIME2 = SYSUTCDATETIME();\n\n    SELECT TOP (10) u.[Id], u.[Name], u.[CreatedAt]\n    FROM [dbo].[Users] u WITH (NOLOCK)\n    WHERE u.[Id] = @UserId\n      AND u.[IsActive] = @IsActive\n    ORDER BY u.[CreatedAt] DESC;\nEND\nGO\n"
+  },
+  {
+    "id": "dotnet_with_sql_012",
+    "kind": "dotnet_with_sql",
+    "text": "using Microsoft.EntityFrameworkCore;\n\npublic sealed class Ctx012 : DbContext\n{\n    public DbSet<UserRow> Users => Set<UserRow>();\n}\n\npublic sealed record UserRow(int Id, string Name);\n\npublic static class EfQueries012\n{\n    public static IQueryable<UserRow> Latest(Ctx012 db)\n    {\n        return db.Users.FromSqlRaw(@\"\n            SELECT TOP (5) u.Id, u.Name\n            FROM dbo.Users u\n            ORDER BY u.CreatedAt DESC;\n        \");\n    }\n}\n"
+  },
+  {
+    "id": "sql_006",
+    "kind": "sql",
+    "text": "-- Scalar function 006\nCREATE OR ALTER FUNCTION dbo.fn_NormalizeEmail_006(@Email NVARCHAR(320))\nRETURNS NVARCHAR(320)\nAS\nBEGIN\n    RETURN LOWER(LTRIM(RTRIM(@Email)));\nEND\n"
+  },
+  {
+    "id": "sql_061",
+    "kind": "sql",
+    "text": "/* CTE + window function 061 */\nWITH cte AS (\n    SELECT\n        o.OrderId,\n        o.CustomerId,\n        o.Total,\n        ROW_NUMBER() OVER (PARTITION BY o.CustomerId ORDER BY o.CreatedAt DESC) AS rn\n    FROM dbo.Orders o\n    WHERE o.CreatedAt >= DATEADD(day, -8, GETDATE())\n)\nSELECT OrderId, CustomerId, Total\nFROM cte\nWHERE rn = 1;\n"
+  },
+  {
+    "id": "dotnet_with_sql_083",
+    "kind": "dotnet_with_sql",
+    "text": "using Microsoft.EntityFrameworkCore;\n\npublic static class EfCommands083\n{\n    public static Task<int> CleanupAsync(DbContext db)\n    {\n        return db.Database.ExecuteSqlRawAsync(@\"\n            DELETE FROM dbo.Sessions\n            WHERE ExpiresAt < SYSUTCDATETIME();\n        \");\n    }\n}\n"
+  },
+  {
+    "id": "dotnet_with_sql_080",
+    "kind": "dotnet_with_sql",
+    "text": "using System.Data;\nusing Dapper;\n\npublic sealed class Repo080\n{\n    private readonly IDbConnection _db;\n    public Repo080(IDbConnection db) => _db = db;\n\n    public Task<int> CountActiveAsync(int tenantId)\n    {\n        var sql = @\"\n            SELECT COUNT(1)\n            FROM dbo.Users u\n            WHERE u.IsActive = 1 AND u.TenantId = @tenantId;\n        \";\n        return _db.ExecuteScalarAsync<int>(sql, new { tenantId });\n    }\n}\n"
+  },
+  {
+    "id": "dotnet_with_sql_055",
+    "kind": "dotnet_with_sql",
+    "text": "public static class InterpolatedSql055\n{\n    public static string Build(int days)\n    {\n        // Note: intentionally embedded SQL string\n        return $@\"\n            SELECT u.Id, u.Name\n            FROM dbo.Users u\n            WHERE u.CreatedAt >= DATEADD(day, -{days}, GETDATE())\n            ORDER BY u.CreatedAt DESC;\n        \";\n    }\n}\n"
+  },
+  {
+    "id": "dotnet_085",
+    "kind": "dotnet",
+    "text": "using System;\nusing System.Collections.Generic;\nusing System.Linq;\nusing System.Threading;\nusing System.Threading.Tasks;\n\nnamespace MyApp.Feature085\n{\n    public sealed class ViewModel085 : System.ComponentModel.INotifyPropertyChanged\n    {\n        public event System.ComponentModel.PropertyChangedEventHandler? PropertyChanged;\n\n        private string _title = \"Hello\";\n        public string Title\n        {\n            get => _title;\n            set\n            {\n                if (_title == value) return;\n                _title = value;\n                PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs(nameof(Title)));\n            }\n        }\n    }\n}\n"
+  },
+  {
+    "id": "dotnet_056",
+    "kind": "dotnet",
+    "text": "using System;\nusing System.Collections.Generic;\nusing System.Linq;\nusing System.Threading;\nusing System.Threading.Tasks;\n\nnamespace MyApp.Feature056\n{\n    public static class EndpointMap056\n    {\n        public static void Map(WebApplication app)\n        {\n            app.MapGet(\"/health/1\", () => Results.Ok(new { status = \"ok\", ts = DateTimeOffset.UtcNow }));\n        }\n    }\n}\n"
+  },
+  {
+    "id": "dotnet_040",
+    "kind": "dotnet",
+    "text": "using System;\nusing System.Collections.Generic;\nusing System.Linq;\nusing System.Threading;\nusing System.Threading.Tasks;\n\nnamespace MyApp.Feature040\n{\n    public sealed class Processor040\n    {\n        private readonly IReadOnlyList<int> _values = new List<int> { 5, 8, 3 };\n\n        public async Task<int> RunAsync(CancellationToken ct)\n        {\n            await Task.Delay(20, ct).ConfigureAwait(false);\n\n            var result = _values\n                .Where(x => x >= 0)\n                .Select(x => x * 3)\n                .Sum();\n\n            return result;\n        }\n    }\n}\n"
+  },
+  {
+    "id": "sql_099",
+    "kind": "sql",
+    "text": "-- Cursor-like loop 099\nDECLARE @Id INT;\n\nDECLARE cur CURSOR LOCAL FAST_FORWARD FOR\nSELECT TOP (3) Id FROM dbo.Users ORDER BY Id;\n\nOPEN cur;\nFETCH NEXT FROM cur INTO @Id;\n\nWHILE @@FETCH_STATUS = 0\nBEGIN\n    EXEC dbo.usp_ProcessUser @UserId = @Id;\n    FETCH NEXT FROM cur INTO @Id;\nEND\n\nCLOSE cur;\nDEALLOCATE cur;\n"
+  },
+  {
+    "id": "sql_097",
+    "kind": "sql",
+    "text": "-- Trigger 097\nCREATE OR ALTER TRIGGER dbo.trg_ItemsAudit_097\nON dbo.Items\nAFTER INSERT, UPDATE\nAS\nBEGIN\n    SET NOCOUNT ON;\n\n    INSERT INTO dbo.ItemsAudit(ItemId, ChangedAt)\n    SELECT i.Id, SYSUTCDATETIME()\n    FROM inserted i;\nEND\n"
+  },
+  {
+    "id": "sql_095",
+    "kind": "sql",
+    "text": "-- View 095\nCREATE OR ALTER VIEW dbo.vw_ActiveUsers_095\nAS\nSELECT u.Id, u.Name, u.Email\nFROM dbo.Users u\nWHERE u.IsActive = 1;\n"
+  },
+  {
+    "id": "dotnet_with_sql_040",
+    "kind": "dotnet_with_sql",
+    "text": "using System.Data;\nusing Dapper;\n\npublic sealed class Repo040\n{\n    private readonly IDbConnection _db;\n    public Repo040(IDbConnection db) => _db = db;\n\n    public Task<int> CountActiveAsync(int tenantId)\n    {\n        var sql = @\"\n            SELECT COUNT(1)\n            FROM dbo.Users u\n            WHERE u.IsActive = 1 AND u.TenantId = @tenantId;\n        \";\n        return _db.ExecuteScalarAsync<int>(sql, new { tenantId });\n    }\n}\n"
+  },
+  {
+    "id": "dotnet_with_sql_059",
+    "kind": "dotnet_with_sql",
+    "text": "using System.Data;\nusing Dapper;\n\npublic sealed class UnitOfWork059\n{\n    private readonly IDbConnection _db;\n    private readonly IDbTransaction _tx;\n\n    public UnitOfWork059(IDbConnection db)\n    {\n        _db = db;\n        _tx = db.BeginTransaction();\n    }\n\n    public Task<int> InsertAsync(string code, string name)\n    {\n        var sql = @\"\n            INSERT INTO dbo.Items(Code, Name)\n            VALUES (@code, @name);\n        \";\n        return _db.ExecuteAsync(sql, new { code, name }, _tx);\n    }\n}\n"
+  },
+  {
+    "id": "sql_023",
+    "kind": "sql",
+    "text": "-- MERGE upsert 023\nMERGE dbo.Inventory AS tgt\nUSING (SELECT @Sku AS Sku, @Qty AS Qty) AS src\nON (tgt.Sku = src.Sku)\nWHEN MATCHED THEN\n    UPDATE SET tgt.Qty = src.Qty, tgt.UpdatedAt = SYSUTCDATETIME()\nWHEN NOT MATCHED THEN\n    INSERT (Sku, Qty, CreatedAt) VALUES (src.Sku, src.Qty, SYSUTCDATETIME());\n"
+  },
+  {
+    "id": "dotnet_with_sql_069",
+    "kind": "dotnet_with_sql",
+    "text": "using System.Data;\nusing Dapper;\n\npublic sealed class UnitOfWork069\n{\n    private readonly IDbConnection _db;\n    private readonly IDbTransaction _tx;\n\n    public UnitOfWork069(IDbConnection db)\n    {\n        _db = db;\n        _tx = db.BeginTransaction();\n    }\n\n    public Task<int> InsertAsync(string code, string name)\n    {\n        var sql = @\"\n            INSERT INTO dbo.Items(Code, Name)\n            VALUES (@code, @name);\n        \";\n        return _db.ExecuteAsync(sql, new { code, name }, _tx);\n    }\n}\n"
+  },
+  {
+    "id": "dotnet_with_sql_052",
+    "kind": "dotnet_with_sql",
+    "text": "using Microsoft.EntityFrameworkCore;\n\npublic sealed class Ctx052 : DbContext\n{\n    public DbSet<UserRow> Users => Set<UserRow>();\n}\n\npublic sealed record UserRow(int Id, string Name);\n\npublic static class EfQueries052\n{\n    public static IQueryable<UserRow> Latest(Ctx052 db)\n    {\n        return db.Users.FromSqlRaw(@\"\n            SELECT TOP (5) u.Id, u.Name\n            FROM dbo.Users u\n            ORDER BY u.CreatedAt DESC;\n        \");\n    }\n}\n"
+  },
+  {
+    "id": "dotnet_with_sql_041",
+    "kind": "dotnet_with_sql",
+    "text": "using System.Data.SqlClient;\n\npublic static class Ado041\n{\n    public static int Run(string cs)\n    {\n        using var conn = new SqlConnection(cs);\n        conn.Open();\n\n        using var cmd = conn.CreateCommand();\n        cmd.CommandText = \"UPDATE dbo.Flags SET Value = 1 WHERE KeyName = @k;\";\n        cmd.Parameters.AddWithValue(\"@k\", \"feature_41\");\n        return cmd.ExecuteNonQuery();\n    }\n}\n"
+  },
+  {
+    "id": "dotnet_with_sql_010",
+    "kind": "dotnet_with_sql",
+    "text": "using System.Data;\nusing Dapper;\n\npublic sealed class Repo010\n{\n    private readonly IDbConnection _db;\n    public Repo010(IDbConnection db) => _db = db;\n\n    public Task<int> CountActiveAsync(int tenantId)\n    {\n        var sql = @\"\n            SELECT COUNT(1)\n            FROM dbo.Users u\n            WHERE u.IsActive = 1 AND u.TenantId = @tenantId;\n        \";\n        return _db.ExecuteScalarAsync<int>(sql, new { tenantId });\n    }\n}\n"
+  },
+  {
+    "id": "sql_053",
+    "kind": "sql",
+    "text": "-- MERGE upsert 053\nMERGE dbo.Inventory AS tgt\nUSING (SELECT @Sku AS Sku, @Qty AS Qty) AS src\nON (tgt.Sku = src.Sku)\nWHEN MATCHED THEN\n    UPDATE SET tgt.Qty = src.Qty, tgt.UpdatedAt = SYSUTCDATETIME()\nWHEN NOT MATCHED THEN\n    INSERT (Sku, Qty, CreatedAt) VALUES (src.Sku, src.Qty, SYSUTCDATETIME());\n"
+  },
+  {
+    "id": "sql_064",
+    "kind": "sql",
+    "text": "-- Transactional update 064\nBEGIN TRY\n    BEGIN TRAN;\n\n    UPDATE dbo.Accounts\n    SET Balance = Balance - 24\n    WHERE AccountId = @FromAccountId;\n\n    UPDATE dbo.Accounts\n    SET Balance = Balance + 24\n    WHERE AccountId = @ToAccountId;\n\n    COMMIT TRAN;\nEND TRY\nBEGIN CATCH\n    IF @@TRANCOUNT > 0 ROLLBACK TRAN;\n    THROW;\nEND CATCH\n"
+  },
+  {
+    "id": "sql_073",
+    "kind": "sql",
+    "text": "-- MERGE upsert 073\nMERGE dbo.Inventory AS tgt\nUSING (SELECT @Sku AS Sku, @Qty AS Qty) AS src\nON (tgt.Sku = src.Sku)\nWHEN MATCHED THEN\n    UPDATE SET tgt.Qty = src.Qty, tgt.UpdatedAt = SYSUTCDATETIME()\nWHEN NOT MATCHED THEN\n    INSERT (Sku, Qty, CreatedAt) VALUES (src.Sku, src.Qty, SYSUTCDATETIME());\n"
+  },
+  {
+    "id": "sql_068",
+    "kind": "sql",
+    "text": "-- Temp tables 068\nCREATE TABLE #t (Id INT, Val NVARCHAR(50));\n\nINSERT INTO #t(Id, Val)\nSELECT TOP (5) Id, Name\nFROM dbo.Users\nORDER BY Id DESC;\n\nSELECT * FROM #t;\n"
+  },
+  {
+    "id": "dotnet_with_sql_043",
+    "kind": "dotnet_with_sql",
+    "text": "using Microsoft.EntityFrameworkCore;\n\npublic static class EfCommands043\n{\n    public static Task<int> CleanupAsync(DbContext db)\n    {\n        return db.Database.ExecuteSqlRawAsync(@\"\n            DELETE FROM dbo.Sessions\n            WHERE ExpiresAt < SYSUTCDATETIME();\n        \");\n    }\n}\n"
+  },
+  {
+    "id": "dotnet_with_sql_061",
+    "kind": "dotnet_with_sql",
+    "text": "using System.Data.SqlClient;\n\npublic static class Ado061\n{\n    public static int Run(string cs)\n    {\n        using var conn = new SqlConnection(cs);\n        conn.Open();\n\n        using var cmd = conn.CreateCommand();\n        cmd.CommandText = \"UPDATE dbo.Flags SET Value = 1 WHERE KeyName = @k;\";\n        cmd.Parameters.AddWithValue(\"@k\", \"feature_11\");\n        return cmd.ExecuteNonQuery();\n    }\n}\n"
+  },
+  {
+    "id": "dotnet_with_sql_009",
+    "kind": "dotnet_with_sql",
+    "text": "using System.Data;\nusing Dapper;\n\npublic sealed class UnitOfWork009\n{\n    private readonly IDbConnection _db;\n    private readonly IDbTransaction _tx;\n\n    public UnitOfWork009(IDbConnection db)\n    {\n        _db = db;\n        _tx = db.BeginTransaction();\n    }\n\n    public Task<int> InsertAsync(string code, string name)\n    {\n        var sql = @\"\n            INSERT INTO dbo.Items(Code, Name)\n            VALUES (@code, @name);\n        \";\n        return _db.ExecuteAsync(sql, new { code, name }, _tx);\n    }\n}\n"
+  },
+  {
+    "id": "dotnet_097",
+    "kind": "dotnet",
+    "text": "using System;\nusing System.Collections.Generic;\nusing System.Linq;\nusing System.Threading;\nusing System.Threading.Tasks;\n\nnamespace MyApp.Feature097\n{\n    public static class FileOps097\n    {\n        public static string ReadSafe(string path)\n        {\n            if (!System.IO.File.Exists(path))\n                return string.Empty;\n\n            using var sr = System.IO.File.OpenText(path);\n            return sr.ReadToEnd();\n        }\n    }\n}\n"
+  },
+  {
+    "id": "dotnet_088",
+    "kind": "dotnet",
+    "text": "using System;\nusing System.Collections.Generic;\nusing System.Linq;\nusing System.Threading;\nusing System.Threading.Tasks;\n\nnamespace MyApp.Feature088\n{\n    public sealed class Settings088\n    {\n        public string Mode { get; init; } = \"dev\";\n        public int Retries { get; init; } = 4;\n    }\n\n    public static class SettingsParser088\n    {\n        public static Settings088 Parse(string json)\n            => System.Text.Json.JsonSerializer.Deserialize<Settings088>(json) ?? new Settings088();\n    }\n}\n"
+  },
+  {
+    "id": "sql_018",
+    "kind": "sql",
+    "text": "-- Temp tables 018\nCREATE TABLE #t (Id INT, Val NVARCHAR(50));\n\nINSERT INTO #t(Id, Val)\nSELECT TOP (5) Id, Name\nFROM dbo.Users\nORDER BY Id DESC;\n\nSELECT * FROM #t;\n"
+  },
+  {
+    "id": "sql_062",
+    "kind": "sql",
+    "text": "-- DDL 062\nCREATE TABLE dbo.Items_062 (\n    Id INT IDENTITY(1,1) NOT NULL PRIMARY KEY,\n    Code NVARCHAR(50) NOT NULL,\n    Name NVARCHAR(200) NOT NULL,\n    CreatedAt DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME()\n);\n\nCREATE UNIQUE INDEX IX_Items_062_Code ON dbo.Items_062(Code);\n"
+  },
+  {
+    "id": "dotnet_014",
+    "kind": "dotnet",
+    "text": "using System;\nusing System.Collections.Generic;\nusing System.Linq;\nusing System.Threading;\nusing System.Threading.Tasks;\n\nnamespace MyApp.Feature014\n{\n    [System.Serializable]\n    public sealed class Dto014\n    {\n        public int Id { get; set; }\n        public string Name { get; set; } = string.Empty;\n    }\n\n    [ApiController]\n    [Route(\"api/items/4\")]\n    public sealed class ItemsController014 : ControllerBase\n    {\n        [HttpGet(\"0\")]\n        public ActionResult<Dto014> Get()\n            => new Dto014 { Id = 14, Name = \"item\" };\n    }\n}\n"
+  },
+  {
+    "id": "dotnet_039",
+    "kind": "dotnet",
+    "text": "using System;\nusing System.Collections.Generic;\nusing System.Linq;\nusing System.Threading;\nusing System.Threading.Tasks;\n\nnamespace MyApp.Feature039\n{\n    public static class MathUtil039\n    {\n        public static double Clamp(double x, double min, double max)\n            => x < min ? min : (x > max ? max : x);\n\n        public static double Lerp(double a, double b, double t)\n            => a + (b - a) * Clamp(t, 0.0, 1.0);\n    }\n}\n"
+  },
+  {
+    "id": "dotnet_073",
+    "kind": "dotnet",
+    "text": "using System;\nusing System.Collections.Generic;\nusing System.Linq;\nusing System.Threading;\nusing System.Threading.Tasks;\n\nnamespace MyApp.Feature073\n{\n    public static class Guard073\n    {\n        public static void NotNull(object? value, string name)\n        {\n            if (value is null)\n                throw new ArgumentNullException(name);\n        }\n    }\n\n    public sealed class Service073\n    {\n        public string Execute(string input)\n        {\n            try\n            {\n                Guard073.NotNull(input, nameof(input));\n                return input.Trim().ToUpperInvariant();\n            }\n            catch (Exception ex)\n            {\n                // NOTE: no SQL here; just a message.\n                return $\"Error: {ex.GetType().Name}\";\n            }\n        }\n    }\n}\n"
+  },
+  {
+    "id": "dotnet_with_sql_054",
+    "kind": "dotnet_with_sql",
+    "text": "using Microsoft.EntityFrameworkCore.Migrations;\n\npublic partial class AddIndex_054 : Migration\n{\n    protected override void Up(MigrationBuilder migrationBuilder)\n    {\n        migrationBuilder.Sql(@\"\n            CREATE INDEX IX_Users_Email ON dbo.Users(Email);\n        \");\n    }\n\n    protected override void Down(MigrationBuilder migrationBuilder)\n    {\n        migrationBuilder.Sql(@\"\n            DROP INDEX IX_Users_Email ON dbo.Users;\n        \");\n    }\n}\n"
+  },
+  {
+    "id": "dotnet_010",
+    "kind": "dotnet",
+    "text": "using System;\nusing System.Collections.Generic;\nusing System.Linq;\nusing System.Threading;\nusing System.Threading.Tasks;\n\nnamespace MyApp.Feature010\n{\n    public sealed class Processor010\n    {\n        private readonly IReadOnlyList<int> _values = new List<int> { 3, 0, 12 };\n\n        public async Task<int> RunAsync(CancellationToken ct)\n        {\n            await Task.Delay(20, ct).ConfigureAwait(false);\n\n            var result = _values\n                .Where(x => x >= 0)\n                .Select(x => x * 3)\n                .Sum();\n\n            return result;\n        }\n    }\n}\n"
+  },
+  {
+    "id": "sql_083",
+    "kind": "sql",
+    "text": "-- MERGE upsert 083\nMERGE dbo.Inventory AS tgt\nUSING (SELECT @Sku AS Sku, @Qty AS Qty) AS src\nON (tgt.Sku = src.Sku)\nWHEN MATCHED THEN\n    UPDATE SET tgt.Qty = src.Qty, tgt.UpdatedAt = SYSUTCDATETIME()\nWHEN NOT MATCHED THEN\n    INSERT (Sku, Qty, CreatedAt) VALUES (src.Sku, src.Qty, SYSUTCDATETIME());\n"
+  },
+  {
+    "id": "sql_055",
+    "kind": "sql",
+    "text": "-- View 055\nCREATE OR ALTER VIEW dbo.vw_ActiveUsers_055\nAS\nSELECT u.Id, u.Name, u.Email\nFROM dbo.Users u\nWHERE u.IsActive = 1;\n"
+  },
+  {
+    "id": "dotnet_089",
+    "kind": "dotnet",
+    "text": "using System;\nusing System.Collections.Generic;\nusing System.Linq;\nusing System.Threading;\nusing System.Threading.Tasks;\n\nnamespace MyApp.Feature089\n{\n    public static class MathUtil089\n    {\n        public static double Clamp(double x, double min, double max)\n            => x < min ? min : (x > max ? max : x);\n\n        public static double Lerp(double a, double b, double t)\n            => a + (b - a) * Clamp(t, 0.0, 1.0);\n    }\n}\n"
+  },
+  {
+    "id": "sql_009",
+    "kind": "sql",
+    "text": "-- Cursor-like loop 009\nDECLARE @Id INT;\n\nDECLARE cur CURSOR LOCAL FAST_FORWARD FOR\nSELECT TOP (3) Id FROM dbo.Users ORDER BY Id;\n\nOPEN cur;\nFETCH NEXT FROM cur INTO @Id;\n\nWHILE @@FETCH_STATUS = 0\nBEGIN\n    EXEC dbo.usp_ProcessUser @UserId = @Id;\n    FETCH NEXT FROM cur INTO @Id;\nEND\n\nCLOSE cur;\nDEALLOCATE cur;\n"
+  },
+  {
+    "id": "dotnet_038",
+    "kind": "dotnet",
+    "text": "using System;\nusing System.Collections.Generic;\nusing System.Linq;\nusing System.Threading;\nusing System.Threading.Tasks;\n\nnamespace MyApp.Feature038\n{\n    public sealed class Settings038\n    {\n        public string Mode { get; init; } = \"dev\";\n        public int Retries { get; init; } = 4;\n    }\n\n    public static class SettingsParser038\n    {\n        public static Settings038 Parse(string json)\n            => System.Text.Json.JsonSerializer.Deserialize<Settings038>(json) ?? new Settings038();\n    }\n}\n"
+  },
+  {
+    "id": "sql_041",
+    "kind": "sql",
+    "text": "/* CTE + window function 041 */\nWITH cte AS (\n    SELECT\n        o.OrderId,\n        o.CustomerId,\n        o.Total,\n        ROW_NUMBER() OVER (PARTITION BY o.CustomerId ORDER BY o.CreatedAt DESC) AS rn\n    FROM dbo.Orders o\n    WHERE o.CreatedAt >= DATEADD(day, -18, GETDATE())\n)\nSELECT OrderId, CustomerId, Total\nFROM cte\nWHERE rn = 1;\n"
+  },
+  {
+    "id": "dotnet_013",
+    "kind": "dotnet",
+    "text": "using System;\nusing System.Collections.Generic;\nusing System.Linq;\nusing System.Threading;\nusing System.Threading.Tasks;\n\nnamespace MyApp.Feature013\n{\n    public static class Guard013\n    {\n        public static void NotNull(object? value, string name)\n        {\n            if (value is null)\n                throw new ArgumentNullException(name);\n        }\n    }\n\n    public sealed class Service013\n    {\n        public string Execute(string input)\n        {\n            try\n            {\n                Guard013.NotNull(input, nameof(input));\n                return input.Trim().ToUpperInvariant();\n            }\n            catch (Exception ex)\n            {\n                // NOTE: no SQL here; just a message.\n                return $\"Error: {ex.GetType().Name}\";\n            }\n        }\n    }\n}\n"
+  },
+  {
+    "id": "dotnet_064",
+    "kind": "dotnet",
+    "text": "using System;\nusing System.Collections.Generic;\nusing System.Linq;\nusing System.Threading;\nusing System.Threading.Tasks;\n\nnamespace MyApp.Feature064\n{\n    [System.Serializable]\n    public sealed class Dto064\n    {\n        public int Id { get; set; }\n        public string Name { get; set; } = string.Empty;\n    }\n\n    [ApiController]\n    [Route(\"api/items/4\")]\n    public sealed class ItemsController064 : ControllerBase\n    {\n        [HttpGet(\"1\")]\n        public ActionResult<Dto064> Get()\n            => new Dto064 { Id = 64, Name = \"item\" };\n    }\n}\n"
+  },
+  {
+    "id": "dotnet_with_sql_021",
+    "kind": "dotnet_with_sql",
+    "text": "using System.Data.SqlClient;\n\npublic static class Ado021\n{\n    public static int Run(string cs)\n    {\n        using var conn = new SqlConnection(cs);\n        conn.Open();\n\n        using var cmd = conn.CreateCommand();\n        cmd.CommandText = \"UPDATE dbo.Flags SET Value = 1 WHERE KeyName = @k;\";\n        cmd.Parameters.AddWithValue(\"@k\", \"feature_21\");\n        return cmd.ExecuteNonQuery();\n    }\n}\n"
+  },
+  {
+    "id": "sql_012",
+    "kind": "sql",
+    "text": "-- DDL 012\nCREATE TABLE dbo.Items_012 (\n    Id INT IDENTITY(1,1) NOT NULL PRIMARY KEY,\n    Code NVARCHAR(50) NOT NULL,\n    Name NVARCHAR(200) NOT NULL,\n    CreatedAt DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME()\n);\n\nCREATE UNIQUE INDEX IX_Items_012_Code ON dbo.Items_012(Code);\n"
+  },
+  {
+    "id": "dotnet_049",
+    "kind": "dotnet",
+    "text": "using System;\nusing System.Collections.Generic;\nusing System.Linq;\nusing System.Threading;\nusing System.Threading.Tasks;\n\nnamespace MyApp.Feature049\n{\n    public static class MathUtil049\n    {\n        public static double Clamp(double x, double min, double max)\n            => x < min ? min : (x > max ? max : x);\n\n        public static double Lerp(double a, double b, double t)\n            => a + (b - a) * Clamp(t, 0.0, 1.0);\n    }\n}\n"
+  },
+  {
+    "id": "dotnet_020",
+    "kind": "dotnet",
+    "text": "using System;\nusing System.Collections.Generic;\nusing System.Linq;\nusing System.Threading;\nusing System.Threading.Tasks;\n\nnamespace MyApp.Feature020\n{\n    public sealed class Processor020\n    {\n        private readonly IReadOnlyList<int> _values = new List<int> { 6, 10, 9 };\n\n        public async Task<int> RunAsync(CancellationToken ct)\n        {\n            await Task.Delay(30, ct).ConfigureAwait(false);\n\n            var result = _values\n                .Where(x => x >= 0)\n                .Select(x => x * 4)\n                .Sum();\n\n            return result;\n        }\n    }\n}\n"
+  },
+  {
+    "id": "dotnet_080",
+    "kind": "dotnet",
+    "text": "using System;\nusing System.Collections.Generic;\nusing System.Linq;\nusing System.Threading;\nusing System.Threading.Tasks;\n\nnamespace MyApp.Feature080\n{\n    public sealed class Processor080\n    {\n        private readonly IReadOnlyList<int> _values = new List<int> { 3, 4, 4 };\n\n        public async Task<int> RunAsync(CancellationToken ct)\n        {\n            await Task.Delay(30, ct).ConfigureAwait(false);\n\n            var result = _values\n                .Where(x => x >= 0)\n                .Select(x => x * 4)\n                .Sum();\n\n            return result;\n        }\n    }\n}\n"
+  },
+  {
+    "id": "dotnet_043",
+    "kind": "dotnet",
+    "text": "using System;\nusing System.Collections.Generic;\nusing System.Linq;\nusing System.Threading;\nusing System.Threading.Tasks;\n\nnamespace MyApp.Feature043\n{\n    public static class Guard043\n    {\n        public static void NotNull(object? value, string name)\n        {\n            if (value is null)\n                throw new ArgumentNullException(name);\n        }\n    }\n\n    public sealed class Service043\n    {\n        public string Execute(string input)\n        {\n            try\n            {\n                Guard043.NotNull(input, nameof(input));\n                return input.Trim().ToUpperInvariant();\n            }\n            catch (Exception ex)\n            {\n                // NOTE: no SQL here; just a message.\n                return $\"Error: {ex.GetType().Name}\";\n            }\n        }\n    }\n}\n"
+  },
+  {
+    "id": "dotnet_015",
+    "kind": "dotnet",
+    "text": "using System;\nusing System.Collections.Generic;\nusing System.Linq;\nusing System.Threading;\nusing System.Threading.Tasks;\n\nnamespace MyApp.Feature015\n{\n    public sealed class ViewModel015 : System.ComponentModel.INotifyPropertyChanged\n    {\n        public event System.ComponentModel.PropertyChangedEventHandler? PropertyChanged;\n\n        private string _title = \"Hello\";\n        public string Title\n        {\n            get => _title;\n            set\n            {\n                if (_title == value) return;\n                _title = value;\n                PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs(nameof(Title)));\n            }\n        }\n    }\n}\n"
+  },
+  {
+    "id": "dotnet_with_sql_085",
+    "kind": "dotnet_with_sql",
+    "text": "public static class InterpolatedSql085\n{\n    public static string Build(int days)\n    {\n        // Note: intentionally embedded SQL string\n        return $@\"\n            SELECT u.Id, u.Name\n            FROM dbo.Users u\n            WHERE u.CreatedAt >= DATEADD(day, -{days}, GETDATE())\n            ORDER BY u.CreatedAt DESC;\n        \";\n    }\n}\n"
+  },
+  {
+    "id": "sql_081",
+    "kind": "sql",
+    "text": "/* CTE + window function 081 */\nWITH cte AS (\n    SELECT\n        o.OrderId,\n        o.CustomerId,\n        o.Total,\n        ROW_NUMBER() OVER (PARTITION BY o.CustomerId ORDER BY o.CreatedAt DESC) AS rn\n    FROM dbo.Orders o\n    WHERE o.CreatedAt >= DATEADD(day, -28, GETDATE())\n)\nSELECT OrderId, CustomerId, Total\nFROM cte\nWHERE rn = 1;\n"
+  },
+  {
+    "id": "dotnet_017",
+    "kind": "dotnet",
+    "text": "using System;\nusing System.Collections.Generic;\nusing System.Linq;\nusing System.Threading;\nusing System.Threading.Tasks;\n\nnamespace MyApp.Feature017\n{\n    public static class FileOps017\n    {\n        public static string ReadSafe(string path)\n        {\n            if (!System.IO.File.Exists(path))\n                return string.Empty;\n\n            using var sr = System.IO.File.OpenText(path);\n            return sr.ReadToEnd();\n        }\n    }\n}\n"
+  },
+  {
+    "id": "dotnet_067",
+    "kind": "dotnet",
+    "text": "using System;\nusing System.Collections.Generic;\nusing System.Linq;\nusing System.Threading;\nusing System.Threading.Tasks;\n\nnamespace MyApp.Feature067\n{\n    public static class FileOps067\n    {\n        public static string ReadSafe(string path)\n        {\n            if (!System.IO.File.Exists(path))\n                return string.Empty;\n\n            using var sr = System.IO.File.OpenText(path);\n            return sr.ReadToEnd();\n        }\n    }\n}\n"
+  },
+  {
+    "id": "dotnet_065",
+    "kind": "dotnet",
+    "text": "using System;\nusing System.Collections.Generic;\nusing System.Linq;\nusing System.Threading;\nusing System.Threading.Tasks;\n\nnamespace MyApp.Feature065\n{\n    public sealed class ViewModel065 : System.ComponentModel.INotifyPropertyChanged\n    {\n        public event System.ComponentModel.PropertyChangedEventHandler? PropertyChanged;\n\n        private string _title = \"Hello\";\n        public string Title\n        {\n            get => _title;\n            set\n            {\n                if (_title == value) return;\n                _title = value;\n                PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs(nameof(Title)));\n            }\n        }\n    }\n}\n"
+  },
+  {
+    "id": "dotnet_with_sql_045",
+    "kind": "dotnet_with_sql",
+    "text": "public static class InterpolatedSql045\n{\n    public static string Build(int days)\n    {\n        // Note: intentionally embedded SQL string\n        return $@\"\n            SELECT u.Id, u.Name\n            FROM dbo.Users u\n            WHERE u.CreatedAt >= DATEADD(day, -{days}, GETDATE())\n            ORDER BY u.CreatedAt DESC;\n        \";\n    }\n}\n"
+  },
+  {
+    "id": "dotnet_with_sql_060",
+    "kind": "dotnet_with_sql",
+    "text": "using System.Data;\nusing Dapper;\n\npublic sealed class Repo060\n{\n    private readonly IDbConnection _db;\n    public Repo060(IDbConnection db) => _db = db;\n\n    public Task<int> CountActiveAsync(int tenantId)\n    {\n        var sql = @\"\n            SELECT COUNT(1)\n            FROM dbo.Users u\n            WHERE u.IsActive = 1 AND u.TenantId = @tenantId;\n        \";\n        return _db.ExecuteScalarAsync<int>(sql, new { tenantId });\n    }\n}\n"
+  },
+  {
+    "id": "dotnet_with_sql_086",
+    "kind": "dotnet_with_sql",
+    "text": "public static class RawSql086\n{\n    public static string Q() =>\n        \"\"\"SELECT TOP (10) Id, Name\nFROM dbo.Users\nWHERE IsActive = 1\nORDER BY CreatedAt DESC;\"\"\";\n}\n"
+  },
+  {
+    "id": "dotnet_with_sql_047",
+    "kind": "dotnet_with_sql",
+    "text": "using System.Data;\nusing Dapper;\n\npublic static class StoredProc047\n{\n    public static Task ExecAsync(IDbConnection db, int userId)\n    {\n        var sql = \"EXEC dbo.usp_DoWork_047 @UserId = @userId, @IsActive = 1;\";\n        return db.ExecuteAsync(sql, new { userId });\n    }\n}\n"
+  },
+  {
+    "id": "dotnet_with_sql_042",
+    "kind": "dotnet_with_sql",
+    "text": "using Microsoft.EntityFrameworkCore;\n\npublic sealed class Ctx042 : DbContext\n{\n    public DbSet<UserRow> Users => Set<UserRow>();\n}\n\npublic sealed record UserRow(int Id, string Name);\n\npublic static class EfQueries042\n{\n    public static IQueryable<UserRow> Latest(Ctx042 db)\n    {\n        return db.Users.FromSqlRaw(@\"\n            SELECT TOP (5) u.Id, u.Name\n            FROM dbo.Users u\n            ORDER BY u.CreatedAt DESC;\n        \");\n    }\n}\n"
+  },
+  {
+    "id": "dotnet_090",
+    "kind": "dotnet",
+    "text": "using System;\nusing System.Collections.Generic;\nusing System.Linq;\nusing System.Threading;\nusing System.Threading.Tasks;\n\nnamespace MyApp.Feature090\n{\n    public sealed class Processor090\n    {\n        private readonly IReadOnlyList<int> _values = new List<int> { 6, 3, 1 };\n\n        public async Task<int> RunAsync(CancellationToken ct)\n        {\n            await Task.Delay(10, ct).ConfigureAwait(false);\n\n            var result = _values\n                .Where(x => x >= 0)\n                .Select(x => x * 2)\n                .Sum();\n\n            return result;\n        }\n    }\n}\n"
+  },
+  {
+    "id": "dotnet_with_sql_089",
+    "kind": "dotnet_with_sql",
+    "text": "using System.Data;\nusing Dapper;\n\npublic sealed class UnitOfWork089\n{\n    private readonly IDbConnection _db;\n    private readonly IDbTransaction _tx;\n\n    public UnitOfWork089(IDbConnection db)\n    {\n        _db = db;\n        _tx = db.BeginTransaction();\n    }\n\n    public Task<int> InsertAsync(string code, string name)\n    {\n        var sql = @\"\n            INSERT INTO dbo.Items(Code, Name)\n            VALUES (@code, @name);\n        \";\n        return _db.ExecuteAsync(sql, new { code, name }, _tx);\n    }\n}\n"
+  },
+  {
+    "id": "sql_067",
+    "kind": "sql",
+    "text": "-- Trigger 067\nCREATE OR ALTER TRIGGER dbo.trg_ItemsAudit_067\nON dbo.Items\nAFTER INSERT, UPDATE\nAS\nBEGIN\n    SET NOCOUNT ON;\n\n    INSERT INTO dbo.ItemsAudit(ItemId, ChangedAt)\n    SELECT i.Id, SYSUTCDATETIME()\n    FROM inserted i;\nEND\n"
+  },
+  {
+    "id": "sql_092",
+    "kind": "sql",
+    "text": "-- DDL 092\nCREATE TABLE dbo.Items_092 (\n    Id INT IDENTITY(1,1) NOT NULL PRIMARY KEY,\n    Code NVARCHAR(50) NOT NULL,\n    Name NVARCHAR(200) NOT NULL,\n    CreatedAt DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME()\n);\n\nCREATE UNIQUE INDEX IX_Items_092_Code ON dbo.Items_092(Code);\n"
+  },
+  {
+    "id": "sql_038",
+    "kind": "sql",
+    "text": "-- Temp tables 038\nCREATE TABLE #t (Id INT, Val NVARCHAR(50));\n\nINSERT INTO #t(Id, Val)\nSELECT TOP (5) Id, Name\nFROM dbo.Users\nORDER BY Id DESC;\n\nSELECT * FROM #t;\n"
+  },
+  {
+    "id": "sql_024",
+    "kind": "sql",
+    "text": "-- Transactional update 024\nBEGIN TRY\n    BEGIN TRAN;\n\n    UPDATE dbo.Accounts\n    SET Balance = Balance - 34\n    WHERE AccountId = @FromAccountId;\n\n    UPDATE dbo.Accounts\n    SET Balance = Balance + 34\n    WHERE AccountId = @ToAccountId;\n\n    COMMIT TRAN;\nEND TRY\nBEGIN CATCH\n    IF @@TRANCOUNT > 0 ROLLBACK TRAN;\n    THROW;\nEND CATCH\n"
+  },
+  {
+    "id": "sql_033",
+    "kind": "sql",
+    "text": "-- MERGE upsert 033\nMERGE dbo.Inventory AS tgt\nUSING (SELECT @Sku AS Sku, @Qty AS Qty) AS src\nON (tgt.Sku = src.Sku)\nWHEN MATCHED THEN\n    UPDATE SET tgt.Qty = src.Qty, tgt.UpdatedAt = SYSUTCDATETIME()\nWHEN NOT MATCHED THEN\n    INSERT (Sku, Qty, CreatedAt) VALUES (src.Sku, src.Qty, SYSUTCDATETIME());\n"
+  },
+  {
+    "id": "dotnet_with_sql_081",
+    "kind": "dotnet_with_sql",
+    "text": "using System.Data.SqlClient;\n\npublic static class Ado081\n{\n    public static int Run(string cs)\n    {\n        using var conn = new SqlConnection(cs);\n        conn.Open();\n\n        using var cmd = conn.CreateCommand();\n        cmd.CommandText = \"UPDATE dbo.Flags SET Value = 1 WHERE KeyName = @k;\";\n        cmd.Parameters.AddWithValue(\"@k\", \"feature_31\");\n        return cmd.ExecuteNonQuery();\n    }\n}\n"
+  },
+  {
+    "id": "dotnet_with_sql_056",
+    "kind": "dotnet_with_sql",
+    "text": "public static class RawSql056\n{\n    public static string Q() =>\n        \"\"\"SELECT TOP (10) Id, Name\nFROM dbo.Users\nWHERE IsActive = 1\nORDER BY CreatedAt DESC;\"\"\";\n}\n"
+  },
+  {
+    "id": "sql_016",
+    "kind": "sql",
+    "text": "-- Scalar function 016\nCREATE OR ALTER FUNCTION dbo.fn_NormalizeEmail_016(@Email NVARCHAR(320))\nRETURNS NVARCHAR(320)\nAS\nBEGIN\n    RETURN LOWER(LTRIM(RTRIM(@Email)));\nEND\n"
+  },
+  {
+    "id": "sql_049",
+    "kind": "sql",
+    "text": "-- Cursor-like loop 049\nDECLARE @Id INT;\n\nDECLARE cur CURSOR LOCAL FAST_FORWARD FOR\nSELECT TOP (3) Id FROM dbo.Users ORDER BY Id;\n\nOPEN cur;\nFETCH NEXT FROM cur INTO @Id;\n\nWHILE @@FETCH_STATUS = 0\nBEGIN\n    EXEC dbo.usp_ProcessUser @UserId = @Id;\n    FETCH NEXT FROM cur INTO @Id;\nEND\n\nCLOSE cur;\nDEALLOCATE cur;\n"
+  },
+  {
+    "id": "sql_088",
+    "kind": "sql",
+    "text": "-- Temp tables 088\nCREATE TABLE #t (Id INT, Val NVARCHAR(50));\n\nINSERT INTO #t(Id, Val)\nSELECT TOP (5) Id, Name\nFROM dbo.Users\nORDER BY Id DESC;\n\nSELECT * FROM #t;\n"
+  },
+  {
+    "id": "dotnet_with_sql_078",
+    "kind": "dotnet_with_sql",
+    "text": "public static class SqlText078\n{\n    public const string Query = @\"\n        SELECT i.Id, i.Name\n        FROM dbo.Items i WITH (NOLOCK)\n        WHERE i.Code LIKE @prefix + '%'\n        ORDER BY i.Id;\n    \";\n}\n"
+  },
+  {
+    "id": "dotnet_with_sql_075",
+    "kind": "dotnet_with_sql",
+    "text": "public static class InterpolatedSql075\n{\n    public static string Build(int days)\n    {\n        // Note: intentionally embedded SQL string\n        return $@\"\n            SELECT u.Id, u.Name\n            FROM dbo.Users u\n            WHERE u.CreatedAt >= DATEADD(day, -{days}, GETDATE())\n            ORDER BY u.CreatedAt DESC;\n        \";\n    }\n}\n"
+  },
+  {
+    "id": "sql_091",
+    "kind": "sql",
+    "text": "/* CTE + window function 091 */\nWITH cte AS (\n    SELECT\n        o.OrderId,\n        o.CustomerId,\n        o.Total,\n        ROW_NUMBER() OVER (PARTITION BY o.CustomerId ORDER BY o.CreatedAt DESC) AS rn\n    FROM dbo.Orders o\n    WHERE o.CreatedAt >= DATEADD(day, -8, GETDATE())\n)\nSELECT OrderId, CustomerId, Total\nFROM cte\nWHERE rn = 1;\n"
+  },
+  {
+    "id": "dotnet_012",
+    "kind": "dotnet",
+    "text": "using System;\nusing System.Collections.Generic;\nusing System.Linq;\nusing System.Threading;\nusing System.Threading.Tasks;\n\nnamespace MyApp.Feature012\n{\n    public interface IRepository012<T>\n    {\n        Task<T?> GetAsync(Guid id, CancellationToken ct);\n        Task SaveAsync(T entity, CancellationToken ct);\n    }\n\n    public sealed class InMemoryRepository012<T> : IRepository012<T>\n    {\n        private readonly Dictionary<Guid, T> _store = new();\n\n        public Task<T?> GetAsync(Guid id, CancellationToken ct)\n            => Task.FromResult(_store.TryGetValue(id, out var v) ? v : default);\n\n        public Task SaveAsync(T entity, CancellationToken ct)\n        {\n            _store[Guid.NewGuid()] = entity;\n            return Task.CompletedTask;\n        }\n    }\n}\n"
+  },
+  {
+    "id": "sql_069",
+    "kind": "sql",
+    "text": "-- Cursor-like loop 069\nDECLARE @Id INT;\n\nDECLARE cur CURSOR LOCAL FAST_FORWARD FOR\nSELECT TOP (3) Id FROM dbo.Users ORDER BY Id;\n\nOPEN cur;\nFETCH NEXT FROM cur INTO @Id;\n\nWHILE @@FETCH_STATUS = 0\nBEGIN\n    EXEC dbo.usp_ProcessUser @UserId = @Id;\n    FETCH NEXT FROM cur INTO @Id;\nEND\n\nCLOSE cur;\nDEALLOCATE cur;\n"
+  },
+  {
+    "id": "dotnet_with_sql_048",
+    "kind": "dotnet_with_sql",
+    "text": "public static class SqlText048\n{\n    public const string Query = @\"\n        SELECT i.Id, i.Name\n        FROM dbo.Items i WITH (NOLOCK)\n        WHERE i.Code LIKE @prefix + '%'\n        ORDER BY i.Id;\n    \";\n}\n"
+  },
+  {
+    "id": "dotnet_047",
+    "kind": "dotnet",
+    "text": "using System;\nusing System.Collections.Generic;\nusing System.Linq;\nusing System.Threading;\nusing System.Threading.Tasks;\n\nnamespace MyApp.Feature047\n{\n    public static class FileOps047\n    {\n        public static string ReadSafe(string path)\n        {\n            if (!System.IO.File.Exists(path))\n                return string.Empty;\n\n            using var sr = System.IO.File.OpenText(path);\n            return sr.ReadToEnd();\n        }\n    }\n}\n"
+  },
+  {
+    "id": "dotnet_with_sql_038",
+    "kind": "dotnet_with_sql",
+    "text": "public static class SqlText038\n{\n    public const string Query = @\"\n        SELECT i.Id, i.Name\n        FROM dbo.Items i WITH (NOLOCK)\n        WHERE i.Code LIKE @prefix + '%'\n        ORDER BY i.Id;\n    \";\n}\n"
+  },
+  {
+    "id": "sql_034",
+    "kind": "sql",
+    "text": "-- Transactional update 034\nBEGIN TRY\n    BEGIN TRAN;\n\n    UPDATE dbo.Accounts\n    SET Balance = Balance - 44\n    WHERE AccountId = @FromAccountId;\n\n    UPDATE dbo.Accounts\n    SET Balance = Balance + 44\n    WHERE AccountId = @ToAccountId;\n\n    COMMIT TRAN;\nEND TRY\nBEGIN CATCH\n    IF @@TRANCOUNT > 0 ROLLBACK TRAN;\n    THROW;\nEND CATCH\n"
+  },
+  {
+    "id": "dotnet_with_sql_071",
+    "kind": "dotnet_with_sql",
+    "text": "using System.Data.SqlClient;\n\npublic static class Ado071\n{\n    public static int Run(string cs)\n    {\n        using var conn = new SqlConnection(cs);\n        conn.Open();\n\n        using var cmd = conn.CreateCommand();\n        cmd.CommandText = \"UPDATE dbo.Flags SET Value = 1 WHERE KeyName = @k;\";\n        cmd.Parameters.AddWithValue(\"@k\", \"feature_21\");\n        return cmd.ExecuteNonQuery();\n    }\n}\n"
+  },
+  {
+    "id": "dotnet_046",
+    "kind": "dotnet",
+    "text": "using System;\nusing System.Collections.Generic;\nusing System.Linq;\nusing System.Threading;\nusing System.Threading.Tasks;\n\nnamespace MyApp.Feature046\n{\n    public static class EndpointMap046\n    {\n        public static void Map(WebApplication app)\n        {\n            app.MapGet(\"/health/1\", () => Results.Ok(new { status = \"ok\", ts = DateTimeOffset.UtcNow }));\n        }\n    }\n}\n"
+  },
+  {
+    "id": "sql_056",
+    "kind": "sql",
+    "text": "-- Scalar function 056\nCREATE OR ALTER FUNCTION dbo.fn_NormalizeEmail_056(@Email NVARCHAR(320))\nRETURNS NVARCHAR(320)\nAS\nBEGIN\n    RETURN LOWER(LTRIM(RTRIM(@Email)));\nEND\n"
+  },
+  {
+    "id": "dotnet_054",
+    "kind": "dotnet",
+    "text": "using System;\nusing System.Collections.Generic;\nusing System.Linq;\nusing System.Threading;\nusing System.Threading.Tasks;\n\nnamespace MyApp.Feature054\n{\n    [System.Serializable]\n    public sealed class Dto054\n    {\n        public int Id { get; set; }\n        public string Name { get; set; } = string.Empty;\n    }\n\n    [ApiController]\n    [Route(\"api/items/4\")]\n    public sealed class ItemsController054 : ControllerBase\n    {\n        [HttpGet(\"5\")]\n        public ActionResult<Dto054> Get()\n            => new Dto054 { Id = 54, Name = \"item\" };\n    }\n}\n"
+  },
+  {
+    "id": "dotnet_with_sql_028",
+    "kind": "dotnet_with_sql",
+    "text": "public static class SqlText028\n{\n    public const string Query = @\"\n        SELECT i.Id, i.Name\n        FROM dbo.Items i WITH (NOLOCK)\n        WHERE i.Code LIKE @prefix + '%'\n        ORDER BY i.Id;\n    \";\n}\n"
+  },
+  {
+    "id": "dotnet_with_sql_087",
+    "kind": "dotnet_with_sql",
+    "text": "using System.Data;\nusing Dapper;\n\npublic static class StoredProc087\n{\n    public static Task ExecAsync(IDbConnection db, int userId)\n    {\n        var sql = \"EXEC dbo.usp_DoWork_087 @UserId = @userId, @IsActive = 1;\";\n        return db.ExecuteAsync(sql, new { userId });\n    }\n}\n"
+  },
+  {
+    "id": "dotnet_078",
+    "kind": "dotnet",
+    "text": "using System;\nusing System.Collections.Generic;\nusing System.Linq;\nusing System.Threading;\nusing System.Threading.Tasks;\n\nnamespace MyApp.Feature078\n{\n    public sealed class Settings078\n    {\n        public string Mode { get; init; } = \"dev\";\n        public int Retries { get; init; } = 4;\n    }\n\n    public static class SettingsParser078\n    {\n        public static Settings078 Parse(string json)\n            => System.Text.Json.JsonSerializer.Deserialize<Settings078>(json) ?? new Settings078();\n    }\n}\n"
+  },
+  {
+    "id": "sql_065",
+    "kind": "sql",
+    "text": "-- View 065\nCREATE OR ALTER VIEW dbo.vw_ActiveUsers_065\nAS\nSELECT u.Id, u.Name, u.Email\nFROM dbo.Users u\nWHERE u.IsActive = 1;\n"
+  },
+  {
+    "id": "sql_085",
+    "kind": "sql",
+    "text": "-- View 085\nCREATE OR ALTER VIEW dbo.vw_ActiveUsers_085\nAS\nSELECT u.Id, u.Name, u.Email\nFROM dbo.Users u\nWHERE u.IsActive = 1;\n"
+  },
+  {
+    "id": "sql_042",
+    "kind": "sql",
+    "text": "-- DDL 042\nCREATE TABLE dbo.Items_042 (\n    Id INT IDENTITY(1,1) NOT NULL PRIMARY KEY,\n    Code NVARCHAR(50) NOT NULL,\n    Name NVARCHAR(200) NOT NULL,\n    CreatedAt DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME()\n);\n\nCREATE UNIQUE INDEX IX_Items_042_Code ON dbo.Items_042(Code);\n"
+  },
+  {
+    "id": "sql_098",
+    "kind": "sql",
+    "text": "-- Temp tables 098\nCREATE TABLE #t (Id INT, Val NVARCHAR(50));\n\nINSERT INTO #t(Id, Val)\nSELECT TOP (5) Id, Name\nFROM dbo.Users\nORDER BY Id DESC;\n\nSELECT * FROM #t;\n"
+  },
+  {
+    "id": "dotnet_011",
+    "kind": "dotnet",
+    "text": "using System;\nusing System.Collections.Generic;\nusing System.Linq;\nusing System.Threading;\nusing System.Threading.Tasks;\n\nnamespace MyApp.Feature011\n{\n    public record User011(Guid Id, string Name, int Age);\n\n    public static class UserRules011\n    {\n        public static string Classify(User011 u) =>\n            u switch\n            {\n                { Age: < 18 } => \"minor\",\n                { Age: >= 18 and < 65 } => \"adult\",\n                _ => \"senior\"\n            };\n    }\n}\n"
+  },
+  {
+    "id": "sql_040",
+    "kind": "sql",
+    "text": "-- Stored procedure example 040\nCREATE OR ALTER PROCEDURE [dbo].[usp_DoWork_040]\n    @UserId INT,\n    @IsActive BIT = 1\nAS\nBEGIN\n    SET NOCOUNT ON;\n\n    DECLARE @Now DATETIME2 = SYSUTCDATETIME();\n\n    SELECT TOP (10) u.[Id], u.[Name], u.[CreatedAt]\n    FROM [dbo].[Users] u WITH (NOLOCK)\n    WHERE u.[Id] = @UserId\n      AND u.[IsActive] = @IsActive\n    ORDER BY u.[CreatedAt] DESC;\nEND\nGO\n"
+  },
+  {
+    "id": "dotnet_058",
+    "kind": "dotnet",
+    "text": "using System;\nusing System.Collections.Generic;\nusing System.Linq;\nusing System.Threading;\nusing System.Threading.Tasks;\n\nnamespace MyApp.Feature058\n{\n    public sealed class Settings058\n    {\n        public string Mode { get; init; } = \"dev\";\n        public int Retries { get; init; } = 4;\n    }\n\n    public static class SettingsParser058\n    {\n        public static Settings058 Parse(string json)\n            => System.Text.Json.JsonSerializer.Deserialize<Settings058>(json) ?? new Settings058();\n    }\n}\n"
+  },
+  {
+    "id": "dotnet_with_sql_002",
+    "kind": "dotnet_with_sql",
+    "text": "using Microsoft.EntityFrameworkCore;\n\npublic sealed class Ctx002 : DbContext\n{\n    public DbSet<UserRow> Users => Set<UserRow>();\n}\n\npublic sealed record UserRow(int Id, string Name);\n\npublic static class EfQueries002\n{\n    public static IQueryable<UserRow> Latest(Ctx002 db)\n    {\n        return db.Users.FromSqlRaw(@\"\n            SELECT TOP (5) u.Id, u.Name\n            FROM dbo.Users u\n            ORDER BY u.CreatedAt DESC;\n        \");\n    }\n}\n"
+  },
+  {
+    "id": "sql_046",
+    "kind": "sql",
+    "text": "-- Scalar function 046\nCREATE OR ALTER FUNCTION dbo.fn_NormalizeEmail_046(@Email NVARCHAR(320))\nRETURNS NVARCHAR(320)\nAS\nBEGIN\n    RETURN LOWER(LTRIM(RTRIM(@Email)));\nEND\n"
+  },
+  {
+    "id": "sql_010",
+    "kind": "sql",
+    "text": "-- Stored procedure example 010\nCREATE OR ALTER PROCEDURE [dbo].[usp_DoWork_010]\n    @UserId INT,\n    @IsActive BIT = 1\nAS\nBEGIN\n    SET NOCOUNT ON;\n\n    DECLARE @Now DATETIME2 = SYSUTCDATETIME();\n\n    SELECT TOP (10) u.[Id], u.[Name], u.[CreatedAt]\n    FROM [dbo].[Users] u WITH (NOLOCK)\n    WHERE u.[Id] = @UserId\n      AND u.[IsActive] = @IsActive\n    ORDER BY u.[CreatedAt] DESC;\nEND\nGO\n"
+  },
+  {
+    "id": "dotnet_with_sql_095",
+    "kind": "dotnet_with_sql",
+    "text": "public static class InterpolatedSql095\n{\n    public static string Build(int days)\n    {\n        // Note: intentionally embedded SQL string\n        return $@\"\n            SELECT u.Id, u.Name\n            FROM dbo.Users u\n            WHERE u.CreatedAt >= DATEADD(day, -{days}, GETDATE())\n            ORDER BY u.CreatedAt DESC;\n        \";\n    }\n}\n"
+  },
+  {
+    "id": "dotnet_006",
+    "kind": "dotnet",
+    "text": "using System;\nusing System.Collections.Generic;\nusing System.Linq;\nusing System.Threading;\nusing System.Threading.Tasks;\n\nnamespace MyApp.Feature006\n{\n    public static class EndpointMap006\n    {\n        public static void Map(WebApplication app)\n        {\n            app.MapGet(\"/health/1\", () => Results.Ok(new { status = \"ok\", ts = DateTimeOffset.UtcNow }));\n        }\n    }\n}\n"
+  },
+  {
+    "id": "dotnet_with_sql_099",
+    "kind": "dotnet_with_sql",
+    "text": "using System.Data;\nusing Dapper;\n\npublic sealed class UnitOfWork099\n{\n    private readonly IDbConnection _db;\n    private readonly IDbTransaction _tx;\n\n    public UnitOfWork099(IDbConnection db)\n    {\n        _db = db;\n        _tx = db.BeginTransaction();\n    }\n\n    public Task<int> InsertAsync(string code, string name)\n    {\n        var sql = @\"\n            INSERT INTO dbo.Items(Code, Name)\n            VALUES (@code, @name);\n        \";\n        return _db.ExecuteAsync(sql, new { code, name }, _tx);\n    }\n}\n"
+  },
+  {
+    "id": "dotnet_with_sql_031",
+    "kind": "dotnet_with_sql",
+    "text": "using System.Data.SqlClient;\n\npublic static class Ado031\n{\n    public static int Run(string cs)\n    {\n        using var conn = new SqlConnection(cs);\n        conn.Open();\n\n        using var cmd = conn.CreateCommand();\n        cmd.CommandText = \"UPDATE dbo.Flags SET Value = 1 WHERE KeyName = @k;\";\n        cmd.Parameters.AddWithValue(\"@k\", \"feature_31\");\n        return cmd.ExecuteNonQuery();\n    }\n}\n"
+  },
+  {
+    "id": "dotnet_with_sql_062",
+    "kind": "dotnet_with_sql",
+    "text": "using Microsoft.EntityFrameworkCore;\n\npublic sealed class Ctx062 : DbContext\n{\n    public DbSet<UserRow> Users => Set<UserRow>();\n}\n\npublic sealed record UserRow(int Id, string Name);\n\npublic static class EfQueries062\n{\n    public static IQueryable<UserRow> Latest(Ctx062 db)\n    {\n        return db.Users.FromSqlRaw(@\"\n            SELECT TOP (5) u.Id, u.Name\n            FROM dbo.Users u\n            ORDER BY u.CreatedAt DESC;\n        \");\n    }\n}\n"
+  },
+  {
+    "id": "sql_045",
+    "kind": "sql",
+    "text": "-- View 045\nCREATE OR ALTER VIEW dbo.vw_ActiveUsers_045\nAS\nSELECT u.Id, u.Name, u.Email\nFROM dbo.Users u\nWHERE u.IsActive = 1;\n"
+  },
+  {
+    "id": "dotnet_053",
+    "kind": "dotnet",
+    "text": "using System;\nusing System.Collections.Generic;\nusing System.Linq;\nusing System.Threading;\nusing System.Threading.Tasks;\n\nnamespace MyApp.Feature053\n{\n    public static class Guard053\n    {\n        public static void NotNull(object? value, string name)\n        {\n            if (value is null)\n                throw new ArgumentNullException(name);\n        }\n    }\n\n    public sealed class Service053\n    {\n        public string Execute(string input)\n        {\n            try\n            {\n                Guard053.NotNull(input, nameof(input));\n                return input.Trim().ToUpperInvariant();\n            }\n            catch (Exception ex)\n            {\n                // NOTE: no SQL here; just a message.\n                return $\"Error: {ex.GetType().Name}\";\n            }\n        }\n    }\n}\n"
+  },
+  {
+    "id": "dotnet_with_sql_063",
+    "kind": "dotnet_with_sql",
+    "text": "using Microsoft.EntityFrameworkCore;\n\npublic static class EfCommands063\n{\n    public static Task<int> CleanupAsync(DbContext db)\n    {\n        return db.Database.ExecuteSqlRawAsync(@\"\n            DELETE FROM dbo.Sessions\n            WHERE ExpiresAt < SYSUTCDATETIME();\n        \");\n    }\n}\n"
+  },
+  {
+    "id": "sql_000",
+    "kind": "sql",
+    "text": "-- Stored procedure example 000\nCREATE OR ALTER PROCEDURE [dbo].[usp_DoWork_000]\n    @UserId INT,\n    @IsActive BIT = 1\nAS\nBEGIN\n    SET NOCOUNT ON;\n\n    DECLARE @Now DATETIME2 = SYSUTCDATETIME();\n\n    SELECT TOP (10) u.[Id], u.[Name], u.[CreatedAt]\n    FROM [dbo].[Users] u WITH (NOLOCK)\n    WHERE u.[Id] = @UserId\n      AND u.[IsActive] = @IsActive\n    ORDER BY u.[CreatedAt] DESC;\nEND\nGO\n"
+  },
+  {
+    "id": "dotnet_008",
+    "kind": "dotnet",
+    "text": "using System;\nusing System.Collections.Generic;\nusing System.Linq;\nusing System.Threading;\nusing System.Threading.Tasks;\n\nnamespace MyApp.Feature008\n{\n    public sealed class Settings008\n    {\n        public string Mode { get; init; } = \"dev\";\n        public int Retries { get; init; } = 4;\n    }\n\n    public static class SettingsParser008\n    {\n        public static Settings008 Parse(string json)\n            => System.Text.Json.JsonSerializer.Deserialize<Settings008>(json) ?? new Settings008();\n    }\n}\n"
+  },
+  {
+    "id": "dotnet_027",
+    "kind": "dotnet",
+    "text": "using System;\nusing System.Collections.Generic;\nusing System.Linq;\nusing System.Threading;\nusing System.Threading.Tasks;\n\nnamespace MyApp.Feature027\n{\n    public static class FileOps027\n    {\n        public static string ReadSafe(string path)\n        {\n            if (!System.IO.File.Exists(path))\n                return string.Empty;\n\n            using var sr = System.IO.File.OpenText(path);\n            return sr.ReadToEnd();\n        }\n    }\n}\n"
+  },
+  {
+    "id": "dotnet_with_sql_008",
+    "kind": "dotnet_with_sql",
+    "text": "public static class SqlText008\n{\n    public const string Query = @\"\n        SELECT i.Id, i.Name\n        FROM dbo.Items i WITH (NOLOCK)\n        WHERE i.Code LIKE @prefix + '%'\n        ORDER BY i.Id;\n    \";\n}\n"
+  },
+  {
+    "id": "dotnet_036",
+    "kind": "dotnet",
+    "text": "using System;\nusing System.Collections.Generic;\nusing System.Linq;\nusing System.Threading;\nusing System.Threading.Tasks;\n\nnamespace MyApp.Feature036\n{\n    public static class EndpointMap036\n    {\n        public static void Map(WebApplication app)\n        {\n            app.MapGet(\"/health/1\", () => Results.Ok(new { status = \"ok\", ts = DateTimeOffset.UtcNow }));\n        }\n    }\n}\n"
+  },
+  {
+    "id": "dotnet_022",
+    "kind": "dotnet",
+    "text": "using System;\nusing System.Collections.Generic;\nusing System.Linq;\nusing System.Threading;\nusing System.Threading.Tasks;\n\nnamespace MyApp.Feature022\n{\n    public interface IRepository022<T>\n    {\n        Task<T?> GetAsync(Guid id, CancellationToken ct);\n        Task SaveAsync(T entity, CancellationToken ct);\n    }\n\n    public sealed class InMemoryRepository022<T> : IRepository022<T>\n    {\n        private readonly Dictionary<Guid, T> _store = new();\n\n        public Task<T?> GetAsync(Guid id, CancellationToken ct)\n            => Task.FromResult(_store.TryGetValue(id, out var v) ? v : default);\n\n        public Task SaveAsync(T entity, CancellationToken ct)\n        {\n            _store[Guid.NewGuid()] = entity;\n            return Task.CompletedTask;\n        }\n    }\n}\n"
+  },
+  {
+    "id": "dotnet_034",
+    "kind": "dotnet",
+    "text": "using System;\nusing System.Collections.Generic;\nusing System.Linq;\nusing System.Threading;\nusing System.Threading.Tasks;\n\nnamespace MyApp.Feature034\n{\n    [System.Serializable]\n    public sealed class Dto034\n    {\n        public int Id { get; set; }\n        public string Name { get; set; } = string.Empty;\n    }\n\n    [ApiController]\n    [Route(\"api/items/4\")]\n    public sealed class ItemsController034 : ControllerBase\n    {\n        [HttpGet(\"6\")]\n        public ActionResult<Dto034> Get()\n            => new Dto034 { Id = 34, Name = \"item\" };\n    }\n}\n"
+  },
+  {
+    "id": "sql_002",
+    "kind": "sql",
+    "text": "-- DDL 002\nCREATE TABLE dbo.Items_002 (\n    Id INT IDENTITY(1,1) NOT NULL PRIMARY KEY,\n    Code NVARCHAR(50) NOT NULL,\n    Name NVARCHAR(200) NOT NULL,\n    CreatedAt DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME()\n);\n\nCREATE UNIQUE INDEX IX_Items_002_Code ON dbo.Items_002(Code);\n"
+  },
+  {
+    "id": "sql_035",
+    "kind": "sql",
+    "text": "-- View 035\nCREATE OR ALTER VIEW dbo.vw_ActiveUsers_035\nAS\nSELECT u.Id, u.Name, u.Email\nFROM dbo.Users u\nWHERE u.IsActive = 1;\n"
+  },
+  {
+    "id": "dotnet_with_sql_034",
+    "kind": "dotnet_with_sql",
+    "text": "using Microsoft.EntityFrameworkCore.Migrations;\n\npublic partial class AddIndex_034 : Migration\n{\n    protected override void Up(MigrationBuilder migrationBuilder)\n    {\n        migrationBuilder.Sql(@\"\n            CREATE INDEX IX_Users_Email ON dbo.Users(Email);\n        \");\n    }\n\n    protected override void Down(MigrationBuilder migrationBuilder)\n    {\n        migrationBuilder.Sql(@\"\n            DROP INDEX IX_Users_Email ON dbo.Users;\n        \");\n    }\n}\n"
+  },
+  {
+    "id": "sql_060",
+    "kind": "sql",
+    "text": "-- Stored procedure example 060\nCREATE OR ALTER PROCEDURE [dbo].[usp_DoWork_060]\n    @UserId INT,\n    @IsActive BIT = 1\nAS\nBEGIN\n    SET NOCOUNT ON;\n\n    DECLARE @Now DATETIME2 = SYSUTCDATETIME();\n\n    SELECT TOP (10) u.[Id], u.[Name], u.[CreatedAt]\n    FROM [dbo].[Users] u WITH (NOLOCK)\n    WHERE u.[Id] = @UserId\n      AND u.[IsActive] = @IsActive\n    ORDER BY u.[CreatedAt] DESC;\nEND\nGO\n"
+  },
+  {
+    "id": "dotnet_087",
+    "kind": "dotnet",
+    "text": "using System;\nusing System.Collections.Generic;\nusing System.Linq;\nusing System.Threading;\nusing System.Threading.Tasks;\n\nnamespace MyApp.Feature087\n{\n    public static class FileOps087\n    {\n        public static string ReadSafe(string path)\n        {\n            if (!System.IO.File.Exists(path))\n                return string.Empty;\n\n            using var sr = System.IO.File.OpenText(path);\n            return sr.ReadToEnd();\n        }\n    }\n}\n"
+  },
+  {
+    "id": "sql_026",
+    "kind": "sql",
+    "text": "-- Scalar function 026\nCREATE OR ALTER FUNCTION dbo.fn_NormalizeEmail_026(@Email NVARCHAR(320))\nRETURNS NVARCHAR(320)\nAS\nBEGIN\n    RETURN LOWER(LTRIM(RTRIM(@Email)));\nEND\n"
+  },
+  {
+    "id": "dotnet_with_sql_035",
+    "kind": "dotnet_with_sql",
+    "text": "public static class InterpolatedSql035\n{\n    public static string Build(int days)\n    {\n        // Note: intentionally embedded SQL string\n        return $@\"\n            SELECT u.Id, u.Name\n            FROM dbo.Users u\n            WHERE u.CreatedAt >= DATEADD(day, -{days}, GETDATE())\n            ORDER BY u.CreatedAt DESC;\n        \";\n    }\n}\n"
+  },
+  {
+    "id": "dotnet_060",
+    "kind": "dotnet",
+    "text": "using System;\nusing System.Collections.Generic;\nusing System.Linq;\nusing System.Threading;\nusing System.Threading.Tasks;\n\nnamespace MyApp.Feature060\n{\n    public sealed class Processor060\n    {\n        private readonly IReadOnlyList<int> _values = new List<int> { 4, 6, 10 };\n\n        public async Task<int> RunAsync(CancellationToken ct)\n        {\n            await Task.Delay(10, ct).ConfigureAwait(false);\n\n            var result = _values\n                .Where(x => x >= 0)\n                .Select(x => x * 2)\n                .Sum();\n\n            return result;\n        }\n    }\n}\n"
+  },
+  {
+    "id": "sql_080",
+    "kind": "sql",
+    "text": "-- Stored procedure example 080\nCREATE OR ALTER PROCEDURE [dbo].[usp_DoWork_080]\n    @UserId INT,\n    @IsActive BIT = 1\nAS\nBEGIN\n    SET NOCOUNT ON;\n\n    DECLARE @Now DATETIME2 = SYSUTCDATETIME();\n\n    SELECT TOP (10) u.[Id], u.[Name], u.[CreatedAt]\n    FROM [dbo].[Users] u WITH (NOLOCK)\n    WHERE u.[Id] = @UserId\n      AND u.[IsActive] = @IsActive\n    ORDER BY u.[CreatedAt] DESC;\nEND\nGO\n"
+  },
+  {
+    "id": "dotnet_009",
+    "kind": "dotnet",
+    "text": "using System;\nusing System.Collections.Generic;\nusing System.Linq;\nusing System.Threading;\nusing System.Threading.Tasks;\n\nnamespace MyApp.Feature009\n{\n    public static class MathUtil009\n    {\n        public static double Clamp(double x, double min, double max)\n            => x < min ? min : (x > max ? max : x);\n\n        public static double Lerp(double a, double b, double t)\n            => a + (b - a) * Clamp(t, 0.0, 1.0);\n    }\n}\n"
+  },
+  {
+    "id": "sql_059",
+    "kind": "sql",
+    "text": "-- Cursor-like loop 059\nDECLARE @Id INT;\n\nDECLARE cur CURSOR LOCAL FAST_FORWARD FOR\nSELECT TOP (3) Id FROM dbo.Users ORDER BY Id;\n\nOPEN cur;\nFETCH NEXT FROM cur INTO @Id;\n\nWHILE @@FETCH_STATUS = 0\nBEGIN\n    EXEC dbo.usp_ProcessUser @UserId = @Id;\n    FETCH NEXT FROM cur INTO @Id;\nEND\n\nCLOSE cur;\nDEALLOCATE cur;\n"
+  },
+  {
+    "id": "dotnet_with_sql_082",
+    "kind": "dotnet_with_sql",
+    "text": "using Microsoft.EntityFrameworkCore;\n\npublic sealed class Ctx082 : DbContext\n{\n    public DbSet<UserRow> Users => Set<UserRow>();\n}\n\npublic sealed record UserRow(int Id, string Name);\n\npublic static class EfQueries082\n{\n    public static IQueryable<UserRow> Latest(Ctx082 db)\n    {\n        return db.Users.FromSqlRaw(@\"\n            SELECT TOP (5) u.Id, u.Name\n            FROM dbo.Users u\n            ORDER BY u.CreatedAt DESC;\n        \");\n    }\n}\n"
+  },
+  {
+    "id": "dotnet_with_sql_006",
+    "kind": "dotnet_with_sql",
+    "text": "public static class RawSql006\n{\n    public static string Q() =>\n        \"\"\"SELECT TOP (10) Id, Name\nFROM dbo.Users\nWHERE IsActive = 1\nORDER BY CreatedAt DESC;\"\"\";\n}\n"
+  },
+  {
+    "id": "sql_078",
+    "kind": "sql",
+    "text": "-- Temp tables 078\nCREATE TABLE #t (Id INT, Val NVARCHAR(50));\n\nINSERT INTO #t(Id, Val)\nSELECT TOP (5) Id, Name\nFROM dbo.Users\nORDER BY Id DESC;\n\nSELECT * FROM #t;\n"
+  },
+  {
+    "id": "dotnet_with_sql_058",
+    "kind": "dotnet_with_sql",
+    "text": "public static class SqlText058\n{\n    public const string Query = @\"\n        SELECT i.Id, i.Name\n        FROM dbo.Items i WITH (NOLOCK)\n        WHERE i.Code LIKE @prefix + '%'\n        ORDER BY i.Id;\n    \";\n}\n"
+  },
+  {
+    "id": "dotnet_033",
+    "kind": "dotnet",
+    "text": "using System;\nusing System.Collections.Generic;\nusing System.Linq;\nusing System.Threading;\nusing System.Threading.Tasks;\n\nnamespace MyApp.Feature033\n{\n    public static class Guard033\n    {\n        public static void NotNull(object? value, string name)\n        {\n            if (value is null)\n                throw new ArgumentNullException(name);\n        }\n    }\n\n    public sealed class Service033\n    {\n        public string Execute(string input)\n        {\n            try\n            {\n                Guard033.NotNull(input, nameof(input));\n                return input.Trim().ToUpperInvariant();\n            }\n            catch (Exception ex)\n            {\n                // NOTE: no SQL here; just a message.\n                return $\"Error: {ex.GetType().Name}\";\n            }\n        }\n    }\n}\n"
+  },
+  {
+    "id": "dotnet_with_sql_004",
+    "kind": "dotnet_with_sql",
+    "text": "using Microsoft.EntityFrameworkCore.Migrations;\n\npublic partial class AddIndex_004 : Migration\n{\n    protected override void Up(MigrationBuilder migrationBuilder)\n    {\n        migrationBuilder.Sql(@\"\n            CREATE INDEX IX_Users_Email ON dbo.Users(Email);\n        \");\n    }\n\n    protected override void Down(MigrationBuilder migrationBuilder)\n    {\n        migrationBuilder.Sql(@\"\n            DROP INDEX IX_Users_Email ON dbo.Users;\n        \");\n    }\n}\n"
+  },
+  {
+    "id": "dotnet_with_sql_017",
+    "kind": "dotnet_with_sql",
+    "text": "using System.Data;\nusing Dapper;\n\npublic static class StoredProc017\n{\n    public static Task ExecAsync(IDbConnection db, int userId)\n    {\n        var sql = \"EXEC dbo.usp_DoWork_017 @UserId = @userId, @IsActive = 1;\";\n        return db.ExecuteAsync(sql, new { userId });\n    }\n}\n"
+  },
+  {
+    "id": "dotnet_055",
+    "kind": "dotnet",
+    "text": "using System;\nusing System.Collections.Generic;\nusing System.Linq;\nusing System.Threading;\nusing System.Threading.Tasks;\n\nnamespace MyApp.Feature055\n{\n    public sealed class ViewModel055 : System.ComponentModel.INotifyPropertyChanged\n    {\n        public event System.ComponentModel.PropertyChangedEventHandler? PropertyChanged;\n\n        private string _title = \"Hello\";\n        public string Title\n        {\n            get => _title;\n            set\n            {\n                if (_title == value) return;\n                _title = value;\n                PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs(nameof(Title)));\n            }\n        }\n    }\n}\n"
+  },
+  {
+    "id": "sql_086",
+    "kind": "sql",
+    "text": "-- Scalar function 086\nCREATE OR ALTER FUNCTION dbo.fn_NormalizeEmail_086(@Email NVARCHAR(320))\nRETURNS NVARCHAR(320)\nAS\nBEGIN\n    RETURN LOWER(LTRIM(RTRIM(@Email)));\nEND\n"
+  },
+  {
+    "id": "sql_004",
+    "kind": "sql",
+    "text": "-- Transactional update 004\nBEGIN TRY\n    BEGIN TRAN;\n\n    UPDATE dbo.Accounts\n    SET Balance = Balance - 14\n    WHERE AccountId = @FromAccountId;\n\n    UPDATE dbo.Accounts\n    SET Balance = Balance + 14\n    WHERE AccountId = @ToAccountId;\n\n    COMMIT TRAN;\nEND TRY\nBEGIN CATCH\n    IF @@TRANCOUNT > 0 ROLLBACK TRAN;\n    THROW;\nEND CATCH\n"
+  },
+  {
+    "id": "dotnet_with_sql_000",
+    "kind": "dotnet_with_sql",
+    "text": "using System.Data;\nusing Dapper;\n\npublic sealed class Repo000\n{\n    private readonly IDbConnection _db;\n    public Repo000(IDbConnection db) => _db = db;\n\n    public Task<int> CountActiveAsync(int tenantId)\n    {\n        var sql = @\"\n            SELECT COUNT(1)\n            FROM dbo.Users u\n            WHERE u.IsActive = 1 AND u.TenantId = @tenantId;\n        \";\n        return _db.ExecuteScalarAsync<int>(sql, new { tenantId });\n    }\n}\n"
+  },
+  {
+    "id": "sql_057",
+    "kind": "sql",
+    "text": "-- Trigger 057\nCREATE OR ALTER TRIGGER dbo.trg_ItemsAudit_057\nON dbo.Items\nAFTER INSERT, UPDATE\nAS\nBEGIN\n    SET NOCOUNT ON;\n\n    INSERT INTO dbo.ItemsAudit(ItemId, ChangedAt)\n    SELECT i.Id, SYSUTCDATETIME()\n    FROM inserted i;\nEND\n"
+  },
+  {
+    "id": "sql_084",
+    "kind": "sql",
+    "text": "-- Transactional update 084\nBEGIN TRY\n    BEGIN TRAN;\n\n    UPDATE dbo.Accounts\n    SET Balance = Balance - 44\n    WHERE AccountId = @FromAccountId;\n\n    UPDATE dbo.Accounts\n    SET Balance = Balance + 44\n    WHERE AccountId = @ToAccountId;\n\n    COMMIT TRAN;\nEND TRY\nBEGIN CATCH\n    IF @@TRANCOUNT > 0 ROLLBACK TRAN;\n    THROW;\nEND CATCH\n"
+  },
+  {
+    "id": "sql_096",
+    "kind": "sql",
+    "text": "-- Scalar function 096\nCREATE OR ALTER FUNCTION dbo.fn_NormalizeEmail_096(@Email NVARCHAR(320))\nRETURNS NVARCHAR(320)\nAS\nBEGIN\n    RETURN LOWER(LTRIM(RTRIM(@Email)));\nEND\n"
+  },
+  {
+    "id": "sql_070",
+    "kind": "sql",
+    "text": "-- Stored procedure example 070\nCREATE OR ALTER PROCEDURE [dbo].[usp_DoWork_070]\n    @UserId INT,\n    @IsActive BIT = 1\nAS\nBEGIN\n    SET NOCOUNT ON;\n\n    DECLARE @Now DATETIME2 = SYSUTCDATETIME();\n\n    SELECT TOP (10) u.[Id], u.[Name], u.[CreatedAt]\n    FROM [dbo].[Users] u WITH (NOLOCK)\n    WHERE u.[Id] = @UserId\n      AND u.[IsActive] = @IsActive\n    ORDER BY u.[CreatedAt] DESC;\nEND\nGO\n"
+  },
+  {
+    "id": "dotnet_084",
+    "kind": "dotnet",
+    "text": "using System;\nusing System.Collections.Generic;\nusing System.Linq;\nusing System.Threading;\nusing System.Threading.Tasks;\n\nnamespace MyApp.Feature084\n{\n    [System.Serializable]\n    public sealed class Dto084\n    {\n        public int Id { get; set; }\n        public string Name { get; set; } = string.Empty;\n    }\n\n    [ApiController]\n    [Route(\"api/items/4\")]\n    public sealed class ItemsController084 : ControllerBase\n    {\n        [HttpGet(\"0\")]\n        public ActionResult<Dto084> Get()\n            => new Dto084 { Id = 84, Name = \"item\" };\n    }\n}\n"
+  },
+  {
+    "id": "dotnet_with_sql_092",
+    "kind": "dotnet_with_sql",
+    "text": "using Microsoft.EntityFrameworkCore;\n\npublic sealed class Ctx092 : DbContext\n{\n    public DbSet<UserRow> Users => Set<UserRow>();\n}\n\npublic sealed record UserRow(int Id, string Name);\n\npublic static class EfQueries092\n{\n    public static IQueryable<UserRow> Latest(Ctx092 db)\n    {\n        return db.Users.FromSqlRaw(@\"\n            SELECT TOP (5) u.Id, u.Name\n            FROM dbo.Users u\n            ORDER BY u.CreatedAt DESC;\n        \");\n    }\n}\n"
+  },
+  {
+    "id": "sql_087",
+    "kind": "sql",
+    "text": "-- Trigger 087\nCREATE OR ALTER TRIGGER dbo.trg_ItemsAudit_087\nON dbo.Items\nAFTER INSERT, UPDATE\nAS\nBEGIN\n    SET NOCOUNT ON;\n\n    INSERT INTO dbo.ItemsAudit(ItemId, ChangedAt)\n    SELECT i.Id, SYSUTCDATETIME()\n    FROM inserted i;\nEND\n"
+  },
+  {
+    "id": "dotnet_with_sql_073",
+    "kind": "dotnet_with_sql",
+    "text": "using Microsoft.EntityFrameworkCore;\n\npublic static class EfCommands073\n{\n    public static Task<int> CleanupAsync(DbContext db)\n    {\n        return db.Database.ExecuteSqlRawAsync(@\"\n            DELETE FROM dbo.Sessions\n            WHERE ExpiresAt < SYSUTCDATETIME();\n        \");\n    }\n}\n"
+  }
+]

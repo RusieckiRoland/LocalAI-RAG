@@ -33,7 +33,6 @@ MD_LINK_RE  = re.compile(r"\[[^\]]*\]\(https?://[^\)]*\)")
 # Bare http(s) lines (often added by models as references)
 HTTP_LINE_RE= re.compile(r"^\(?https?://[^\s)]+.*\)?$", re.MULTILINE)
 
-FOLLOWUP_PREFIX = constants.FOLLOWUP_PREFIX
 
 
 # --- Generic helpers ----------------------------------------------------------
@@ -134,40 +133,3 @@ def _extract_plantuml_code(md: str) -> str | None:
     return None
 
 
-# --- FOLLOWUP extraction ------------------------------------------------------
-
-def extract_followup(response: str) -> str | None:
-    """
-    Extract a single follow-up query from a model response based on a fixed prefix.
-
-    Rules:
-    - Prefer an exact, literal prefix at the beginning of the response.
-    - Otherwise, use a safe regex anchored at ^ with `re.escape(prefix)`.
-    - Only the **first line** after the prefix is taken (models sometimes add notes below).
-    - Strip surrounding quotes/backticks and square brackets.
-
-    Returns the cleaned follow-up string, or None if not present.
-    """
-    resp = (response or "").strip()
-
-    # 1) Most reliable: literal prefix at the very start
-    if resp.startswith(FOLLOWUP_PREFIX):
-        raw = resp[len(FOLLOWUP_PREFIX):].strip()
-    else:
-        # 2) Safe regex with re.escape and ^ anchor
-        m = re.search(rf"^{re.escape(FOLLOWUP_PREFIX)}\s*(.+)$", resp, flags=re.DOTALL)
-        if not m:
-            return None
-        raw = m.group(1).strip()
-
-    # Keep only the first line (the model may append comments below)
-    raw = raw.splitlines()[0].strip()
-
-    # Remove surrounding symmetric quotes/backticks if present
-    if len(raw) >= 2 and raw[0] in "'\"`" and raw[-1] == raw[0]:
-        raw = raw[1:-1].strip()
-
-    # Remove surrounding brackets (common stylistic addition)
-    raw = raw.strip("[]")
-
-    return raw or None

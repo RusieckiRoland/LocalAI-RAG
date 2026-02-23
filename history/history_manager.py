@@ -1,10 +1,10 @@
 # File: history/history_manager.py
 from __future__ import annotations
 
-import uuid
 import json
 import time
-from typing import Optional, Any
+import uuid
+from typing import Any, Optional
 
 from .history_backend import HistoryBackend
 
@@ -15,6 +15,14 @@ class HistoryManager:
     for a single session. It serializes history to JSON and delegates
     persistence to a pluggable `HistoryBackend`.
 
+    Requirements implemented:
+    - Persist ONLY:
+        * the user's original query
+        * the model's final answer
+      (no intermediate retrieval chunks / follow-up iterations in history)
+    - Keep `session_id` as the primary key, but also store `user_id` metadata
+      (reserved for future authenticated users).
+
     Notes
     -----
     - `ttl` (in seconds) is optional and only used if the backend supports it.
@@ -22,14 +30,29 @@ class HistoryManager:
       falls back to a plain `set(key, value)`.
     """
 
-    def __init__(self, backend: HistoryBackend, session_id: Optional[str] = None, ttl: Optional[int] = None):
+    def __init__(
+        self,
+        backend: HistoryBackend,
+        session_id: Optional[str] = None,
+        ttl: Optional[int] = None,
+        user_id: Optional[str] = None,
+    ):
         self.session_id: str = session_id or str(uuid.uuid4())
         self.backend = backend
         self.ttl = ttl  # optional TTL in seconds; used only if the backend supports it
+        self._user_id: Optional[str] = user_id
+
+        # Persist initial user_id if provided (best effort).
+        if user_id:
+            self.set_user_id(user_id)
 
     # ------------------------------
     # Backend I/O
     # ------------------------------
+    @property
+    def _meta_key(self) -> str:
+        return f"{self.session_id}:meta"
+
     def _load_history(self) -> list[dict[str, Any]]:
         """
         Load the full session history from the backend.
@@ -59,10 +82,53 @@ class HistoryManager:
             # Fallback to the interface contract: set(key, value)
             self.backend.set(self.session_id, data)
 
+    def _save_meta(self, meta: dict[str, Any]) -> None:
+        data = json.dumps(meta, ensure_ascii=False)
+        try:
+            self.backend.set(self._meta_key, data, ttl=self.ttl)  # type: ignore[call-arg]
+        except TypeError:
+            self.backend.set(self._meta_key, data)
+
+    def _load_meta(self) -> dict[str, Any]:
+        raw = self.backend.get(self._meta_key)
+        if raw:
+            try:
+                data = json.loads(raw)
+                if isinstance(data, dict):
+                    return data
+            except json.JSONDecodeError:
+                pass
+        return {}
+
+    # ------------------------------
+    # Public API: session metadata
+    # ------------------------------
+    def set_user_id(self, user_id: str) -> None:
+        """
+        Store user_id as session metadata.
+
+        This does NOT change session_id-based routing today.
+        It's reserved for future: authenticated users → list/restore sessions.
+        """
+        self._user_id = user_id
+        meta = self._load_meta()
+        meta["user_id"] = user_id
+        meta["updated_at"] = time.time()
+        if "created_at" not in meta:
+            meta["created_at"] = time.time()
+        self._save_meta(meta)
+
+    def get_user_id(self) -> Optional[str]:
+        if self._user_id:
+            return self._user_id
+        meta = self._load_meta()
+        u = meta.get("user_id")
+        return u if isinstance(u, str) and u.strip() else None
+
     # ------------------------------
     # Public API: history operations
     # ------------------------------
-    def start_user_query(self, en: str, pl: Optional[str] = None) -> None:
+    def start_user_query(self, en: str, pl: Optional[str] = None, user_id: Optional[str] = None) -> None:
         """
         Start a new user query entry (appends to the session history).
 
@@ -72,37 +138,34 @@ class HistoryManager:
             English version of the user's question. If empty, `pl` is used.
         pl : Optional[str]
             Polish version of the user's question (optional).
+        user_id : Optional[str]
+            User identifier (reserved for future authenticated sessions).
         """
+        if user_id:
+            self.set_user_id(user_id)
+
         history = self._load_history()
         question_en = (en or pl or "")  # keep non-None string
-        history.append({
-            "timestamp": time.time(),
-            "user_query": {"pl": pl, "en": question_en},
-            "iterations": [],
-            "final_answer": None,
-        })
+
+        # IMPORTANT: keep history compact: only original question and final answer.
+        history.append(
+            {
+                "timestamp": time.time(),
+                "user_query": {"pl": pl, "en": question_en},
+                "final_answer": None,
+            }
+        )
         self._save_history(history)
 
     def add_iteration(self, codellama_query: str, faiss_results: list[dict[str, Any]]) -> None:
         """
-        Append an iteration record to the latest user query.
+        Legacy API kept for compatibility with pipeline actions/tests.
 
-        Parameters
-        ----------
-        codellama_query : str
-            The follow-up/search query sent to CodeLlama (controller decision).
-        faiss_results : list[dict[str, Any]]
-            A list of FAISS search results (already serialized to plain dicts).
+        Intentionally NO-OP:
+        we no longer persist intermediate follow-ups / retriever chunks in session history,
+        because it quickly explodes context size and pollutes future prompts.
         """
-        history = self._load_history()
-        if not history:
-            raise RuntimeError("No user query to attach iteration.")
-        history[-1]["iterations"].append({
-            "timestamp": time.time(),
-            "codellama_query": codellama_query,
-            "faiss_results": faiss_results,
-        })
-        self._save_history(history)
+        return
 
     def set_final_answer(self, en: str, pl: Optional[str] = None) -> None:
         """
@@ -126,8 +189,9 @@ class HistoryManager:
         return self._load_history()
 
     def clear_history(self) -> None:
-        """Delete the entire session history for the current session id."""
+        """Delete the entire session history for the current session id (and its metadata)."""
         self.backend.delete(self.session_id)
+        self.backend.delete(self._meta_key)
 
     def get_context_blocks(self) -> list[str]:
         """
@@ -136,28 +200,21 @@ class HistoryManager:
         Returns
         -------
         list[str]
-            A sequence of text blocks combining user queries, iterations and final answers.
+            A sequence of text blocks containing ONLY:
+            - user question (EN)
+            - final answer (EN)
         """
         history = self.get_history()
         blocks: list[str] = []
 
         for entry in history:
-            # Add the user's (English) question
             question_en = entry.get("user_query", {}).get("en", "") or ""
-            blocks.append(f"User asked: {question_en}")
+            if question_en.strip():
+                blocks.append(f"User asked: {question_en}")
 
-            # Add CodeLlama iterations and FAISS results
-            for iteration in entry.get("iterations", []):
-                q = iteration.get("codellama_query", "") or ""
-                faiss_results_list = iteration.get("faiss_results", []) or []
-                faiss_results = "\n".join(
-                    json.dumps(r, ensure_ascii=False) for r in faiss_results_list
-                )
-                blocks.append(f"CodeLlama asked: {q}\n{faiss_results}")
-
-            # Add the final (English) answer if present
             final_answer = entry.get("final_answer", {}) or {}
-            if final_answer.get("en"):
-                blocks.append(f"Final answer: {final_answer['en']}")
+            ans_en = final_answer.get("en") if isinstance(final_answer, dict) else None
+            if isinstance(ans_en, str) and ans_en.strip():
+                blocks.append(f"Final answer: {ans_en}")
 
         return blocks

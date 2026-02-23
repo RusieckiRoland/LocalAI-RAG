@@ -1,0 +1,73 @@
+{
+  "contractVersion": 2,
+  "endpoints": {
+    "appConfig": {
+      "method": "GET",
+      "path": "/app-config",
+      "response": {
+        "session_id": "string",
+        "user_id": "string|null",
+        "user_kind": "anonymous|user",
+        "repository": "string",
+        "snapshotPolicy": "single|multi_confirm",
+        "defaultConsultantId": "string",
+        "consultants": [
+          {
+            "id": "string",
+            "pipelineName": "string",
+            "snapshotPickerMode": "single|compare",
+            "snapshotSetId": "string|null",
+            "snapshots": [
+              {
+                "id": "string",
+                "label": "string"
+              }
+            ],
+            "icon": "string",
+            "displayName": "string",
+            "cardDescription": { "pl": "string", "en": "string" },
+            "welcomeTemplate": { "pl": "string", "en": "string" },
+            "welcomeLinkText": { "pl": "string", "en": "string" },
+            "wikiUrl": { "pl": "string", "en": "string" }
+          }
+        ]
+      }
+    },
+    "search": {
+      "method": "POST",
+      "path": "/search",
+      "request": {
+        "query": "string",
+        "consultant": "string",
+        "translateChat": "bool",
+        "snapshots": ["string"],
+        "snapshot_set_id": "string|null"
+      },
+      "response": {
+        "session_id": "string",
+        "results": "string (markdown)",
+        "translated": "string|null",
+        "error": "string|null"
+      }
+    }
+  },
+  "uiRules": {
+    "snapshotPickerMode": {
+      "single": "UI shows one snapshot selector.",
+      "compare": "UI shows two snapshot selectors (left/right)."
+    },
+    "snapshotPolicy": {
+      "single": "Default. A conversation must not span multiple snapshot sets. If the user selects a pipeline with a different snapshotSetId, the UI must ask to start a new conversation. If rejected, keep the previous pipeline and snapshot selection.",
+      "multi_confirm": "Enabled via config. The UI may allow switching to a different snapshotSetId within the same conversation, but must show a clear warning and append a system message in the chat history stating that the snapshot changed (include old and new labels/ids)."
+    },
+    "snapshotRules": [
+      "Templates are UI-only and never authoritative for snapshot mapping; the backend resolves snapshotSetId and snapshots from Weaviate.",
+      "Pipeline → snapshotSetId mapping is resolved from pipeline YAML settings (settings.snapshot_set_id).",
+      "A pipeline may have a single snapshotSetId or null (no retrieval).",
+      "If snapshots are provided, UI displays snapshot.label but must send snapshot.id in queries.",
+      "Frontend always keeps a current snapshot_id; it is the last non-empty snapshot used by the user.",
+      "If the selected pipeline has snapshotSetId = null, the current snapshot_id remains unchanged."
+    ],
+    "welcomeLink": "Only the {link} part in welcomeTemplate becomes a clickable <a>."
+  }
+}

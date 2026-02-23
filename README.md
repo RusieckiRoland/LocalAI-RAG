@@ -1,10 +1,243 @@
-# 🧠 GPU‑Accelerated RAG with FAISS + LLaMA
+# 🧠 GPU-Accelerated RAG with Weaviate (BYOV) + LLaMA
 
-**Target platform:** Linux or WSL2 • **Python:** 3.11 • **GPU:** NVIDIA (CUDA) • **Package manager:** Conda
+**Security-aware, local-oriented RAG for code repositories (Weaviate BYOV + LLM via llama.cpp).**
 
-**Purpose.** Build a **local, GPU‑accelerated knowledge base for your source code**: index it, analyze it, and **search/query it with AI**. The system runs **fully on‑premises** — no source code leaves your network; models execute on your GPU.
+This is a **full-featured RAG server** (retrieval + generation) that can use **external LLMs like any other RAG** — but it is designed to **enforce security policies** and **reduce the risk of accidental data leakage** when working with **classified or restricted content**.
 
-**Hardware target.** Optimized for a **single NVIDIA RTX 4090** (CUDA 12.x). Defaults (e.g., full llama.cpp CUDA offload, FAISS‑GPU) are tuned to comfortably fit 24–32 GB VRAM.
+It uses **Weaviate as the single retrieval backend** (vector search + BM25 + hybrid + metadata filtering) with **BYOV (Bring Your Own Vectors)** — embeddings are computed locally and stored in Weaviate. **FAISS is not used anywhere** in this project.
+
+## What “local-oriented” means here
+
+“Local-oriented” does **not** mean “no external LLMs”. It means:
+
+- you can run fully on-prem (GPU) end-to-end,
+- you can still route prompts to external providers when allowed,
+- and the system can **automatically fall back to an approved local/internal model** when a request touches **classified data**.
+
+In other words: **it behaves like a standard RAG**, but adds **policy enforcement and policy-driven routing** so sensitive contexts are not accidentally sent outside.
+
+## Security policies (built-in)
+
+The system supports **classification-aware generation**:
+
+- retrieved fragments can carry **classification labels** (and other security metadata),
+- policies can **block external LLM traffic entirely**, or
+- **route generation** to a safe internal/local LLM when a retrieval batch contains content above a configured threshold.
+
+### Why it works well for code analysis
+
+The core optimization for code-repo analysis is that retrieval is not just “top-K chunks”.  
+This system is designed to cooperate with a **.NET + SQL code indexer** that produces:
+
+- **structured code fragments** (files / classes / methods / SQL objects) ready for retrieval,
+- rich **metadata** for filtering and access control,
+- and — most importantly — a **dependency graph** linking fragments.
+
+That graph lets retrieval behave more like a real developer: start from a likely entry point and then **trace dependencies** (callers/callees, type usages, EF links, SQL relationships) to assemble a coherent evidence set. In practice this means the model can “follow the code” instead of guessing based on isolated snippets.
+
+### Not only for code — also for regular documents
+
+Although the system is optimized for code repositories, it can also serve as a RAG backend for typical documents. The difference is that it includes optional mechanisms for **relationship-aware retrieval** (graph expansion and dependency tracing) when the indexed data provides those links.
+
+### Data versioning philosophy: snapshots and snapshot sets
+
+The system’s data model is built around **snapshots** and **snapshot sets**.
+
+- A **snapshot** is a fixed, versioned corpus you query to get **deterministic, repeatable answers** — for example:
+  - a specific version of a codebase,
+  - or a document set frozen at a specific point in time (e.g., a law as adopted in a given year).
+
+- If you have two versions (e.g., `main` vs `develop`), you are working with **two snapshots**.  
+  Likewise, an original law and its amended version are also naturally represented as different snapshots.
+
+- A **snapshot set** groups multiple snapshots into an explicit comparison context.  
+  This enables workflows like “compare these two versions”, but the comparison must always be based on **explicit, declared assumptions** (which snapshots, what relationship, what rules) — nothing is implicit or accidental.
+
+---
+
+## Architectural Core Principle: Flexibility
+
+The system is built around dynamic pipelines defined in YAML files.  
+You can treat pipelines like building blocks (actions) and assemble them as needed:
+
+- easily change the order of processing steps
+- add / disable actions (translation, routing, search, answer generation…)
+- define your own prompts, filters, context limits, and policies
+- create different work modes (code analysis, UML diagrams, branch comparison)
+- reuse and extend existing YAML pipelines via inheritance, eliminating the need to redefine everything from scratch.
+
+Think of it as pipeline composition by configuration, not by code — like configuring a workflow in a YAML file.
+
+**At a glance**
+
+```mermaid id="idjbe5"
+flowchart LR
+    A["translate_in_if_needed"] --> B["load_conversation_history"]
+    B --> C{"sufficiency router"}
+    C -->|BM25 / SEMANTIC / HYBRID| D["search_nodes"]
+    D --> E["manage_context_budget"]
+    E --> F["fetch_node_texts"]
+    F --> G["call_model answer_v1"]
+    G --> H{"sufficient context"}
+    H -->|no| I["loop_guard"]
+    I --> D
+    H -->|yes| J["finalize"]
+```
+
+### Pipeline reliability additions
+
+- **Context divider for new retrieval batches:** `manage_context_budget` can insert a one-line marker
+  (e.g., `<<<New content`) each time a new batch is appended to `state.context_blocks`. This makes
+  “latest evidence” clearly visible to downstream prompts.
+- **Sufficiency anti-repeat guard in prompt:** the `sufficiency_router_v1` prompt now includes
+  `<<<LAST QUERY>` and `<<<PREVIOUS QUERIES>` injected from pipeline state, and explicitly forbids
+  repeating or paraphrasing earlier retrieval queries.
+
+More details, diagrams, and examples are available here:
+
+→ **`docs/`** – full documentation of pipelines, actions, and configuration
+
+### Minimal pipeline example (YAML)
+
+```yaml
+YAMLpipeline:
+  name: "rejewski"
+
+  settings:
+    entry_step_id: "translate"
+    behavior_version: "0.2.0"
+    compat_mode: locked
+
+  steps:
+    - id: "translate"
+      action: "translate_in_if_needed"
+      next: "load_history"
+
+    - id: "load_history"
+      action: "load_conversation_history"
+      next: "search"
+
+    - id: "search"
+      action: "search_nodes"
+      search_type: "hybrid"
+      top_k: 8
+      next: "fetch"
+
+    - id: "fetch"
+      action: "fetch_node_texts"
+      top_n_from_settings: "node_text_fetch_top_n"
+      next: "answer"
+
+    - id: "answer"
+      action: "call_model"
+      prompt_key: "rejewski/answer_v1"
+      next: "finalize"
+
+    - id: "finalize"
+      action: "finalize"
+      end: true
+```
+
+### Deterministic pipelines across engine versions (compat + lockfile)
+
+The pipeline engine is expected to evolve (new features, new defaults, stricter validation).  
+If a pipeline must remain **deterministic and stable regardless of engine upgrades**, it should be run in **compat mode** with a **lockfile**.
+
+- Every pipeline must declare:
+  - `settings.behavior_version`
+  - `settings.compat_mode`
+
+- When `compat_mode: locked` is enabled, a lockfile must exist next to the YAML:
+  - `<pipeline_basename>.lock.json`
+
+The lockfile freezes version-sensitive behavior (defaults, normalization, validation rules, and other implicit semantics captured by the lockfile).
+
+Generate the lockfile:
+
+```bash id="ohhaol"
+python -m code_query_engine.pipeline.pipeline_cli lock pipelines/rejewski.yaml
+```
+
+### Pipeline inheritance (fast evolution without copy-paste)
+
+Pipelines can **inherit** from other pipelines. This lets you keep a stable base pipeline and create variants by overriding only the parts that change (retrieval strategy, router prompt, filters, limits, policies).
+
+Example: a derived pipeline that reuses the base structure but changes retrieval mode and answer prompt.
+
+**Base pipeline (`pipelines/base/rejewski_base.yaml`)**
+```yaml
+YAMLpipeline:
+  name: "rejewski_base"
+
+  settings:
+    entry_step_id: "translate"
+    behavior_version: "0.2.0"
+    compat_mode: locked
+
+  steps:
+    - id: "translate"
+      action: "translate_in_if_needed"
+      next: "load_history"
+
+    - id: "load_history"
+      action: "load_conversation_history"
+      next: "search"
+
+    - id: "search"
+      action: "search_nodes"
+      search_type: "hybrid"
+      top_k: 8
+      next: "fetch"
+
+    - id: "fetch"
+      action: "fetch_node_texts"
+      top_n_from_settings: "node_text_fetch_top_n"
+      next: "answer"
+
+    - id: "answer"
+      action: "call_model"
+      prompt_key: "rejewski/answer_v1"
+      next: "finalize"
+
+    - id: "finalize"
+      action: "finalize"
+      end: true
+```
+
+**Derived pipeline (`pipelines/rejewski_semantic.yaml`)**
+```yaml
+YAMLpipeline:
+  name: "rejewski_semantic"
+  extends: "pipelines/base/rejewski_base.yaml"
+
+  steps:
+    - id: "search"
+      action: "search_nodes"
+      search_type: "semantic_rerank"
+      top_k: 12
+      next: "fetch"
+
+    - id: "answer"
+      action: "call_model"
+      prompt_key: "rejewski/answer_semantic_v1"
+      next: "finalize"
+```
+
+### Access control via pipeline assignment
+
+Assigning users to specific pipelines is not only a UX choice — it is also a practical **access-control mechanism**.
+
+Different pipelines can enforce different constraints:
+- which repositories/snapshots a user can query,
+- which metadata filters must always apply,
+- whether graph expansion is allowed,
+- whether external LLM calls are permitted,
+- and how classification labels affect routing.
+
+In other words: granting a user access to a pipeline can be used to grant (or deny) access to specific datasets and behaviors.
+
+## **Hardware target.** 
+Optimized for a **single NVIDIA RTX 4090** (CUDA 12.x). Defaults (e.g., full llama.cpp CUDA offload) are tuned for a single high-end GPU (e.g., RTX 4090-class).
 
 **Stack focus.**
 
@@ -14,561 +247,39 @@
 
 **Who is this for?** Organizations that **cannot send code to external services** (e.g., banks, financial institutions, operators of critical infrastructure) and must run **fully local** solutions.
 
-
 ---
 
-## 1) Prerequisites
-
-* Linux or WSL2 (Windows 11 recommended)
-* NVIDIA GPU with recent drivers (for WSL2, ensure GPU passthrough works)
-* Miniconda (or Anaconda)
-
-Quick GPU sanity check:
-
-```bash
-nvidia-smi
-```
-
-You should see your GPU listed. If not, fix drivers/WSL2 before continuing.
-
-Install Miniconda (if needed):
-
-```bash
-wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O miniconda.sh
-bash miniconda.sh
-source ~/.bashrc
-conda --version
-```
-
----
-
-## 2) Clone the repository
-
-```bash
-git clone <YOUR-REPO-URL>
-cd <PROJECT-FOLDER>
-```
-
-> 🔒 **Models are not committed.** Each target folder already contains a `DOWNLOAD_MODEL.md` with instructions.
-
-
-To index your .NET solution:
-
-```bash
-# 1. Clone the indexer
-git clone https://github.com/RusieckiRoland/RoslynIndexer.git
-cd RoslynIndexer
-
-# 2. Run the indexer (see full README in that repo)
-dotnet run --project ./RoslynIndexer.Net9/RoslynIndexer.Net9.csproj -- \
-  --solution "D:\Repo\src\MySolution.sln" \
-  --temp-root "D:\Work\"
-```
-**PowerShell**
-``` PowerShell
-git clone https://github.com/RusieckiRoland/RoslynIndexer.git
-cd RoslynIndexer
-dotnet run --project .\RoslynIndexer.Net9\RoslynIndexer.Net9.csproj -- `
-  --solution "D:\Repo\src\MySolution.sln" `
-  --temp-root "D:\Work\"
-```
----
-
-
-## 3) Create the environment
-
-> We keep **llama‑cpp‑python** out of `environment.yml` to install the exact CUDA wheel after the env is created.
-
-```bash
-conda env create -f environment.yml
-conda activate rag-faiss
-```
-
-If you see a warning about `sacremoses`, install it (needed for some MarianMT models):
-
-```bash
-pip install sacremoses
-```
-
-### `environment.yml` (reference)
-
-```yaml
-name: rag-faiss
-channels:
-  - pytorch
-  - nvidia
-  - conda-forge
-dependencies:
-  # --- Core environment pins ---
-  - python=3.11.*
-  - numpy=1.26.4
-  - faiss-gpu=1.8.0
-  - cuda-toolkit=12.1
-  - pip
-
-  # --- Pip dependencies ---
-  - pip:
-      - numpy==1.26.4
-      - sentence-transformers
-      - tqdm
-      - flask
-      - flask-cors
-      - huggingface-hub
-      - transformers
-      - safetensors
-      - sentencepiece
-      - sacremoses
-      - protobuf
-      - mdpo
-      - pytest
-      - pytest-mock
-      - diskcache         # ✅ Added manually for llama-cpp-python
-      - jinja2            # ✅ Dependency also needed by llama-cpp-python
-      - typing-extensions # ✅ Safe for PyTorch and llama-cpp-python
-      - python-dotenv
-
-> ⚙️ **Note:**  
-> The `environment.yml` shown above is **for reference only**.  
-> It is meant to illustrate the key dependencies but may become outdated as the project evolves.  
-> Always use and update the **actual `environment.yml` file** in the repository when creating or updating your Conda environment.
-
-```
-
-> 💡 If `faiss-gpu` is not available for your platform/Python, temporarily replace it with `faiss-cpu` and proceed. GPU acceleration for FAISS can be enabled later.
-
----
-
-## 4) Install llama‑cpp‑python (CUDA build)
-
-By default, `pip install llama-cpp-python` provides a CPU build. Install the **CUDA build** that matches your CUDA runtime (e.g., `cu121` for CUDA 12.1).
-
-```bash
-# remove any CPU build if present
-pip uninstall -y llama-cpp-python
-
-# install CUDA build
-wget https://github.com/abetlen/llama-cpp-python/releases/download/v0.3.16-cu121/llama_cpp_python-0.3.16-cp311-cp311-linux_x86_64.whl
-
-pip install --no-deps llama_cpp_python-0.3.16-cp311-cp311-linux_x86_64.whl
-
-# quick import check
-python - <<'PY'
-from llama_cpp import Llama, __version__
-print("llama_cpp import OK, version:", __version__)
-PY
-```
-
----
-
-## 5) Download models into the **existing** folders
-
-### One‑shot downloader (`download_models.sh`) — **recommended**
-
-A convenience script is provided at the **repo root**. It fetches all required models directly into the correct folders under `models/…`.
-
-**Requirements:**
-
-* Linux/WSL2 shell with `wget` and `huggingface-cli`
-
-  * Install: `pip install --upgrade huggingface_hub`
-  * If needed: `huggingface-cli login`
-
-**Run from the repo root:**
-
-```bash
-chmod +x download_models.sh
-./download_models.sh
-```
-
-The script writes into the **already existing** directories (it won’t invent new paths) and mirrors our repo layout. Downloaded weights are ignored by `.gitignore`.
-
-**Quick verify:**
-
-```bash
-ls -lh models/code_analysis/codeLlama_13b_Instruct/*.gguf
-ls -1  models/embedding/e5-base-v2 | wc -l
-ls -1  models/translation/en_pl/Helsinki_NLPopus_mt_en_pl
-ls -1  models/translation/pl_en/Helsinki-NLPopus-mt-pl-en
-```
-
-If any folder lacks files, use the fallback below.
-
----
-
-### Fallback: per‑folder `DOWNLOAD_MODEL.md`
-
-If something fails, or links change upstream, open the `DOWNLOAD_MODEL.md` located **inside each target folder** and execute its **copy‑paste commands** (run them from the **repo root**, do **not** create new directories):
-
-* `code_analysis/codeLlama_13b_Instruct/DOWNLOAD_MODEL.md` → **code model (GGUF)**
-* `embedding/e5-base-v2/DOWNLOAD_MODEL.md` → **embedding model**
-* `translation/en_pl/Helsinki_NLPopus_mt_en_pl/DOWNLOAD_MODEL.md` → **EN→PL** translation
-* `translation/pl_en/Helsinki-NLPopus-mt-pl-en/DOWNLOAD_MODEL.md` → **PL→EN** translation
-
-> **Do not duplicate instructions in the README.** Use the commands from the `DOWNLOAD_MODEL.md` files **as‑is**, and place files only into the **existing** directories.
-
-Git tracks **only** the `DOWNLOAD_MODEL.md` placeholders; all downloaded weights remain untracked.
-
-**Do not proceed to tests until all four folders contain the downloaded files.**
-
-
----
-
-## 6) Configuration files
-
-### `config.json`
-
-```json
-{
-  "output_dir": "branches",
-  "model_path_embd": "models/embedding/e5-base-v2",
-  "model_path_analysis": "models/code_analysis/codeLlama_13b_Instruct/CodeLlama-13b-Instruct-hf-Q8_0.gguf",
-  "model_translation_en_pl": "models/translation/en_pl/Helsinki_NLPopus_mt_en_pl",
-  "model_translation_pl_en": "models/translation/pl_en/Helsinki-NLPopus-mt-pl-en",
-  "log_path": "log/ai_interaction.log",
-  "use_gpu": true,
-  "plantuml_server": "http://localhost:8080",
-  "branch": "master"
-}
-```
-
-**Description:**
-
-* `output_dir` — directory where branch outputs and analysis results are written.
-* `model_path_embd` — local path to the embedding model directory (e.g., E5-base-v2).
-* `model_path_analysis` — path to the main code-analysis LLaMA model (GGUF).
-* `model_translation_en_pl` / `model_translation_pl_en` — MarianMT model folders for EN→PL and PL→EN translation.
-* `log_path` — file path for AI interaction logs.
-* `use_gpu` — enables GPU acceleration for LLaMA and FAISS when `true`.
-* `plantuml_server` — optional local PlantUML server endpoint.
-* `branch` — default Git branch analyzed by the pipeline.
-
-> Keep secrets out of `config.json`. If needed, commit `config.json.example` and create a local `config.json` from it.
-
----
-
-### `.env.example`
-
-```bash
-APP_SECRET_KEY=change-me-to-a-long-random-string
-API_TOKEN=your-internal-token-here
-
-# === Server settings ===
-APP_HOST=0.0.0.0
-APP_PORT=5000
-
-# === CORS / Origins ===
-ALLOWED_ORIGINS=http://localhost:8080,http://127.0.0.1:8080
-
-# === Query limits (optional) ===
-APP_MAX_QUERY_LEN=8000
-APP_MAX_FIELD_LEN=128
-```
-
-**Description:**
-
-* `APP_SECRET_KEY` — Flask session secret; use a long random string in production.
-* `API_TOKEN` — internal API token for service-to-service calls.
-* `APP_HOST` / `APP_PORT` — bind address and port of the Flask app.
-* `ALLOWED_ORIGINS` — comma-separated list of allowed CORS origins.
-* `APP_MAX_QUERY_LEN` / `APP_MAX_FIELD_LEN` — optional server-side limits for incoming requests.
-
-**Setup:** copy the example file before running the app and adjust values:
-
-```bash
-cp .env.example .env
-```
----
-
-
-
-## 7) Verify GPU acceleration (**run after models are in place**)
-
-### A) LLaMA (llama‑cpp‑python)
-
-Run this **one‑liner quick test** (copy‑paste) **after Step 5**. It auto‑detects the model under `code_analysis/...` or `models/code_analysis/...`, loads with full CUDA offload, and prints a clear success message in English. **Copy‑paste safe — no unfinished strings.**
-
-```bash
-conda activate rag-faiss
-python - <<'PY'
-import glob, os, sys, time
-from llama_cpp import Llama
-
-print("CWD:", os.getcwd())
-
-patterns = [
-    "code_analysis/codeLlama_13b_Instruct/*.gguf",
-    "models/code_analysis/codeLlama_13b_Instruct/*.gguf",
-    "RAG/code_analysis/codeLlama_13b_Instruct/*.gguf",
-    "RAG/models/code_analysis/codeLlama_13b_Instruct/*.gguf",
-    "**/codeLlama_13b_Instruct/*.gguf",  # fallback (recursive)
-]
-matches = []
-for pat in patterns:
-    matches.extend(glob.glob(pat, recursive=True))
-
-matches = sorted(set(matches))
-if not matches:
-    sys.exit(
-        "ERROR: no .gguf found. Expected under one of:\n"
-        "  - code_analysis/codeLlama_13b_Instruct/\n"
-        "  - models/code_analysis/codeLlama_13b_Instruct/\n"
-        "  - RAG/... equivalents\n"
-        "Follow the DOWNLOAD_MODEL.md and retry."
-    )
-
-print("Found models:")
-for m in matches:
-    print("  -", m)
-
-model_path = max(matches, key=os.path.getsize)  # pick the largest
-print("Using model:", model_path)
-
-t0 = time.time()
-llm = Llama(model_path=model_path, n_ctx=2048, n_gpu_layers=-1, verbose=True)
-out = llm("Q: What is the capital of France? A:", max_tokens=16, stop=["\n", "Q:", "User:", "###"])
-dt = time.time() - t0
-answer = out["choices"][0]["text"].strip()
-print("Answer:", answer)
-
-print("\n✅ OK: Model loaded and generated successfully.")
-print("   GPU acceleration: CUDA offload requested (n_gpu_layers = -1).")
-print("   If you saw 'using device CUDA' above, the model is running on your GPU.")
-print(f"   Elapsed: {dt:.2f}s. You can proceed to the next step.")
-PY
-```
-
-**Expected:** llama.cpp logs show CUDA offload and a message starting with `✅ OK: Model loaded and generated successfully.`
-
-### B) FAISS‑GPU
-
-Run this **copy‑paste one‑liner** (no files created). It builds a tiny index on GPU 0 and returns nearest‑neighbor IDs. Ends with a clear OK message.
-
-```bash
-conda activate rag-faiss
-python - <<'PY'
-import numpy as np, faiss
-print("FAISS version:", faiss.__version__)
-print("GPUs available:", faiss.get_num_gpus())
-
-D = 128
-xb = np.random.random((10000, D)).astype("float32")
-res = faiss.StandardGpuResources()
-index_cpu = faiss.IndexFlatL2(D)
-index_gpu = faiss.index_cpu_to_gpu(res, 0, index_cpu)
-index_gpu.add(xb)
-Dists, Idxs = index_gpu.search(xb[:5], 5)
-print("Neighbors (first row):", Idxs[0].tolist())
-print("✅ OK: FAISS-GPU index built and queried successfully. You can proceed.")
-PY
-```
-
----
-
-## 8) Typical project layout (models section)
-
-```
-models/
-├─ code_analysis/
-│  └─ codeLlama_13b_Instruct/
-│     ├─ CodeLlama-13b-Instruct-hf-Q8_0.gguf    # (ignored by Git)
-│     └─ DOWNLOAD_MODEL.md                      # tracked
-├─ embedding/
-│  └─ e5-base-v2/
-│     ├─ [HF files: config.json, *.bin, *.safetensors, tokenizer.json, etc.]  # weights/tokenizer (ignored by Git)
-│     └─ DOWNLOAD_MODEL.md                      # tracked
-├─ translation/
-   ├─ en_pl/
-   │  └─ Helsinki_NLPopus_mt_en_pl/
-   │     ├─ [MarianMT files: config.json, *.bin, *.safetensors, sentencepiece.model]  # (ignored by Git)
-   │     └─ DOWNLOAD_MODEL.md                    # tracked
-   └─ pl_en/
-      └─ Helsinki-NLPopus-mt-pl-en/
-         ├─ [MarianMT files: config.json, *.bin, *.safetensors, sentencepiece.model]  # (ignored by Git)
-         └─ DOWNLOAD_MODEL.md                   # tracked
-
-```
----
-
-## 8.5) Branch preparation guide
-
-1. **Create the output folder** defined in your `config.json` — e.g.:
-
-   ```json
-   {
-     "output_dir": "branches"
-   }
-   ```
-
-   Create this folder at the repository root (use the exact name from `output_dir`).
-
-2. Follow the instructions in **[`HOW_TO_PREPARE_REPO.md`](./HOW_TO_PREPARE_REPO.md)** located in the repository root. It explains how to index the repository and then build the FAISS vector database from the generated chunks.
-
-
----
-
-## 9) Troubleshooting
-
-- **NumPy 2.x ABI error with FAISS**: If you see “A module compiled with NumPy 1.x cannot be run in NumPy 2.x…”, run:
-```bash
-  pip uninstall -y numpy
-  conda install -y numpy=1.26.4
-```
-
-Keep `numpy=1.26.4` pinned in `environment.yml`.
-
-* **`llama-cpp-python` runs on CPU**: You likely installed the CPU wheel. Reinstall a **CUDA** wheel matching your CUDA (e.g., `cu121`). Ensure `verbose=True` and check logs.
-* **FAISS‑GPU not available**: On some platforms/Python combos, `faiss-gpu` may be missing. Use `faiss-cpu` to proceed, or switch Python minor versions, or build FAISS from source.
-* **`nvidia-smi` not found in WSL**: Update WSL and Windows NVIDIA drivers; reboot and retry.
-
----
-
-## 10) Running the AI server
-
-After configuring your `.env`, start the backend server with:
-
-```bash
-python start_AI_server.py --env
-```
----
-
-
-## 11) Notes for production
-
-* Use a **production WSGI server** (e.g., Gunicorn/uWSGI) instead of the Flask dev server (`flask run`). Disable debug, load environment variables via `python-dotenv` if needed, and place a reverse proxy (Nginx/Traefik) in front for TLS and compression.
-* **Model integrity (checksums):** always verify the SHA‑256 of downloaded weights before startup.
-
-  ```bash
-  # Generate checksums after download (commit this file to the repo if you want reproducibility)
-  (cd code_analysis/codeLlama_13b_Instruct && sha256sum *.gguf > CHECKSUMS.sha256)
-  (cd embedding && find . -type f ! -name 'DOWNLOAD_MODEL.md' -maxdepth 1 -print0 | xargs -0 sha256sum > CHECKSUMS.sha256)
-  (cd translation/en_pl/Helsinki_NLPopus_mt_en_pl && sha256sum * > CHECKSUMS.sha256)
-  (cd translation/pl_en/Helsinki-NLPopus-mt-pl-en && sha256sum * > CHECKSUMS.sha256)
-
-  # Verify at deploy/start time
-  sha256sum -c code_analysis/codeLlama_13b_Instruct/CHECKSUMS.sha256
-  sha256sum -c embedding/CHECKSUMS.sha256
-  sha256sum -c translation/en_pl/Helsinki_NLPopus_mt_en_pl/CHECKSUMS.sha256
-  sha256sum -c translation/pl_en/Helsinki-NLPopus-mt-pl-en/CHECKSUMS.sha256
-  ```
-
-  If you prefer, store expected digests in `checksums.json` and verify them in an app startup hook.
-* **Deployment hygiene (remove MD placeholders):** production artifacts/images should ship only the code and the weights. Remove the `DOWNLOAD_MODEL.md` files during packaging to avoid leaking internal instructions:
-
-  ```bash
-  find code_analysis embedding translation -name 'DOWNLOAD_MODEL.md' -delete
-  ```
-* **GPU concurrency:** for a single GPU, prefer **one process/worker** to avoid loading the model multiple times into VRAM; scale with a queue or per‑GPU processes when needed.
-* **Observability:** expose `/healthz` and `/readyz`, emit structured logs (JSON), and add latency/throughput metrics for retrieval and generation stages.
-
-
----
-
-## 12) Frontend example (RAG.html)
-
-The `frontend/` folder contains a **sample web interface** `RAG.html`  
-that lets you query the AI system directly from your browser.
-
-It is a standalone, dependency-free HTML file built with **TailwindCSS**, **Highlight.js**, and **Marked.js** for Markdown rendering.  
-You can open it locally after starting the server (`python start_AI_server.py --env`),  
-and it will connect to `http://localhost:5000` for backend communication.
-
-This frontend was created specifically for extensibility —  
-future versions may include advanced features such as **repository comparison**, **branch diffs**, or **multi-repo queries**.
-
-### Frontend Development Notes
-
-The frontend (`frontend/RAG.html`) is currently a **single-file implementation** for ease of development and testing. It includes inline CSS, JavaScript, and dependencies loaded via CDNs (e.g., TailwindCSS, Highlight.js, Marked.js). This setup allows quick iteration and local testing without build tools, but it is **not production-ready**. For deployment in a production environment, perform the following steps to optimize, secure, and maintain the code:
-
-1. **Separate assets:** Extract inline CSS and JS into separate files (e.g., `styles.css`, `script.js`) for better organization and caching.
-   
-2. **Use a bundler:** Integrate a tool like Vite, Parcel, or Webpack to minify assets, bundle dependencies, and eliminate CDNs. This reduces load times and avoids external dependencies.
-   - Example: Set up Vite with `vite.config.js` for Tailwind PostCSS integration.
-
-3. **Update dependencies:** Replace outdated CDN versions (e.g., Tailwind 2.2.19, Highlight.js 11.7.0) with the latest stable releases (e.g., Tailwind 3.4+, Highlight.js 11.10+). Use npm/yarn for local installs.
-
-4. **Add security headers:** Implement Content Security Policy (CSP) to restrict script sources. Avoid inline styles/scripts in production to mitigate XSS risks.
-
-5. **Optimize for production:** Remove development-only elements (e.g., debug badges, console logs). Add error handling, accessibility (ARIA attributes), and responsive testing.
-
-6. **Deployment:** Serve via a static file server (e.g., Nginx) with HTTPS. If scaling, consider integrating with a framework like React for more complex features.
-
-Once these changes are applied, the frontend can be treated as production code. For now, open `RAG.html` directly in your browser after starting the backend server.
-
----
-# 13) Integration: PlantUML (UML Diagrams)
-
-* **Run the local server (Docker):**
-
-  ```bash
-  docker run -d --name plantuml -p 8080:8080 plantuml/plantuml-server
-  ```
-
-  Health check: `curl http://localhost:8080/` → should return HTML.
-
-* **Point RAG to the server:** add to `config.json`
-
-  ```json
-  "plantuml_server": "http://localhost:8080"
-  ```
-
-* **How it’s used:** when the **Ada Lovelace** diagrammer is selected, the system generates `.puml` files **and** an **Open UML Diagram** link that renders through your PlantUML server. If the server isn’t running or the URL is wrong, the link won’t render.
-
-* **Notes/Troubleshooting:**
-
-  * Change the URL if your server runs elsewhere (e.g., a VM or remote host).
-  * On WSL, `http://localhost:8080` works from Windows if the container publishes to that port.
-  * Port already in use? Pick another, e.g.:
-
-    ```bash
-    docker run -d --name plantuml -p 8081:8080 plantuml/plantuml-server
-    ```
-
-    and set `"plantuml_server": "http://localhost:8081"`.
-
----
-
-# 14) Quickstart (TL;DR)
-
-> **This section is fully consistent with the README.** It uses the Conda env name from `environment.yml` (**RAG-FAISS2**), installs the correct CUDA wheel of `llama-cpp-python` via a local file with `--no-deps`, downloads models via the one‑shot script first, and then provides verification and server start commands.
-
----
-
-```bash
-# 1) Create & activate env (matches environment.yml)
-conda env create -f environment.yml && conda activate rag-faiss
-
-# 2) Install CUDA wheel of llama-cpp-python (cu121, Python 3.11)
-pip uninstall -y llama-cpp-python
-wget https://github.com/abetlen/llama-cpp-python/releases/download/v0.3.16-cu121/llama_cpp_python-0.3.16-cp311-cp311-linux_x86_64.whl
-pip install --no-deps ./llama_cpp_python-0.3.16-cp311-cp311-linux_x86_64.whl
-
-# (If you get a sacremoses error later)
-# pip install sacremoses
-
-# 3) Download all models — one‑shot downloader (recommended)
-chmod +x download_models.sh
-./download_models.sh
-
-# If anything fails, open each target folder's DOWNLOAD_MODEL.md
-# and run its copy‑paste commands exactly (no new folders).
-
-# 4) Verify GPU acceleration (after models are present)
-python tests/test_llama_gpu.py
-python tests/test_faiss_gpu.py
-
-# 5) Run the server (env vars from .env)
-cp -n .env.example .env 2>/dev/null || true
-python start_AI_server.py --env
-
-# Optional: open the sample frontend (connects to http://localhost:5000)
-# xdg-open frontend/RAG.html 2>/dev/null || true
-```
-
-### Notes
-
-* If FAISS‑GPU is unavailable on your platform/Python, you can temporarily use `faiss-cpu` and proceed.
-* If the CUDA wheel doesn’t match your CUDA/Python, pick the appropriate one from the `llama-cpp-python` release page (keep `--no-deps`).
-* The downloader writes **only** into the existing directories and Git ignores the fetched weights.
-
-
-
+## Documentation
+
+### Start here (just the local run path)
+
+The `docs/start/` folder contains **only** the step-by-step path to run the project locally (WSL/Linux, GPU, models, Weaviate, server). It is intentionally linear — follow it top-to-bottom.
+
+- `docs/start/00_run_locally.md` — **Start here**: end-to-end local run checklist.
+- `docs/start/10_indexing_dotnet_sql.md` — how to index a .NET/SQL codebase (RoslynIndexer) and prepare branches/snapshots.
+- `docs/start/30_troubleshooting.md` — common setup/runtime issues (CUDA wheels, Weaviate quirks, etc.).
+- `docs/start/40_production.md` — production notes (WSGI, reverse proxy, integrity checks, concurrency).
+- `docs/start/50_frontend.md` — frontend notes (single-file dev UI vs production hardening).
+- `docs/start/60_integrations_plantuml.md` — PlantUML integration (local Docker server + config).
+
+### Docs map (what lives in each folder)
+
+- `docs/actions/` — action reference docs (inputs/outputs, YAML parameters, behavior contracts).
+- `docs/adr/` — architecture decision records (why we chose specific design constraints).
+- `docs/contracts/` — pipeline/runtime contracts and invariants (behavior versioning, compat rules, etc.).
+- `docs/diagrams/` — architecture/flow diagrams (PlantUML/Mermaid sources and rendered assets).
+- `docs/draft/` — work-in-progress notes (not guaranteed to be up-to-date).
+- `docs/howto/` — focused “how to” guides for specific workflows (non-linear, task-based).
+- `docs/llama.cpt/` — llama.cpp / llama-cpp-python operational notes (model loading, CUDA, tuning).
+- `docs/pipeline/` — pipeline authoring docs (YAML structure, inheritance, router patterns, examples).
+- `docs/security/` — security model & policies (classification, ACL/filters, external LLM routing rules, auth).
+- `docs/sqldb/` — SQL/DB-related docs (schemas, indexing, EF/SQL analysis notes).
+- `docs/tests/` — testing strategy and how to run tests locally/CI.
+- `docs/use-cases/` — use-case catalog and examples (what the system is meant to solve).
+- `docs/weaviate/` — Weaviate setup and operational docs (local compose, schema, tenants/snapshots).
+
+Key entry points:
+- Weaviate local setup: `docs/weaviate/weaviate_local_setup.md`
+- Pipeline authoring: `docs/pipeline/`
+- Action docs: `docs/actions/`
+- Security model: `docs/security/`

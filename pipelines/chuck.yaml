@@ -1,0 +1,50 @@
+YAMLpipeline:
+  name: chuck
+
+  settings:
+    entry_step_id: maybe_translate_in
+    model_language: neutral
+    behavior_version: "0.2.0"
+    compat_mode: locked
+    snapshot_set_id: ""
+    max_history_tokens: 800
+    native_chat: true
+    stages_visibility: explicit
+
+  steps:
+    - id: maybe_translate_in
+      action: translate_in_if_needed
+      next: load_history
+
+    - id: load_history
+      action: load_conversation_history
+      next: call_model_direct_answer
+
+    - id: call_model_direct_answer
+      action: call_model
+      stages_visible: true
+      callback_caption: "Generating direct answer"
+      callback_caption_translated: "Generowanie odpowiedzi bez retrieval"
+      prompt_key: "chuck/direct_answer_v1"
+      custom_banner:
+        neutral: "ℹ️ Direct-answer note: This question was classified as general knowledge; no repository search was performed."
+        translated: "ℹ️ Odpowiedź bezpośrednia: To pytanie zostało zaklasyfikowane jako wiedza ogólna; nie wykonano przeszukania repozytorium."
+      use_history: true             
+      user_parts:
+        user_question:
+          source: user_question_neutral
+          template: "### User:\n{}\n\n"
+      next: set_answer_from_last_model_response
+
+    - id: set_answer_from_last_model_response
+      action: set_variables
+      rules:
+        - set: answer_neutral
+          from: last_model_response
+        - set: answer_translated
+          value: null
+      next: finalize
+
+    - id: finalize
+      action: finalize
+      end: true

@@ -1,0 +1,13 @@
+YAMLpipeline:
+  name: rejewski_assesment
+
+  extends: ./base/marian_rejewski_code_analysis_base.yaml
+
+  settings:
+    entry_step_id: maybe_translate_in
+    model_language: en
+    behavior_version: "0.2.0"
+    compat_mode: locked
+
+  # This pipeline currently reuses the base flow.
+  steps: []

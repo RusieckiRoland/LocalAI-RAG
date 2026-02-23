@@ -1,0 +1,14 @@
+{
+  "Timestamp": "Znacznik czasu",
+  "Prompt": "Prompt",
+  "Original question": "Pytanie oryginalne",
+  "Translated (EN)": "Tłumaczenie (EN)",
+  "CodeLlama replied": "Odpowiedź CodeLlama",
+  "Follow-up query": "Zapytanie follow-up",
+  "Query type": "Typ zapytania",
+  "Final answer": "Odpowiedź końcowa",
+  "Context blocks": "Bloki kontekstu",
+  "Context": "Kontekst",
+  "Metadata": "Metadane",
+  "JSON": "JSON"
+}

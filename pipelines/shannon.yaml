@@ -1,0 +1,167 @@
+YAMLpipeline:
+  name: shannon
+
+  settings:
+    entry_step_id: translate_in
+    behavior_version: "0.2.0"
+    compat_mode: latest
+    snapshot_set_id: "nopCommerce_4-60_4-90"
+    max_context_tokens: 5000
+    retrieval_budget_tokens: 2000
+    max_history_tokens: 800
+    max_turn_loops: 3
+    native_chat: true
+    stages_visibility: explicit
+
+  steps:
+    - id: translate_in
+      action: translate_in_if_needed
+      next: load_history
+
+    - id: load_history
+      action: load_conversation_history
+      next: build_search_query
+
+    - id: build_search_query
+      action: call_model
+      stages_visible: true
+      callback_caption: "Building search query"
+      callback_caption_translated: "Budowanie zapytania do wyszukiwania"
+      prompt_key: "shannon/search_query_v1"
+      use_history: true
+      user_parts:
+        user_question:
+          source: user_question_neutral
+          template: "### User:\n{}\n\n"
+      next: parallel_roads
+
+    - id: parallel_roads
+      action: parallel_roads_action
+      next: fork_snapshots
+
+    - id: fork_snapshots
+      action: fork_action
+      search_action: search_nodes
+      snapshots:
+        snapshot_a: "${snapshot_id}"
+        snapshot_b: "${snapshot_id_b}"
+      next: search_nodes
+
+    - id: search_nodes
+      action: search_nodes
+      stages_visible: true
+      search_type: "semantic"
+      top_k: 12
+      next: fetch_node_texts
+
+    - id: fetch_node_texts
+      action: fetch_node_texts
+      stages_visible: true
+      budget_tokens_from_settings: "retrieval_budget_tokens"
+      next: merge_snapshots
+
+    - id: merge_snapshots
+      action: merge_action
+      snapshots:
+        snapshot_a: "Branch {}"
+        snapshot_b: "Branch {}"
+      next: suff_loop_guard
+
+    - id: suff_loop_guard
+      action: loop_guard
+      max_turn_loops_from_settings: "max_turn_loops"
+      on_allow: call_model_sufficiency
+      on_deny: compare_and_answer
+
+    - id: call_model_sufficiency
+      action: call_model
+      stages_visible: true
+      callback_caption: "Assessing sufficiency"
+      callback_caption_translated: "Ocena wystarczalności"
+      prompt_key: "shannon/sufficiency_router_v1"
+      max_output_tokens: 200
+      temperature: 0.2
+      top_p: 0.6
+      use_history: true
+      user_parts:
+        context:
+          source: composed_context_for_prompt
+          template: "### Context:\n{}\n\n"
+        user_question:
+          source: user_question_neutral
+          template: "### User:\n{}\n\n"
+      next: handle_sufficiency_decision
+
+    - id: handle_sufficiency_decision
+      action: json_decision_router
+      routes:
+        sufficient: compare_and_answer
+        retry: clear_context_and_retry
+      on_other: clear_context_and_retry
+
+    - id: clear_context_and_retry
+      action: set_variables
+      rules:
+        - set: context_blocks
+          transform: clear
+          from: context_blocks
+        - set: node_texts
+          transform: clear
+          from: node_texts
+        - set: retrieval_seed_nodes
+          transform: clear
+          from: retrieval_seed_nodes
+        - set: retrieval_hits
+          transform: clear
+          from: retrieval_hits
+        - set: graph_seed_nodes
+          transform: clear
+          from: graph_seed_nodes
+        - set: graph_expanded_nodes
+          transform: clear
+          from: graph_expanded_nodes
+        - set: graph_edges
+          transform: clear
+          from: graph_edges
+        - set: graph_debug
+          transform: clear
+          from: graph_debug
+      next: build_search_query
+
+    - id: compare_and_answer
+      action: call_model
+      stages_visible: true
+      callback_caption: "Comparing snapshots"
+      callback_caption_translated: "Porównywanie snapshotów"
+      prompt_key: "shannon/compare_answer_v1"
+      use_history: true
+      user_parts:
+        evidence:
+          source: context_blocks
+          template: "### Context:\n{}\n\n"
+        user_question_original:
+          source: user_query
+          template: "### User (original):\n{}\n\n"
+        user_question:
+          source: user_question_neutral
+          template: "### User (normalized):\n{}\n\n"
+      next: set_answer_from_last_model_response
+
+    - id: set_answer_from_last_model_response
+      action: set_variables
+      rules:
+        - set: answer_neutral
+          from: last_model_response
+        - set: answer_translated
+          value: null
+      next: translate_out_if_needed
+
+    - id: translate_out_if_needed
+      action: translate_out_if_needed
+      use_main_model: true
+      translate_prompt_key: "utility/translate_md_en_pl"
+      next: finalize
+
+    - id: finalize
+      action: finalize
+      end: true

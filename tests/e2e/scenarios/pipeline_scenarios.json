@@ -1,0 +1,4125 @@
+{
+  "pipeline_file": "pipeline_pack.yaml",
+  "scenarios": [
+    {
+      "name": "scenario_001_p0",
+      "pipeline_name": "P0",
+      "user_query": "Test query 1 for P0",
+      "translate_chat": false,
+      "model_outputs": {
+        "e2e/answer_v1": [
+          "[Answer:] E2E OK scenario_001_p0"
+        ],
+        "e2e/router_v1": [
+          "[DIRECT:]"
+        ]
+      },
+      "retriever_results": [],
+      "graph_expand_result": {
+        "nodes": [],
+        "edges": []
+      },
+      "node_texts": [],
+      "repository": "Repo",
+      "snapshot_id": "snap",
+      "expected": {
+        "final_answer_contains": "E2E OK scenario_001_p0",
+        "query_type_in": [
+          "",
+          "ANSWER",
+          "DIRECT",
+          "BM25"
+        ]
+      }
+    },
+    {
+      "name": "scenario_002_p1",
+      "pipeline_name": "P1",
+      "user_query": "Test query 2 for P1",
+      "translate_chat": false,
+      "model_outputs": {
+        "e2e/answer_v1": [
+          "[Answer:] E2E OK scenario_002_p1"
+        ],
+        "e2e/router_v1": [
+          "[BM25:] search"
+        ]
+      },
+      "retriever_results": [
+        {
+          "Id": "N1",
+          "File": "a.cs",
+          "Content": "class A {}"
+        },
+        {
+          "Id": "N2",
+          "File": "b.cs",
+          "Content": "class B {}"
+        }
+      ],
+      "graph_expand_result": {
+        "nodes": [],
+        "edges": []
+      },
+      "node_texts": [],
+      "repository": "Repo",
+      "snapshot_id": "snap",
+      "expected": {
+        "final_answer_contains": "E2E OK scenario_002_p1",
+        "query_type_in": [
+          "",
+          "ANSWER",
+          "DIRECT",
+          "BM25"
+        ]
+      }
+    },
+    {
+      "name": "scenario_003_p2",
+      "pipeline_name": "P2",
+      "user_query": "Test query 3 for P2",
+      "translate_chat": true,
+      "model_outputs": {
+        "e2e/answer_v1": [
+          "[Answer:] E2E OK scenario_003_p2"
+        ],
+        "e2e/router_v1": [
+          "[BM25:] search"
+        ]
+      },
+      "retriever_results": [
+        {
+          "Id": "N1",
+          "File": "a.cs",
+          "Content": "class A {}"
+        },
+        {
+          "Id": "N2",
+          "File": "b.cs",
+          "Content": "class B {}"
+        }
+      ],
+      "graph_expand_result": {
+        "nodes": [
+          "N1",
+          "N2"
+        ],
+        "edges": []
+      },
+      "node_texts": [
+        {
+          "node_id": "N1",
+          "kind": "regular_code",
+          "file": "a.cs",
+          "text": "class A {}"
+        },
+        {
+          "node_id": "N2",
+          "kind": "regular_code",
+          "file": "b.cs",
+          "text": "class B {}"
+        }
+      ],
+      "repository": "Repo",
+      "snapshot_id": "snap",
+      "expected": {
+        "final_answer_contains": "E2E OK scenario_003_p2",
+        "query_type_in": [
+          "",
+          "ANSWER",
+          "DIRECT",
+          "BM25"
+        ]
+      }
+    },
+    {
+      "name": "scenario_004_p3",
+      "pipeline_name": "P3",
+      "user_query": "Test query 4 for P3",
+      "translate_chat": false,
+      "model_outputs": {
+        "e2e/answer_v1": [
+          "[Answer:] E2E OK scenario_004_p3"
+        ]
+      },
+      "retriever_results": [],
+      "graph_expand_result": {
+        "nodes": [
+          "N1",
+          "N2"
+        ],
+        "edges": []
+      },
+      "node_texts": [
+        {
+          "node_id": "N1",
+          "kind": "regular_code",
+          "file": "a.cs",
+          "text": "class A {}"
+        },
+        {
+          "node_id": "N2",
+          "kind": "regular_code",
+          "file": "b.cs",
+          "text": "class B {}"
+        }
+      ],
+      "repository": "Repo",
+      "snapshot_id": "snap",
+      "expected": {
+        "final_answer_contains": "E2E OK scenario_004_p3",
+        "query_type_in": [
+          "",
+          "ANSWER",
+          "DIRECT",
+          "BM25"
+        ]
+      }
+    },
+    {
+      "name": "scenario_005_p4",
+      "pipeline_name": "P4",
+      "user_query": "Test query 5 for P4",
+      "translate_chat": false,
+      "model_outputs": {
+        "e2e/answer_v1": [
+          "[Answer:] E2E OK scenario_005_p4"
+        ],
+        "e2e/router_v1": [
+          "[DIRECT:]"
+        ]
+      },
+      "retriever_results": [],
+      "graph_expand_result": {
+        "nodes": [],
+        "edges": []
+      },
+      "node_texts": [],
+      "repository": "Repo",
+      "snapshot_id": "snap",
+      "expected": {
+        "final_answer_contains": "E2E OK scenario_005_p4",
+        "query_type_in": [
+          "",
+          "ANSWER",
+          "DIRECT",
+          "BM25"
+        ]
+      }
+    },
+    {
+      "name": "scenario_006_p0",
+      "pipeline_name": "P0",
+      "user_query": "Test query 6 for P0",
+      "translate_chat": true,
+      "model_outputs": {
+        "e2e/answer_v1": [
+          "[Answer:] E2E OK scenario_006_p0"
+        ],
+        "e2e/router_v1": [
+          "[DIRECT:]"
+        ]
+      },
+      "retriever_results": [],
+      "graph_expand_result": {
+        "nodes": [],
+        "edges": []
+      },
+      "node_texts": [],
+      "repository": "Repo",
+      "snapshot_id": "snap",
+      "expected": {
+        "final_answer_contains": "E2E OK scenario_006_p0",
+        "query_type_in": [
+          "",
+          "ANSWER",
+          "DIRECT",
+          "BM25"
+        ]
+      }
+    },
+    {
+      "name": "scenario_007_p1",
+      "pipeline_name": "P1",
+      "user_query": "Test query 7 for P1",
+      "translate_chat": false,
+      "model_outputs": {
+        "e2e/answer_v1": [
+          "[Answer:] E2E OK scenario_007_p1"
+        ],
+        "e2e/router_v1": [
+          "[BM25:] search"
+        ]
+      },
+      "retriever_results": [
+        {
+          "Id": "N1",
+          "File": "a.cs",
+          "Content": "class A {}"
+        },
+        {
+          "Id": "N2",
+          "File": "b.cs",
+          "Content": "class B {}"
+        }
+      ],
+      "graph_expand_result": {
+        "nodes": [],
+        "edges": []
+      },
+      "node_texts": [],
+      "repository": "Repo",
+      "snapshot_id": "snap",
+      "expected": {
+        "final_answer_contains": "E2E OK scenario_007_p1",
+        "query_type_in": [
+          "",
+          "ANSWER",
+          "DIRECT",
+          "BM25"
+        ]
+      }
+    },
+    {
+      "name": "scenario_008_p2",
+      "pipeline_name": "P2",
+      "user_query": "Test query 8 for P2",
+      "translate_chat": false,
+      "model_outputs": {
+        "e2e/answer_v1": [
+          "[Answer:] E2E OK scenario_008_p2"
+        ],
+        "e2e/router_v1": [
+          "[BM25:] search"
+        ]
+      },
+      "retriever_results": [
+        {
+          "Id": "N1",
+          "File": "a.cs",
+          "Content": "class A {}"
+        },
+        {
+          "Id": "N2",
+          "File": "b.cs",
+          "Content": "class B {}"
+        }
+      ],
+      "graph_expand_result": {
+        "nodes": [
+          "N1",
+          "N2"
+        ],
+        "edges": []
+      },
+      "node_texts": [
+        {
+          "node_id": "N1",
+          "kind": "regular_code",
+          "file": "a.cs",
+          "text": "class A {}"
+        },
+        {
+          "node_id": "N2",
+          "kind": "regular_code",
+          "file": "b.cs",
+          "text": "class B {}"
+        }
+      ],
+      "repository": "Repo",
+      "snapshot_id": "snap",
+      "expected": {
+        "final_answer_contains": "E2E OK scenario_008_p2",
+        "query_type_in": [
+          "",
+          "ANSWER",
+          "DIRECT",
+          "BM25"
+        ]
+      }
+    },
+    {
+      "name": "scenario_009_p3",
+      "pipeline_name": "P3",
+      "user_query": "Test query 9 for P3",
+      "translate_chat": true,
+      "model_outputs": {
+        "e2e/answer_v1": [
+          "[Answer:] E2E OK scenario_009_p3"
+        ]
+      },
+      "retriever_results": [],
+      "graph_expand_result": {
+        "nodes": [
+          "N1",
+          "N2"
+        ],
+        "edges": []
+      },
+      "node_texts": [
+        {
+          "node_id": "N1",
+          "kind": "regular_code",
+          "file": "a.cs",
+          "text": "class A {}"
+        },
+        {
+          "node_id": "N2",
+          "kind": "regular_code",
+          "file": "b.cs",
+          "text": "class B {}"
+        }
+      ],
+      "repository": "Repo",
+      "snapshot_id": "snap",
+      "expected": {
+        "final_answer_contains": "E2E OK scenario_009_p3",
+        "query_type_in": [
+          "",
+          "ANSWER",
+          "DIRECT",
+          "BM25"
+        ]
+      }
+    },
+    {
+      "name": "scenario_010_p4",
+      "pipeline_name": "P4",
+      "user_query": "Test query 10 for P4",
+      "translate_chat": false,
+      "model_outputs": {
+        "e2e/answer_v1": [
+          "[Answer:] E2E OK scenario_010_p4"
+        ],
+        "e2e/router_v1": [
+          "[DIRECT:]"
+        ]
+      },
+      "retriever_results": [],
+      "graph_expand_result": {
+        "nodes": [],
+        "edges": []
+      },
+      "node_texts": [],
+      "repository": "Repo",
+      "snapshot_id": "snap",
+      "expected": {
+        "final_answer_contains": "E2E OK scenario_010_p4",
+        "query_type_in": [
+          "",
+          "ANSWER",
+          "DIRECT",
+          "BM25"
+        ]
+      }
+    },
+    {
+      "name": "scenario_011_p0",
+      "pipeline_name": "P0",
+      "user_query": "Test query 11 for P0",
+      "translate_chat": false,
+      "model_outputs": {
+        "e2e/answer_v1": [
+          "[Answer:] E2E OK scenario_011_p0"
+        ],
+        "e2e/router_v1": [
+          "[DIRECT:]"
+        ]
+      },
+      "retriever_results": [],
+      "graph_expand_result": {
+        "nodes": [],
+        "edges": []
+      },
+      "node_texts": [],
+      "repository": "Repo",
+      "snapshot_id": "snap",
+      "expected": {
+        "final_answer_contains": "E2E OK scenario_011_p0",
+        "query_type_in": [
+          "",
+          "ANSWER",
+          "DIRECT",
+          "BM25"
+        ]
+      }
+    },
+    {
+      "name": "scenario_012_p1",
+      "pipeline_name": "P1",
+      "user_query": "Test query 12 for P1",
+      "translate_chat": true,
+      "model_outputs": {
+        "e2e/answer_v1": [
+          "[Answer:] E2E OK scenario_012_p1"
+        ],
+        "e2e/router_v1": [
+          "[BM25:] search"
+        ]
+      },
+      "retriever_results": [
+        {
+          "Id": "N1",
+          "File": "a.cs",
+          "Content": "class A {}"
+        },
+        {
+          "Id": "N2",
+          "File": "b.cs",
+          "Content": "class B {}"
+        }
+      ],
+      "graph_expand_result": {
+        "nodes": [],
+        "edges": []
+      },
+      "node_texts": [],
+      "repository": "Repo",
+      "snapshot_id": "snap",
+      "expected": {
+        "final_answer_contains": "E2E OK scenario_012_p1",
+        "query_type_in": [
+          "",
+          "ANSWER",
+          "DIRECT",
+          "BM25"
+        ]
+      }
+    },
+    {
+      "name": "scenario_013_p2",
+      "pipeline_name": "P2",
+      "user_query": "Test query 13 for P2",
+      "translate_chat": false,
+      "model_outputs": {
+        "e2e/answer_v1": [
+          "[Answer:] E2E OK scenario_013_p2"
+        ],
+        "e2e/router_v1": [
+          "[BM25:] search"
+        ]
+      },
+      "retriever_results": [
+        {
+          "Id": "N1",
+          "File": "a.cs",
+          "Content": "class A {}"
+        },
+        {
+          "Id": "N2",
+          "File": "b.cs",
+          "Content": "class B {}"
+        }
+      ],
+      "graph_expand_result": {
+        "nodes": [
+          "N1",
+          "N2"
+        ],
+        "edges": []
+      },
+      "node_texts": [
+        {
+          "node_id": "N1",
+          "kind": "regular_code",
+          "file": "a.cs",
+          "text": "class A {}"
+        },
+        {
+          "node_id": "N2",
+          "kind": "regular_code",
+          "file": "b.cs",
+          "text": "class B {}"
+        }
+      ],
+      "repository": "Repo",
+      "snapshot_id": "snap",
+      "expected": {
+        "final_answer_contains": "E2E OK scenario_013_p2",
+        "query_type_in": [
+          "",
+          "ANSWER",
+          "DIRECT",
+          "BM25"
+        ]
+      }
+    },
+    {
+      "name": "scenario_014_p3",
+      "pipeline_name": "P3",
+      "user_query": "Test query 14 for P3",
+      "translate_chat": false,
+      "model_outputs": {
+        "e2e/answer_v1": [
+          "[Answer:] E2E OK scenario_014_p3"
+        ]
+      },
+      "retriever_results": [],
+      "graph_expand_result": {
+        "nodes": [
+          "N1",
+          "N2"
+        ],
+        "edges": []
+      },
+      "node_texts": [
+        {
+          "node_id": "N1",
+          "kind": "regular_code",
+          "file": "a.cs",
+          "text": "class A {}"
+        },
+        {
+          "node_id": "N2",
+          "kind": "regular_code",
+          "file": "b.cs",
+          "text": "class B {}"
+        }
+      ],
+      "repository": "Repo",
+      "snapshot_id": "snap",
+      "expected": {
+        "final_answer_contains": "E2E OK scenario_014_p3",
+        "query_type_in": [
+          "",
+          "ANSWER",
+          "DIRECT",
+          "BM25"
+        ]
+      }
+    },
+    {
+      "name": "scenario_015_p4",
+      "pipeline_name": "P4",
+      "user_query": "Test query 15 for P4",
+      "translate_chat": true,
+      "model_outputs": {
+        "e2e/answer_v1": [
+          "[Answer:] E2E OK scenario_015_p4"
+        ],
+        "e2e/router_v1": [
+          "[DIRECT:]"
+        ]
+      },
+      "retriever_results": [],
+      "graph_expand_result": {
+        "nodes": [],
+        "edges": []
+      },
+      "node_texts": [],
+      "repository": "Repo",
+      "snapshot_id": "snap",
+      "expected": {
+        "final_answer_contains": "E2E OK scenario_015_p4",
+        "query_type_in": [
+          "",
+          "ANSWER",
+          "DIRECT",
+          "BM25"
+        ]
+      }
+    },
+    {
+      "name": "scenario_016_p0",
+      "pipeline_name": "P0",
+      "user_query": "Test query 16 for P0",
+      "translate_chat": false,
+      "model_outputs": {
+        "e2e/answer_v1": [
+          "[Answer:] E2E OK scenario_016_p0"
+        ],
+        "e2e/router_v1": [
+          "[DIRECT:]"
+        ]
+      },
+      "retriever_results": [],
+      "graph_expand_result": {
+        "nodes": [],
+        "edges": []
+      },
+      "node_texts": [],
+      "repository": "Repo",
+      "snapshot_id": "snap",
+      "expected": {
+        "final_answer_contains": "E2E OK scenario_016_p0",
+        "query_type_in": [
+          "",
+          "ANSWER",
+          "DIRECT",
+          "BM25"
+        ]
+      }
+    },
+    {
+      "name": "scenario_017_p1",
+      "pipeline_name": "P1",
+      "user_query": "Test query 17 for P1",
+      "translate_chat": false,
+      "model_outputs": {
+        "e2e/answer_v1": [
+          "[Answer:] E2E OK scenario_017_p1"
+        ],
+        "e2e/router_v1": [
+          "[BM25:] search"
+        ]
+      },
+      "retriever_results": [
+        {
+          "Id": "N1",
+          "File": "a.cs",
+          "Content": "class A {}"
+        },
+        {
+          "Id": "N2",
+          "File": "b.cs",
+          "Content": "class B {}"
+        }
+      ],
+      "graph_expand_result": {
+        "nodes": [],
+        "edges": []
+      },
+      "node_texts": [],
+      "repository": "Repo",
+      "snapshot_id": "snap",
+      "expected": {
+        "final_answer_contains": "E2E OK scenario_017_p1",
+        "query_type_in": [
+          "",
+          "ANSWER",
+          "DIRECT",
+          "BM25"
+        ]
+      }
+    },
+    {
+      "name": "scenario_018_p2",
+      "pipeline_name": "P2",
+      "user_query": "Test query 18 for P2",
+      "translate_chat": true,
+      "model_outputs": {
+        "e2e/answer_v1": [
+          "[Answer:] E2E OK scenario_018_p2"
+        ],
+        "e2e/router_v1": [
+          "[BM25:] search"
+        ]
+      },
+      "retriever_results": [
+        {
+          "Id": "N1",
+          "File": "a.cs",
+          "Content": "class A {}"
+        },
+        {
+          "Id": "N2",
+          "File": "b.cs",
+          "Content": "class B {}"
+        }
+      ],
+      "graph_expand_result": {
+        "nodes": [
+          "N1",
+          "N2"
+        ],
+        "edges": []
+      },
+      "node_texts": [
+        {
+          "node_id": "N1",
+          "kind": "regular_code",
+          "file": "a.cs",
+          "text": "class A {}"
+        },
+        {
+          "node_id": "N2",
+          "kind": "regular_code",
+          "file": "b.cs",
+          "text": "class B {}"
+        }
+      ],
+      "repository": "Repo",
+      "snapshot_id": "snap",
+      "expected": {
+        "final_answer_contains": "E2E OK scenario_018_p2",
+        "query_type_in": [
+          "",
+          "ANSWER",
+          "DIRECT",
+          "BM25"
+        ]
+      }
+    },
+    {
+      "name": "scenario_019_p3",
+      "pipeline_name": "P3",
+      "user_query": "Test query 19 for P3",
+      "translate_chat": false,
+      "model_outputs": {
+        "e2e/answer_v1": [
+          "[Answer:] E2E OK scenario_019_p3"
+        ]
+      },
+      "retriever_results": [],
+      "graph_expand_result": {
+        "nodes": [
+          "N1",
+          "N2"
+        ],
+        "edges": []
+      },
+      "node_texts": [
+        {
+          "node_id": "N1",
+          "kind": "regular_code",
+          "file": "a.cs",
+          "text": "class A {}"
+        },
+        {
+          "node_id": "N2",
+          "kind": "regular_code",
+          "file": "b.cs",
+          "text": "class B {}"
+        }
+      ],
+      "repository": "Repo",
+      "snapshot_id": "snap",
+      "expected": {
+        "final_answer_contains": "E2E OK scenario_019_p3",
+        "query_type_in": [
+          "",
+          "ANSWER",
+          "DIRECT",
+          "BM25"
+        ]
+      }
+    },
+    {
+      "name": "scenario_020_p4",
+      "pipeline_name": "P4",
+      "user_query": "Test query 20 for P4",
+      "translate_chat": false,
+      "model_outputs": {
+        "e2e/answer_v1": [
+          "[Answer:] E2E OK scenario_020_p4"
+        ],
+        "e2e/router_v1": [
+          "[DIRECT:]"
+        ]
+      },
+      "retriever_results": [],
+      "graph_expand_result": {
+        "nodes": [],
+        "edges": []
+      },
+      "node_texts": [],
+      "repository": "Repo",
+      "snapshot_id": "snap",
+      "expected": {
+        "final_answer_contains": "E2E OK scenario_020_p4",
+        "query_type_in": [
+          "",
+          "ANSWER",
+          "DIRECT",
+          "BM25"
+        ]
+      }
+    },
+    {
+      "name": "scenario_021_p0",
+      "pipeline_name": "P0",
+      "user_query": "Test query 21 for P0",
+      "translate_chat": true,
+      "model_outputs": {
+        "e2e/answer_v1": [
+          "[Answer:] E2E OK scenario_021_p0"
+        ],
+        "e2e/router_v1": [
+          "[DIRECT:]"
+        ]
+      },
+      "retriever_results": [],
+      "graph_expand_result": {
+        "nodes": [],
+        "edges": []
+      },
+      "node_texts": [],
+      "repository": "Repo",
+      "snapshot_id": "snap",
+      "expected": {
+        "final_answer_contains": "E2E OK scenario_021_p0",
+        "query_type_in": [
+          "",
+          "ANSWER",
+          "DIRECT",
+          "BM25"
+        ]
+      }
+    },
+    {
+      "name": "scenario_022_p1",
+      "pipeline_name": "P1",
+      "user_query": "Test query 22 for P1",
+      "translate_chat": false,
+      "model_outputs": {
+        "e2e/answer_v1": [
+          "[Answer:] E2E OK scenario_022_p1"
+        ],
+        "e2e/router_v1": [
+          "[BM25:] search"
+        ]
+      },
+      "retriever_results": [
+        {
+          "Id": "N1",
+          "File": "a.cs",
+          "Content": "class A {}"
+        },
+        {
+          "Id": "N2",
+          "File": "b.cs",
+          "Content": "class B {}"
+        }
+      ],
+      "graph_expand_result": {
+        "nodes": [],
+        "edges": []
+      },
+      "node_texts": [],
+      "repository": "Repo",
+      "snapshot_id": "snap",
+      "expected": {
+        "final_answer_contains": "E2E OK scenario_022_p1",
+        "query_type_in": [
+          "",
+          "ANSWER",
+          "DIRECT",
+          "BM25"
+        ]
+      }
+    },
+    {
+      "name": "scenario_023_p2",
+      "pipeline_name": "P2",
+      "user_query": "Test query 23 for P2",
+      "translate_chat": false,
+      "model_outputs": {
+        "e2e/answer_v1": [
+          "[Answer:] E2E OK scenario_023_p2"
+        ],
+        "e2e/router_v1": [
+          "[BM25:] search"
+        ]
+      },
+      "retriever_results": [
+        {
+          "Id": "N1",
+          "File": "a.cs",
+          "Content": "class A {}"
+        },
+        {
+          "Id": "N2",
+          "File": "b.cs",
+          "Content": "class B {}"
+        }
+      ],
+      "graph_expand_result": {
+        "nodes": [
+          "N1",
+          "N2"
+        ],
+        "edges": []
+      },
+      "node_texts": [
+        {
+          "node_id": "N1",
+          "kind": "regular_code",
+          "file": "a.cs",
+          "text": "class A {}"
+        },
+        {
+          "node_id": "N2",
+          "kind": "regular_code",
+          "file": "b.cs",
+          "text": "class B {}"
+        }
+      ],
+      "repository": "Repo",
+      "snapshot_id": "snap",
+      "expected": {
+        "final_answer_contains": "E2E OK scenario_023_p2",
+        "query_type_in": [
+          "",
+          "ANSWER",
+          "DIRECT",
+          "BM25"
+        ]
+      }
+    },
+    {
+      "name": "scenario_024_p3",
+      "pipeline_name": "P3",
+      "user_query": "Test query 24 for P3",
+      "translate_chat": true,
+      "model_outputs": {
+        "e2e/answer_v1": [
+          "[Answer:] E2E OK scenario_024_p3"
+        ]
+      },
+      "retriever_results": [],
+      "graph_expand_result": {
+        "nodes": [
+          "N1",
+          "N2"
+        ],
+        "edges": []
+      },
+      "node_texts": [
+        {
+          "node_id": "N1",
+          "kind": "regular_code",
+          "file": "a.cs",
+          "text": "class A {}"
+        },
+        {
+          "node_id": "N2",
+          "kind": "regular_code",
+          "file": "b.cs",
+          "text": "class B {}"
+        }
+      ],
+      "repository": "Repo",
+      "snapshot_id": "snap",
+      "expected": {
+        "final_answer_contains": "E2E OK scenario_024_p3",
+        "query_type_in": [
+          "",
+          "ANSWER",
+          "DIRECT",
+          "BM25"
+        ]
+      }
+    },
+    {
+      "name": "scenario_025_p4",
+      "pipeline_name": "P4",
+      "user_query": "Test query 25 for P4",
+      "translate_chat": false,
+      "model_outputs": {
+        "e2e/answer_v1": [
+          "[Answer:] E2E OK scenario_025_p4"
+        ],
+        "e2e/router_v1": [
+          "[DIRECT:]"
+        ]
+      },
+      "retriever_results": [],
+      "graph_expand_result": {
+        "nodes": [],
+        "edges": []
+      },
+      "node_texts": [],
+      "repository": "Repo",
+      "snapshot_id": "snap",
+      "expected": {
+        "final_answer_contains": "E2E OK scenario_025_p4",
+        "query_type_in": [
+          "",
+          "ANSWER",
+          "DIRECT",
+          "BM25"
+        ]
+      }
+    },
+    {
+      "name": "scenario_026_p0",
+      "pipeline_name": "P0",
+      "user_query": "Test query 26 for P0",
+      "translate_chat": false,
+      "model_outputs": {
+        "e2e/answer_v1": [
+          "[Answer:] E2E OK scenario_026_p0"
+        ],
+        "e2e/router_v1": [
+          "[DIRECT:]"
+        ]
+      },
+      "retriever_results": [],
+      "graph_expand_result": {
+        "nodes": [],
+        "edges": []
+      },
+      "node_texts": [],
+      "repository": "Repo",
+      "snapshot_id": "snap",
+      "expected": {
+        "final_answer_contains": "E2E OK scenario_026_p0",
+        "query_type_in": [
+          "",
+          "ANSWER",
+          "DIRECT",
+          "BM25"
+        ]
+      }
+    },
+    {
+      "name": "scenario_027_p1",
+      "pipeline_name": "P1",
+      "user_query": "Test query 27 for P1",
+      "translate_chat": true,
+      "model_outputs": {
+        "e2e/answer_v1": [
+          "[Answer:] E2E OK scenario_027_p1"
+        ],
+        "e2e/router_v1": [
+          "[BM25:] search"
+        ]
+      },
+      "retriever_results": [
+        {
+          "Id": "N1",
+          "File": "a.cs",
+          "Content": "class A {}"
+        },
+        {
+          "Id": "N2",
+          "File": "b.cs",
+          "Content": "class B {}"
+        }
+      ],
+      "graph_expand_result": {
+        "nodes": [],
+        "edges": []
+      },
+      "node_texts": [],
+      "repository": "Repo",
+      "snapshot_id": "snap",
+      "expected": {
+        "final_answer_contains": "E2E OK scenario_027_p1",
+        "query_type_in": [
+          "",
+          "ANSWER",
+          "DIRECT",
+          "BM25"
+        ]
+      }
+    },
+    {
+      "name": "scenario_028_p2",
+      "pipeline_name": "P2",
+      "user_query": "Test query 28 for P2",
+      "translate_chat": false,
+      "model_outputs": {
+        "e2e/answer_v1": [
+          "[Answer:] E2E OK scenario_028_p2"
+        ],
+        "e2e/router_v1": [
+          "[BM25:] search"
+        ]
+      },
+      "retriever_results": [
+        {
+          "Id": "N1",
+          "File": "a.cs",
+          "Content": "class A {}"
+        },
+        {
+          "Id": "N2",
+          "File": "b.cs",
+          "Content": "class B {}"
+        }
+      ],
+      "graph_expand_result": {
+        "nodes": [
+          "N1",
+          "N2"
+        ],
+        "edges": []
+      },
+      "node_texts": [
+        {
+          "node_id": "N1",
+          "kind": "regular_code",
+          "file": "a.cs",
+          "text": "class A {}"
+        },
+        {
+          "node_id": "N2",
+          "kind": "regular_code",
+          "file": "b.cs",
+          "text": "class B {}"
+        }
+      ],
+      "repository": "Repo",
+      "snapshot_id": "snap",
+      "expected": {
+        "final_answer_contains": "E2E OK scenario_028_p2",
+        "query_type_in": [
+          "",
+          "ANSWER",
+          "DIRECT",
+          "BM25"
+        ]
+      }
+    },
+    {
+      "name": "scenario_029_p3",
+      "pipeline_name": "P3",
+      "user_query": "Test query 29 for P3",
+      "translate_chat": false,
+      "model_outputs": {
+        "e2e/answer_v1": [
+          "[Answer:] E2E OK scenario_029_p3"
+        ]
+      },
+      "retriever_results": [],
+      "graph_expand_result": {
+        "nodes": [
+          "N1",
+          "N2"
+        ],
+        "edges": []
+      },
+      "node_texts": [
+        {
+          "node_id": "N1",
+          "kind": "regular_code",
+          "file": "a.cs",
+          "text": "class A {}"
+        },
+        {
+          "node_id": "N2",
+          "kind": "regular_code",
+          "file": "b.cs",
+          "text": "class B {}"
+        }
+      ],
+      "repository": "Repo",
+      "snapshot_id": "snap",
+      "expected": {
+        "final_answer_contains": "E2E OK scenario_029_p3",
+        "query_type_in": [
+          "",
+          "ANSWER",
+          "DIRECT",
+          "BM25"
+        ]
+      }
+    },
+    {
+      "name": "scenario_030_p4",
+      "pipeline_name": "P4",
+      "user_query": "Test query 30 for P4",
+      "translate_chat": true,
+      "model_outputs": {
+        "e2e/answer_v1": [
+          "[Answer:] E2E OK scenario_030_p4"
+        ],
+        "e2e/router_v1": [
+          "[DIRECT:]"
+        ]
+      },
+      "retriever_results": [],
+      "graph_expand_result": {
+        "nodes": [],
+        "edges": []
+      },
+      "node_texts": [],
+      "repository": "Repo",
+      "snapshot_id": "snap",
+      "expected": {
+        "final_answer_contains": "E2E OK scenario_030_p4",
+        "query_type_in": [
+          "",
+          "ANSWER",
+          "DIRECT",
+          "BM25"
+        ]
+      }
+    },
+    {
+      "name": "scenario_031_p0",
+      "pipeline_name": "P0",
+      "user_query": "Test query 31 for P0",
+      "translate_chat": false,
+      "model_outputs": {
+        "e2e/answer_v1": [
+          "[Answer:] E2E OK scenario_031_p0"
+        ],
+        "e2e/router_v1": [
+          "[DIRECT:]"
+        ]
+      },
+      "retriever_results": [],
+      "graph_expand_result": {
+        "nodes": [],
+        "edges": []
+      },
+      "node_texts": [],
+      "repository": "Repo",
+      "snapshot_id": "snap",
+      "expected": {
+        "final_answer_contains": "E2E OK scenario_031_p0",
+        "query_type_in": [
+          "",
+          "ANSWER",
+          "DIRECT",
+          "BM25"
+        ]
+      }
+    },
+    {
+      "name": "scenario_032_p1",
+      "pipeline_name": "P1",
+      "user_query": "Test query 32 for P1",
+      "translate_chat": false,
+      "model_outputs": {
+        "e2e/answer_v1": [
+          "[Answer:] E2E OK scenario_032_p1"
+        ],
+        "e2e/router_v1": [
+          "[BM25:] search"
+        ]
+      },
+      "retriever_results": [
+        {
+          "Id": "N1",
+          "File": "a.cs",
+          "Content": "class A {}"
+        },
+        {
+          "Id": "N2",
+          "File": "b.cs",
+          "Content": "class B {}"
+        }
+      ],
+      "graph_expand_result": {
+        "nodes": [],
+        "edges": []
+      },
+      "node_texts": [],
+      "repository": "Repo",
+      "snapshot_id": "snap",
+      "expected": {
+        "final_answer_contains": "E2E OK scenario_032_p1",
+        "query_type_in": [
+          "",
+          "ANSWER",
+          "DIRECT",
+          "BM25"
+        ]
+      }
+    },
+    {
+      "name": "scenario_033_p2",
+      "pipeline_name": "P2",
+      "user_query": "Test query 33 for P2",
+      "translate_chat": true,
+      "model_outputs": {
+        "e2e/answer_v1": [
+          "[Answer:] E2E OK scenario_033_p2"
+        ],
+        "e2e/router_v1": [
+          "[BM25:] search"
+        ]
+      },
+      "retriever_results": [
+        {
+          "Id": "N1",
+          "File": "a.cs",
+          "Content": "class A {}"
+        },
+        {
+          "Id": "N2",
+          "File": "b.cs",
+          "Content": "class B {}"
+        }
+      ],
+      "graph_expand_result": {
+        "nodes": [
+          "N1",
+          "N2"
+        ],
+        "edges": []
+      },
+      "node_texts": [
+        {
+          "node_id": "N1",
+          "kind": "regular_code",
+          "file": "a.cs",
+          "text": "class A {}"
+        },
+        {
+          "node_id": "N2",
+          "kind": "regular_code",
+          "file": "b.cs",
+          "text": "class B {}"
+        }
+      ],
+      "repository": "Repo",
+      "snapshot_id": "snap",
+      "expected": {
+        "final_answer_contains": "E2E OK scenario_033_p2",
+        "query_type_in": [
+          "",
+          "ANSWER",
+          "DIRECT",
+          "BM25"
+        ]
+      }
+    },
+    {
+      "name": "scenario_034_p3",
+      "pipeline_name": "P3",
+      "user_query": "Test query 34 for P3",
+      "translate_chat": false,
+      "model_outputs": {
+        "e2e/answer_v1": [
+          "[Answer:] E2E OK scenario_034_p3"
+        ]
+      },
+      "retriever_results": [],
+      "graph_expand_result": {
+        "nodes": [
+          "N1",
+          "N2"
+        ],
+        "edges": []
+      },
+      "node_texts": [
+        {
+          "node_id": "N1",
+          "kind": "regular_code",
+          "file": "a.cs",
+          "text": "class A {}"
+        },
+        {
+          "node_id": "N2",
+          "kind": "regular_code",
+          "file": "b.cs",
+          "text": "class B {}"
+        }
+      ],
+      "repository": "Repo",
+      "snapshot_id": "snap",
+      "expected": {
+        "final_answer_contains": "E2E OK scenario_034_p3",
+        "query_type_in": [
+          "",
+          "ANSWER",
+          "DIRECT",
+          "BM25"
+        ]
+      }
+    },
+    {
+      "name": "scenario_035_p4",
+      "pipeline_name": "P4",
+      "user_query": "Test query 35 for P4",
+      "translate_chat": false,
+      "model_outputs": {
+        "e2e/answer_v1": [
+          "[Answer:] E2E OK scenario_035_p4"
+        ],
+        "e2e/router_v1": [
+          "[DIRECT:]"
+        ]
+      },
+      "retriever_results": [],
+      "graph_expand_result": {
+        "nodes": [],
+        "edges": []
+      },
+      "node_texts": [],
+      "repository": "Repo",
+      "snapshot_id": "snap",
+      "expected": {
+        "final_answer_contains": "E2E OK scenario_035_p4",
+        "query_type_in": [
+          "",
+          "ANSWER",
+          "DIRECT",
+          "BM25"
+        ]
+      }
+    },
+    {
+      "name": "scenario_036_p0",
+      "pipeline_name": "P0",
+      "user_query": "Test query 36 for P0",
+      "translate_chat": true,
+      "model_outputs": {
+        "e2e/answer_v1": [
+          "[Answer:] E2E OK scenario_036_p0"
+        ],
+        "e2e/router_v1": [
+          "[DIRECT:]"
+        ]
+      },
+      "retriever_results": [],
+      "graph_expand_result": {
+        "nodes": [],
+        "edges": []
+      },
+      "node_texts": [],
+      "repository": "Repo",
+      "snapshot_id": "snap",
+      "expected": {
+        "final_answer_contains": "E2E OK scenario_036_p0",
+        "query_type_in": [
+          "",
+          "ANSWER",
+          "DIRECT",
+          "BM25"
+        ]
+      }
+    },
+    {
+      "name": "scenario_037_p1",
+      "pipeline_name": "P1",
+      "user_query": "Test query 37 for P1",
+      "translate_chat": false,
+      "model_outputs": {
+        "e2e/answer_v1": [
+          "[Answer:] E2E OK scenario_037_p1"
+        ],
+        "e2e/router_v1": [
+          "[BM25:] search"
+        ]
+      },
+      "retriever_results": [
+        {
+          "Id": "N1",
+          "File": "a.cs",
+          "Content": "class A {}"
+        },
+        {
+          "Id": "N2",
+          "File": "b.cs",
+          "Content": "class B {}"
+        }
+      ],
+      "graph_expand_result": {
+        "nodes": [],
+        "edges": []
+      },
+      "node_texts": [],
+      "repository": "Repo",
+      "snapshot_id": "snap",
+      "expected": {
+        "final_answer_contains": "E2E OK scenario_037_p1",
+        "query_type_in": [
+          "",
+          "ANSWER",
+          "DIRECT",
+          "BM25"
+        ]
+      }
+    },
+    {
+      "name": "scenario_038_p2",
+      "pipeline_name": "P2",
+      "user_query": "Test query 38 for P2",
+      "translate_chat": false,
+      "model_outputs": {
+        "e2e/answer_v1": [
+          "[Answer:] E2E OK scenario_038_p2"
+        ],
+        "e2e/router_v1": [
+          "[BM25:] search"
+        ]
+      },
+      "retriever_results": [
+        {
+          "Id": "N1",
+          "File": "a.cs",
+          "Content": "class A {}"
+        },
+        {
+          "Id": "N2",
+          "File": "b.cs",
+          "Content": "class B {}"
+        }
+      ],
+      "graph_expand_result": {
+        "nodes": [
+          "N1",
+          "N2"
+        ],
+        "edges": []
+      },
+      "node_texts": [
+        {
+          "node_id": "N1",
+          "kind": "regular_code",
+          "file": "a.cs",
+          "text": "class A {}"
+        },
+        {
+          "node_id": "N2",
+          "kind": "regular_code",
+          "file": "b.cs",
+          "text": "class B {}"
+        }
+      ],
+      "repository": "Repo",
+      "snapshot_id": "snap",
+      "expected": {
+        "final_answer_contains": "E2E OK scenario_038_p2",
+        "query_type_in": [
+          "",
+          "ANSWER",
+          "DIRECT",
+          "BM25"
+        ]
+      }
+    },
+    {
+      "name": "scenario_039_p3",
+      "pipeline_name": "P3",
+      "user_query": "Test query 39 for P3",
+      "translate_chat": true,
+      "model_outputs": {
+        "e2e/answer_v1": [
+          "[Answer:] E2E OK scenario_039_p3"
+        ]
+      },
+      "retriever_results": [],
+      "graph_expand_result": {
+        "nodes": [
+          "N1",
+          "N2"
+        ],
+        "edges": []
+      },
+      "node_texts": [
+        {
+          "node_id": "N1",
+          "kind": "regular_code",
+          "file": "a.cs",
+          "text": "class A {}"
+        },
+        {
+          "node_id": "N2",
+          "kind": "regular_code",
+          "file": "b.cs",
+          "text": "class B {}"
+        }
+      ],
+      "repository": "Repo",
+      "snapshot_id": "snap",
+      "expected": {
+        "final_answer_contains": "E2E OK scenario_039_p3",
+        "query_type_in": [
+          "",
+          "ANSWER",
+          "DIRECT",
+          "BM25"
+        ]
+      }
+    },
+    {
+      "name": "scenario_040_p4",
+      "pipeline_name": "P4",
+      "user_query": "Test query 40 for P4",
+      "translate_chat": false,
+      "model_outputs": {
+        "e2e/answer_v1": [
+          "[Answer:] E2E OK scenario_040_p4"
+        ],
+        "e2e/router_v1": [
+          "[DIRECT:]"
+        ]
+      },
+      "retriever_results": [],
+      "graph_expand_result": {
+        "nodes": [],
+        "edges": []
+      },
+      "node_texts": [],
+      "repository": "Repo",
+      "snapshot_id": "snap",
+      "expected": {
+        "final_answer_contains": "E2E OK scenario_040_p4",
+        "query_type_in": [
+          "",
+          "ANSWER",
+          "DIRECT",
+          "BM25"
+        ]
+      }
+    },
+    {
+      "name": "scenario_041_p0",
+      "pipeline_name": "P0",
+      "user_query": "Test query 41 for P0",
+      "translate_chat": false,
+      "model_outputs": {
+        "e2e/answer_v1": [
+          "[Answer:] E2E OK scenario_041_p0"
+        ],
+        "e2e/router_v1": [
+          "[DIRECT:]"
+        ]
+      },
+      "retriever_results": [],
+      "graph_expand_result": {
+        "nodes": [],
+        "edges": []
+      },
+      "node_texts": [],
+      "repository": "Repo",
+      "snapshot_id": "snap",
+      "expected": {
+        "final_answer_contains": "E2E OK scenario_041_p0",
+        "query_type_in": [
+          "",
+          "ANSWER",
+          "DIRECT",
+          "BM25"
+        ]
+      }
+    },
+    {
+      "name": "scenario_042_p1",
+      "pipeline_name": "P1",
+      "user_query": "Test query 42 for P1",
+      "translate_chat": true,
+      "model_outputs": {
+        "e2e/answer_v1": [
+          "[Answer:] E2E OK scenario_042_p1"
+        ],
+        "e2e/router_v1": [
+          "[BM25:] search"
+        ]
+      },
+      "retriever_results": [
+        {
+          "Id": "N1",
+          "File": "a.cs",
+          "Content": "class A {}"
+        },
+        {
+          "Id": "N2",
+          "File": "b.cs",
+          "Content": "class B {}"
+        }
+      ],
+      "graph_expand_result": {
+        "nodes": [],
+        "edges": []
+      },
+      "node_texts": [],
+      "repository": "Repo",
+      "snapshot_id": "snap",
+      "expected": {
+        "final_answer_contains": "E2E OK scenario_042_p1",
+        "query_type_in": [
+          "",
+          "ANSWER",
+          "DIRECT",
+          "BM25"
+        ]
+      }
+    },
+    {
+      "name": "scenario_043_p2",
+      "pipeline_name": "P2",
+      "user_query": "Test query 43 for P2",
+      "translate_chat": false,
+      "model_outputs": {
+        "e2e/answer_v1": [
+          "[Answer:] E2E OK scenario_043_p2"
+        ],
+        "e2e/router_v1": [
+          "[BM25:] search"
+        ]
+      },
+      "retriever_results": [
+        {
+          "Id": "N1",
+          "File": "a.cs",
+          "Content": "class A {}"
+        },
+        {
+          "Id": "N2",
+          "File": "b.cs",
+          "Content": "class B {}"
+        }
+      ],
+      "graph_expand_result": {
+        "nodes": [
+          "N1",
+          "N2"
+        ],
+        "edges": []
+      },
+      "node_texts": [
+        {
+          "node_id": "N1",
+          "kind": "regular_code",
+          "file": "a.cs",
+          "text": "class A {}"
+        },
+        {
+          "node_id": "N2",
+          "kind": "regular_code",
+          "file": "b.cs",
+          "text": "class B {}"
+        }
+      ],
+      "repository": "Repo",
+      "snapshot_id": "snap",
+      "expected": {
+        "final_answer_contains": "E2E OK scenario_043_p2",
+        "query_type_in": [
+          "",
+          "ANSWER",
+          "DIRECT",
+          "BM25"
+        ]
+      }
+    },
+    {
+      "name": "scenario_044_p3",
+      "pipeline_name": "P3",
+      "user_query": "Test query 44 for P3",
+      "translate_chat": false,
+      "model_outputs": {
+        "e2e/answer_v1": [
+          "[Answer:] E2E OK scenario_044_p3"
+        ]
+      },
+      "retriever_results": [],
+      "graph_expand_result": {
+        "nodes": [
+          "N1",
+          "N2"
+        ],
+        "edges": []
+      },
+      "node_texts": [
+        {
+          "node_id": "N1",
+          "kind": "regular_code",
+          "file": "a.cs",
+          "text": "class A {}"
+        },
+        {
+          "node_id": "N2",
+          "kind": "regular_code",
+          "file": "b.cs",
+          "text": "class B {}"
+        }
+      ],
+      "repository": "Repo",
+      "snapshot_id": "snap",
+      "expected": {
+        "final_answer_contains": "E2E OK scenario_044_p3",
+        "query_type_in": [
+          "",
+          "ANSWER",
+          "DIRECT",
+          "BM25"
+        ]
+      }
+    },
+    {
+      "name": "scenario_045_p4",
+      "pipeline_name": "P4",
+      "user_query": "Test query 45 for P4",
+      "translate_chat": true,
+      "model_outputs": {
+        "e2e/answer_v1": [
+          "[Answer:] E2E OK scenario_045_p4"
+        ],
+        "e2e/router_v1": [
+          "[DIRECT:]"
+        ]
+      },
+      "retriever_results": [],
+      "graph_expand_result": {
+        "nodes": [],
+        "edges": []
+      },
+      "node_texts": [],
+      "repository": "Repo",
+      "snapshot_id": "snap",
+      "expected": {
+        "final_answer_contains": "E2E OK scenario_045_p4",
+        "query_type_in": [
+          "",
+          "ANSWER",
+          "DIRECT",
+          "BM25"
+        ]
+      }
+    },
+    {
+      "name": "scenario_046_p0",
+      "pipeline_name": "P0",
+      "user_query": "Test query 46 for P0",
+      "translate_chat": false,
+      "model_outputs": {
+        "e2e/answer_v1": [
+          "[Answer:] E2E OK scenario_046_p0"
+        ],
+        "e2e/router_v1": [
+          "[DIRECT:]"
+        ]
+      },
+      "retriever_results": [],
+      "graph_expand_result": {
+        "nodes": [],
+        "edges": []
+      },
+      "node_texts": [],
+      "repository": "Repo",
+      "snapshot_id": "snap",
+      "expected": {
+        "final_answer_contains": "E2E OK scenario_046_p0",
+        "query_type_in": [
+          "",
+          "ANSWER",
+          "DIRECT",
+          "BM25"
+        ]
+      }
+    },
+    {
+      "name": "scenario_047_p1",
+      "pipeline_name": "P1",
+      "user_query": "Test query 47 for P1",
+      "translate_chat": false,
+      "model_outputs": {
+        "e2e/answer_v1": [
+          "[Answer:] E2E OK scenario_047_p1"
+        ],
+        "e2e/router_v1": [
+          "[BM25:] search"
+        ]
+      },
+      "retriever_results": [
+        {
+          "Id": "N1",
+          "File": "a.cs",
+          "Content": "class A {}"
+        },
+        {
+          "Id": "N2",
+          "File": "b.cs",
+          "Content": "class B {}"
+        }
+      ],
+      "graph_expand_result": {
+        "nodes": [],
+        "edges": []
+      },
+      "node_texts": [],
+      "repository": "Repo",
+      "snapshot_id": "snap",
+      "expected": {
+        "final_answer_contains": "E2E OK scenario_047_p1",
+        "query_type_in": [
+          "",
+          "ANSWER",
+          "DIRECT",
+          "BM25"
+        ]
+      }
+    },
+    {
+      "name": "scenario_048_p2",
+      "pipeline_name": "P2",
+      "user_query": "Test query 48 for P2",
+      "translate_chat": true,
+      "model_outputs": {
+        "e2e/answer_v1": [
+          "[Answer:] E2E OK scenario_048_p2"
+        ],
+        "e2e/router_v1": [
+          "[BM25:] search"
+        ]
+      },
+      "retriever_results": [
+        {
+          "Id": "N1",
+          "File": "a.cs",
+          "Content": "class A {}"
+        },
+        {
+          "Id": "N2",
+          "File": "b.cs",
+          "Content": "class B {}"
+        }
+      ],
+      "graph_expand_result": {
+        "nodes": [
+          "N1",
+          "N2"
+        ],
+        "edges": []
+      },
+      "node_texts": [
+        {
+          "node_id": "N1",
+          "kind": "regular_code",
+          "file": "a.cs",
+          "text": "class A {}"
+        },
+        {
+          "node_id": "N2",
+          "kind": "regular_code",
+          "file": "b.cs",
+          "text": "class B {}"
+        }
+      ],
+      "repository": "Repo",
+      "snapshot_id": "snap",
+      "expected": {
+        "final_answer_contains": "E2E OK scenario_048_p2",
+        "query_type_in": [
+          "",
+          "ANSWER",
+          "DIRECT",
+          "BM25"
+        ]
+      }
+    },
+    {
+      "name": "scenario_049_p3",
+      "pipeline_name": "P3",
+      "user_query": "Test query 49 for P3",
+      "translate_chat": false,
+      "model_outputs": {
+        "e2e/answer_v1": [
+          "[Answer:] E2E OK scenario_049_p3"
+        ]
+      },
+      "retriever_results": [],
+      "graph_expand_result": {
+        "nodes": [
+          "N1",
+          "N2"
+        ],
+        "edges": []
+      },
+      "node_texts": [
+        {
+          "node_id": "N1",
+          "kind": "regular_code",
+          "file": "a.cs",
+          "text": "class A {}"
+        },
+        {
+          "node_id": "N2",
+          "kind": "regular_code",
+          "file": "b.cs",
+          "text": "class B {}"
+        }
+      ],
+      "repository": "Repo",
+      "snapshot_id": "snap",
+      "expected": {
+        "final_answer_contains": "E2E OK scenario_049_p3",
+        "query_type_in": [
+          "",
+          "ANSWER",
+          "DIRECT",
+          "BM25"
+        ]
+      }
+    },
+    {
+      "name": "scenario_050_p4",
+      "pipeline_name": "P4",
+      "user_query": "Test query 50 for P4",
+      "translate_chat": false,
+      "model_outputs": {
+        "e2e/answer_v1": [
+          "[Answer:] E2E OK scenario_050_p4"
+        ],
+        "e2e/router_v1": [
+          "[DIRECT:]"
+        ]
+      },
+      "retriever_results": [],
+      "graph_expand_result": {
+        "nodes": [],
+        "edges": []
+      },
+      "node_texts": [],
+      "repository": "Repo",
+      "snapshot_id": "snap",
+      "expected": {
+        "final_answer_contains": "E2E OK scenario_050_p4",
+        "query_type_in": [
+          "",
+          "ANSWER",
+          "DIRECT",
+          "BM25"
+        ]
+      }
+    },
+    {
+      "name": "scenario_051_p0",
+      "pipeline_name": "P0",
+      "user_query": "Test query 51 for P0",
+      "translate_chat": true,
+      "model_outputs": {
+        "e2e/answer_v1": [
+          "[Answer:] E2E OK scenario_051_p0"
+        ],
+        "e2e/router_v1": [
+          "[DIRECT:]"
+        ]
+      },
+      "retriever_results": [],
+      "graph_expand_result": {
+        "nodes": [],
+        "edges": []
+      },
+      "node_texts": [],
+      "repository": "Repo",
+      "snapshot_id": "snap",
+      "expected": {
+        "final_answer_contains": "E2E OK scenario_051_p0",
+        "query_type_in": [
+          "",
+          "ANSWER",
+          "DIRECT",
+          "BM25"
+        ]
+      }
+    },
+    {
+      "name": "scenario_052_p1",
+      "pipeline_name": "P1",
+      "user_query": "Test query 52 for P1",
+      "translate_chat": false,
+      "model_outputs": {
+        "e2e/answer_v1": [
+          "[Answer:] E2E OK scenario_052_p1"
+        ],
+        "e2e/router_v1": [
+          "[BM25:] search"
+        ]
+      },
+      "retriever_results": [
+        {
+          "Id": "N1",
+          "File": "a.cs",
+          "Content": "class A {}"
+        },
+        {
+          "Id": "N2",
+          "File": "b.cs",
+          "Content": "class B {}"
+        }
+      ],
+      "graph_expand_result": {
+        "nodes": [],
+        "edges": []
+      },
+      "node_texts": [],
+      "repository": "Repo",
+      "snapshot_id": "snap",
+      "expected": {
+        "final_answer_contains": "E2E OK scenario_052_p1",
+        "query_type_in": [
+          "",
+          "ANSWER",
+          "DIRECT",
+          "BM25"
+        ]
+      }
+    },
+    {
+      "name": "scenario_053_p2",
+      "pipeline_name": "P2",
+      "user_query": "Test query 53 for P2",
+      "translate_chat": false,
+      "model_outputs": {
+        "e2e/answer_v1": [
+          "[Answer:] E2E OK scenario_053_p2"
+        ],
+        "e2e/router_v1": [
+          "[BM25:] search"
+        ]
+      },
+      "retriever_results": [
+        {
+          "Id": "N1",
+          "File": "a.cs",
+          "Content": "class A {}"
+        },
+        {
+          "Id": "N2",
+          "File": "b.cs",
+          "Content": "class B {}"
+        }
+      ],
+      "graph_expand_result": {
+        "nodes": [
+          "N1",
+          "N2"
+        ],
+        "edges": []
+      },
+      "node_texts": [
+        {
+          "node_id": "N1",
+          "kind": "regular_code",
+          "file": "a.cs",
+          "text": "class A {}"
+        },
+        {
+          "node_id": "N2",
+          "kind": "regular_code",
+          "file": "b.cs",
+          "text": "class B {}"
+        }
+      ],
+      "repository": "Repo",
+      "snapshot_id": "snap",
+      "expected": {
+        "final_answer_contains": "E2E OK scenario_053_p2",
+        "query_type_in": [
+          "",
+          "ANSWER",
+          "DIRECT",
+          "BM25"
+        ]
+      }
+    },
+    {
+      "name": "scenario_054_p3",
+      "pipeline_name": "P3",
+      "user_query": "Test query 54 for P3",
+      "translate_chat": true,
+      "model_outputs": {
+        "e2e/answer_v1": [
+          "[Answer:] E2E OK scenario_054_p3"
+        ]
+      },
+      "retriever_results": [],
+      "graph_expand_result": {
+        "nodes": [
+          "N1",
+          "N2"
+        ],
+        "edges": []
+      },
+      "node_texts": [
+        {
+          "node_id": "N1",
+          "kind": "regular_code",
+          "file": "a.cs",
+          "text": "class A {}"
+        },
+        {
+          "node_id": "N2",
+          "kind": "regular_code",
+          "file": "b.cs",
+          "text": "class B {}"
+        }
+      ],
+      "repository": "Repo",
+      "snapshot_id": "snap",
+      "expected": {
+        "final_answer_contains": "E2E OK scenario_054_p3",
+        "query_type_in": [
+          "",
+          "ANSWER",
+          "DIRECT",
+          "BM25"
+        ]
+      }
+    },
+    {
+      "name": "scenario_055_p4",
+      "pipeline_name": "P4",
+      "user_query": "Test query 55 for P4",
+      "translate_chat": false,
+      "model_outputs": {
+        "e2e/answer_v1": [
+          "[Answer:] E2E OK scenario_055_p4"
+        ],
+        "e2e/router_v1": [
+          "[DIRECT:]"
+        ]
+      },
+      "retriever_results": [],
+      "graph_expand_result": {
+        "nodes": [],
+        "edges": []
+      },
+      "node_texts": [],
+      "repository": "Repo",
+      "snapshot_id": "snap",
+      "expected": {
+        "final_answer_contains": "E2E OK scenario_055_p4",
+        "query_type_in": [
+          "",
+          "ANSWER",
+          "DIRECT",
+          "BM25"
+        ]
+      }
+    },
+    {
+      "name": "scenario_056_p0",
+      "pipeline_name": "P0",
+      "user_query": "Test query 56 for P0",
+      "translate_chat": false,
+      "model_outputs": {
+        "e2e/answer_v1": [
+          "[Answer:] E2E OK scenario_056_p0"
+        ],
+        "e2e/router_v1": [
+          "[DIRECT:]"
+        ]
+      },
+      "retriever_results": [],
+      "graph_expand_result": {
+        "nodes": [],
+        "edges": []
+      },
+      "node_texts": [],
+      "repository": "Repo",
+      "snapshot_id": "snap",
+      "expected": {
+        "final_answer_contains": "E2E OK scenario_056_p0",
+        "query_type_in": [
+          "",
+          "ANSWER",
+          "DIRECT",
+          "BM25"
+        ]
+      }
+    },
+    {
+      "name": "scenario_057_p1",
+      "pipeline_name": "P1",
+      "user_query": "Test query 57 for P1",
+      "translate_chat": true,
+      "model_outputs": {
+        "e2e/answer_v1": [
+          "[Answer:] E2E OK scenario_057_p1"
+        ],
+        "e2e/router_v1": [
+          "[BM25:] search"
+        ]
+      },
+      "retriever_results": [
+        {
+          "Id": "N1",
+          "File": "a.cs",
+          "Content": "class A {}"
+        },
+        {
+          "Id": "N2",
+          "File": "b.cs",
+          "Content": "class B {}"
+        }
+      ],
+      "graph_expand_result": {
+        "nodes": [],
+        "edges": []
+      },
+      "node_texts": [],
+      "repository": "Repo",
+      "snapshot_id": "snap",
+      "expected": {
+        "final_answer_contains": "E2E OK scenario_057_p1",
+        "query_type_in": [
+          "",
+          "ANSWER",
+          "DIRECT",
+          "BM25"
+        ]
+      }
+    },
+    {
+      "name": "scenario_058_p2",
+      "pipeline_name": "P2",
+      "user_query": "Test query 58 for P2",
+      "translate_chat": false,
+      "model_outputs": {
+        "e2e/answer_v1": [
+          "[Answer:] E2E OK scenario_058_p2"
+        ],
+        "e2e/router_v1": [
+          "[BM25:] search"
+        ]
+      },
+      "retriever_results": [
+        {
+          "Id": "N1",
+          "File": "a.cs",
+          "Content": "class A {}"
+        },
+        {
+          "Id": "N2",
+          "File": "b.cs",
+          "Content": "class B {}"
+        }
+      ],
+      "graph_expand_result": {
+        "nodes": [
+          "N1",
+          "N2"
+        ],
+        "edges": []
+      },
+      "node_texts": [
+        {
+          "node_id": "N1",
+          "kind": "regular_code",
+          "file": "a.cs",
+          "text": "class A {}"
+        },
+        {
+          "node_id": "N2",
+          "kind": "regular_code",
+          "file": "b.cs",
+          "text": "class B {}"
+        }
+      ],
+      "repository": "Repo",
+      "snapshot_id": "snap",
+      "expected": {
+        "final_answer_contains": "E2E OK scenario_058_p2",
+        "query_type_in": [
+          "",
+          "ANSWER",
+          "DIRECT",
+          "BM25"
+        ]
+      }
+    },
+    {
+      "name": "scenario_059_p3",
+      "pipeline_name": "P3",
+      "user_query": "Test query 59 for P3",
+      "translate_chat": false,
+      "model_outputs": {
+        "e2e/answer_v1": [
+          "[Answer:] E2E OK scenario_059_p3"
+        ]
+      },
+      "retriever_results": [],
+      "graph_expand_result": {
+        "nodes": [
+          "N1",
+          "N2"
+        ],
+        "edges": []
+      },
+      "node_texts": [
+        {
+          "node_id": "N1",
+          "kind": "regular_code",
+          "file": "a.cs",
+          "text": "class A {}"
+        },
+        {
+          "node_id": "N2",
+          "kind": "regular_code",
+          "file": "b.cs",
+          "text": "class B {}"
+        }
+      ],
+      "repository": "Repo",
+      "snapshot_id": "snap",
+      "expected": {
+        "final_answer_contains": "E2E OK scenario_059_p3",
+        "query_type_in": [
+          "",
+          "ANSWER",
+          "DIRECT",
+          "BM25"
+        ]
+      }
+    },
+    {
+      "name": "scenario_060_p4",
+      "pipeline_name": "P4",
+      "user_query": "Test query 60 for P4",
+      "translate_chat": true,
+      "model_outputs": {
+        "e2e/answer_v1": [
+          "[Answer:] E2E OK scenario_060_p4"
+        ],
+        "e2e/router_v1": [
+          "[DIRECT:]"
+        ]
+      },
+      "retriever_results": [],
+      "graph_expand_result": {
+        "nodes": [],
+        "edges": []
+      },
+      "node_texts": [],
+      "repository": "Repo",
+      "snapshot_id": "snap",
+      "expected": {
+        "final_answer_contains": "E2E OK scenario_060_p4",
+        "query_type_in": [
+          "",
+          "ANSWER",
+          "DIRECT",
+          "BM25"
+        ]
+      }
+    },
+    {
+      "name": "scenario_061_p0",
+      "pipeline_name": "P0",
+      "user_query": "Test query 61 for P0",
+      "translate_chat": false,
+      "model_outputs": {
+        "e2e/answer_v1": [
+          "[Answer:] E2E OK scenario_061_p0"
+        ],
+        "e2e/router_v1": [
+          "[DIRECT:]"
+        ]
+      },
+      "retriever_results": [],
+      "graph_expand_result": {
+        "nodes": [],
+        "edges": []
+      },
+      "node_texts": [],
+      "repository": "Repo",
+      "snapshot_id": "snap",
+      "expected": {
+        "final_answer_contains": "E2E OK scenario_061_p0",
+        "query_type_in": [
+          "",
+          "ANSWER",
+          "DIRECT",
+          "BM25"
+        ]
+      }
+    },
+    {
+      "name": "scenario_062_p1",
+      "pipeline_name": "P1",
+      "user_query": "Test query 62 for P1",
+      "translate_chat": false,
+      "model_outputs": {
+        "e2e/answer_v1": [
+          "[Answer:] E2E OK scenario_062_p1"
+        ],
+        "e2e/router_v1": [
+          "[BM25:] search"
+        ]
+      },
+      "retriever_results": [
+        {
+          "Id": "N1",
+          "File": "a.cs",
+          "Content": "class A {}"
+        },
+        {
+          "Id": "N2",
+          "File": "b.cs",
+          "Content": "class B {}"
+        }
+      ],
+      "graph_expand_result": {
+        "nodes": [],
+        "edges": []
+      },
+      "node_texts": [],
+      "repository": "Repo",
+      "snapshot_id": "snap",
+      "expected": {
+        "final_answer_contains": "E2E OK scenario_062_p1",
+        "query_type_in": [
+          "",
+          "ANSWER",
+          "DIRECT",
+          "BM25"
+        ]
+      }
+    },
+    {
+      "name": "scenario_063_p2",
+      "pipeline_name": "P2",
+      "user_query": "Test query 63 for P2",
+      "translate_chat": true,
+      "model_outputs": {
+        "e2e/answer_v1": [
+          "[Answer:] E2E OK scenario_063_p2"
+        ],
+        "e2e/router_v1": [
+          "[BM25:] search"
+        ]
+      },
+      "retriever_results": [
+        {
+          "Id": "N1",
+          "File": "a.cs",
+          "Content": "class A {}"
+        },
+        {
+          "Id": "N2",
+          "File": "b.cs",
+          "Content": "class B {}"
+        }
+      ],
+      "graph_expand_result": {
+        "nodes": [
+          "N1",
+          "N2"
+        ],
+        "edges": []
+      },
+      "node_texts": [
+        {
+          "node_id": "N1",
+          "kind": "regular_code",
+          "file": "a.cs",
+          "text": "class A {}"
+        },
+        {
+          "node_id": "N2",
+          "kind": "regular_code",
+          "file": "b.cs",
+          "text": "class B {}"
+        }
+      ],
+      "repository": "Repo",
+      "snapshot_id": "snap",
+      "expected": {
+        "final_answer_contains": "E2E OK scenario_063_p2",
+        "query_type_in": [
+          "",
+          "ANSWER",
+          "DIRECT",
+          "BM25"
+        ]
+      }
+    },
+    {
+      "name": "scenario_064_p3",
+      "pipeline_name": "P3",
+      "user_query": "Test query 64 for P3",
+      "translate_chat": false,
+      "model_outputs": {
+        "e2e/answer_v1": [
+          "[Answer:] E2E OK scenario_064_p3"
+        ]
+      },
+      "retriever_results": [],
+      "graph_expand_result": {
+        "nodes": [
+          "N1",
+          "N2"
+        ],
+        "edges": []
+      },
+      "node_texts": [
+        {
+          "node_id": "N1",
+          "kind": "regular_code",
+          "file": "a.cs",
+          "text": "class A {}"
+        },
+        {
+          "node_id": "N2",
+          "kind": "regular_code",
+          "file": "b.cs",
+          "text": "class B {}"
+        }
+      ],
+      "repository": "Repo",
+      "snapshot_id": "snap",
+      "expected": {
+        "final_answer_contains": "E2E OK scenario_064_p3",
+        "query_type_in": [
+          "",
+          "ANSWER",
+          "DIRECT",
+          "BM25"
+        ]
+      }
+    },
+    {
+      "name": "scenario_065_p4",
+      "pipeline_name": "P4",
+      "user_query": "Test query 65 for P4",
+      "translate_chat": false,
+      "model_outputs": {
+        "e2e/answer_v1": [
+          "[Answer:] E2E OK scenario_065_p4"
+        ],
+        "e2e/router_v1": [
+          "[DIRECT:]"
+        ]
+      },
+      "retriever_results": [],
+      "graph_expand_result": {
+        "nodes": [],
+        "edges": []
+      },
+      "node_texts": [],
+      "repository": "Repo",
+      "snapshot_id": "snap",
+      "expected": {
+        "final_answer_contains": "E2E OK scenario_065_p4",
+        "query_type_in": [
+          "",
+          "ANSWER",
+          "DIRECT",
+          "BM25"
+        ]
+      }
+    },
+    {
+      "name": "scenario_066_p0",
+      "pipeline_name": "P0",
+      "user_query": "Test query 66 for P0",
+      "translate_chat": true,
+      "model_outputs": {
+        "e2e/answer_v1": [
+          "[Answer:] E2E OK scenario_066_p0"
+        ],
+        "e2e/router_v1": [
+          "[DIRECT:]"
+        ]
+      },
+      "retriever_results": [],
+      "graph_expand_result": {
+        "nodes": [],
+        "edges": []
+      },
+      "node_texts": [],
+      "repository": "Repo",
+      "snapshot_id": "snap",
+      "expected": {
+        "final_answer_contains": "E2E OK scenario_066_p0",
+        "query_type_in": [
+          "",
+          "ANSWER",
+          "DIRECT",
+          "BM25"
+        ]
+      }
+    },
+    {
+      "name": "scenario_067_p1",
+      "pipeline_name": "P1",
+      "user_query": "Test query 67 for P1",
+      "translate_chat": false,
+      "model_outputs": {
+        "e2e/answer_v1": [
+          "[Answer:] E2E OK scenario_067_p1"
+        ],
+        "e2e/router_v1": [
+          "[BM25:] search"
+        ]
+      },
+      "retriever_results": [
+        {
+          "Id": "N1",
+          "File": "a.cs",
+          "Content": "class A {}"
+        },
+        {
+          "Id": "N2",
+          "File": "b.cs",
+          "Content": "class B {}"
+        }
+      ],
+      "graph_expand_result": {
+        "nodes": [],
+        "edges": []
+      },
+      "node_texts": [],
+      "repository": "Repo",
+      "snapshot_id": "snap",
+      "expected": {
+        "final_answer_contains": "E2E OK scenario_067_p1",
+        "query_type_in": [
+          "",
+          "ANSWER",
+          "DIRECT",
+          "BM25"
+        ]
+      }
+    },
+    {
+      "name": "scenario_068_p2",
+      "pipeline_name": "P2",
+      "user_query": "Test query 68 for P2",
+      "translate_chat": false,
+      "model_outputs": {
+        "e2e/answer_v1": [
+          "[Answer:] E2E OK scenario_068_p2"
+        ],
+        "e2e/router_v1": [
+          "[BM25:] search"
+        ]
+      },
+      "retriever_results": [
+        {
+          "Id": "N1",
+          "File": "a.cs",
+          "Content": "class A {}"
+        },
+        {
+          "Id": "N2",
+          "File": "b.cs",
+          "Content": "class B {}"
+        }
+      ],
+      "graph_expand_result": {
+        "nodes": [
+          "N1",
+          "N2"
+        ],
+        "edges": []
+      },
+      "node_texts": [
+        {
+          "node_id": "N1",
+          "kind": "regular_code",
+          "file": "a.cs",
+          "text": "class A {}"
+        },
+        {
+          "node_id": "N2",
+          "kind": "regular_code",
+          "file": "b.cs",
+          "text": "class B {}"
+        }
+      ],
+      "repository": "Repo",
+      "snapshot_id": "snap",
+      "expected": {
+        "final_answer_contains": "E2E OK scenario_068_p2",
+        "query_type_in": [
+          "",
+          "ANSWER",
+          "DIRECT",
+          "BM25"
+        ]
+      }
+    },
+    {
+      "name": "scenario_069_p3",
+      "pipeline_name": "P3",
+      "user_query": "Test query 69 for P3",
+      "translate_chat": true,
+      "model_outputs": {
+        "e2e/answer_v1": [
+          "[Answer:] E2E OK scenario_069_p3"
+        ]
+      },
+      "retriever_results": [],
+      "graph_expand_result": {
+        "nodes": [
+          "N1",
+          "N2"
+        ],
+        "edges": []
+      },
+      "node_texts": [
+        {
+          "node_id": "N1",
+          "kind": "regular_code",
+          "file": "a.cs",
+          "text": "class A {}"
+        },
+        {
+          "node_id": "N2",
+          "kind": "regular_code",
+          "file": "b.cs",
+          "text": "class B {}"
+        }
+      ],
+      "repository": "Repo",
+      "snapshot_id": "snap",
+      "expected": {
+        "final_answer_contains": "E2E OK scenario_069_p3",
+        "query_type_in": [
+          "",
+          "ANSWER",
+          "DIRECT",
+          "BM25"
+        ]
+      }
+    },
+    {
+      "name": "scenario_070_p4",
+      "pipeline_name": "P4",
+      "user_query": "Test query 70 for P4",
+      "translate_chat": false,
+      "model_outputs": {
+        "e2e/answer_v1": [
+          "[Answer:] E2E OK scenario_070_p4"
+        ],
+        "e2e/router_v1": [
+          "[DIRECT:]"
+        ]
+      },
+      "retriever_results": [],
+      "graph_expand_result": {
+        "nodes": [],
+        "edges": []
+      },
+      "node_texts": [],
+      "repository": "Repo",
+      "snapshot_id": "snap",
+      "expected": {
+        "final_answer_contains": "E2E OK scenario_070_p4",
+        "query_type_in": [
+          "",
+          "ANSWER",
+          "DIRECT",
+          "BM25"
+        ]
+      }
+    },
+    {
+      "name": "scenario_071_p0",
+      "pipeline_name": "P0",
+      "user_query": "Test query 71 for P0",
+      "translate_chat": false,
+      "model_outputs": {
+        "e2e/answer_v1": [
+          "[Answer:] E2E OK scenario_071_p0"
+        ],
+        "e2e/router_v1": [
+          "[DIRECT:]"
+        ]
+      },
+      "retriever_results": [],
+      "graph_expand_result": {
+        "nodes": [],
+        "edges": []
+      },
+      "node_texts": [],
+      "repository": "Repo",
+      "snapshot_id": "snap",
+      "expected": {
+        "final_answer_contains": "E2E OK scenario_071_p0",
+        "query_type_in": [
+          "",
+          "ANSWER",
+          "DIRECT",
+          "BM25"
+        ]
+      }
+    },
+    {
+      "name": "scenario_072_p1",
+      "pipeline_name": "P1",
+      "user_query": "Test query 72 for P1",
+      "translate_chat": true,
+      "model_outputs": {
+        "e2e/answer_v1": [
+          "[Answer:] E2E OK scenario_072_p1"
+        ],
+        "e2e/router_v1": [
+          "[BM25:] search"
+        ]
+      },
+      "retriever_results": [
+        {
+          "Id": "N1",
+          "File": "a.cs",
+          "Content": "class A {}"
+        },
+        {
+          "Id": "N2",
+          "File": "b.cs",
+          "Content": "class B {}"
+        }
+      ],
+      "graph_expand_result": {
+        "nodes": [],
+        "edges": []
+      },
+      "node_texts": [],
+      "repository": "Repo",
+      "snapshot_id": "snap",
+      "expected": {
+        "final_answer_contains": "E2E OK scenario_072_p1",
+        "query_type_in": [
+          "",
+          "ANSWER",
+          "DIRECT",
+          "BM25"
+        ]
+      }
+    },
+    {
+      "name": "scenario_073_p2",
+      "pipeline_name": "P2",
+      "user_query": "Test query 73 for P2",
+      "translate_chat": false,
+      "model_outputs": {
+        "e2e/answer_v1": [
+          "[Answer:] E2E OK scenario_073_p2"
+        ],
+        "e2e/router_v1": [
+          "[BM25:] search"
+        ]
+      },
+      "retriever_results": [
+        {
+          "Id": "N1",
+          "File": "a.cs",
+          "Content": "class A {}"
+        },
+        {
+          "Id": "N2",
+          "File": "b.cs",
+          "Content": "class B {}"
+        }
+      ],
+      "graph_expand_result": {
+        "nodes": [
+          "N1",
+          "N2"
+        ],
+        "edges": []
+      },
+      "node_texts": [
+        {
+          "node_id": "N1",
+          "kind": "regular_code",
+          "file": "a.cs",
+          "text": "class A {}"
+        },
+        {
+          "node_id": "N2",
+          "kind": "regular_code",
+          "file": "b.cs",
+          "text": "class B {}"
+        }
+      ],
+      "repository": "Repo",
+      "snapshot_id": "snap",
+      "expected": {
+        "final_answer_contains": "E2E OK scenario_073_p2",
+        "query_type_in": [
+          "",
+          "ANSWER",
+          "DIRECT",
+          "BM25"
+        ]
+      }
+    },
+    {
+      "name": "scenario_074_p3",
+      "pipeline_name": "P3",
+      "user_query": "Test query 74 for P3",
+      "translate_chat": false,
+      "model_outputs": {
+        "e2e/answer_v1": [
+          "[Answer:] E2E OK scenario_074_p3"
+        ]
+      },
+      "retriever_results": [],
+      "graph_expand_result": {
+        "nodes": [
+          "N1",
+          "N2"
+        ],
+        "edges": []
+      },
+      "node_texts": [
+        {
+          "node_id": "N1",
+          "kind": "regular_code",
+          "file": "a.cs",
+          "text": "class A {}"
+        },
+        {
+          "node_id": "N2",
+          "kind": "regular_code",
+          "file": "b.cs",
+          "text": "class B {}"
+        }
+      ],
+      "repository": "Repo",
+      "snapshot_id": "snap",
+      "expected": {
+        "final_answer_contains": "E2E OK scenario_074_p3",
+        "query_type_in": [
+          "",
+          "ANSWER",
+          "DIRECT",
+          "BM25"
+        ]
+      }
+    },
+    {
+      "name": "scenario_075_p4",
+      "pipeline_name": "P4",
+      "user_query": "Test query 75 for P4",
+      "translate_chat": true,
+      "model_outputs": {
+        "e2e/answer_v1": [
+          "[Answer:] E2E OK scenario_075_p4"
+        ],
+        "e2e/router_v1": [
+          "[DIRECT:]"
+        ]
+      },
+      "retriever_results": [],
+      "graph_expand_result": {
+        "nodes": [],
+        "edges": []
+      },
+      "node_texts": [],
+      "repository": "Repo",
+      "snapshot_id": "snap",
+      "expected": {
+        "final_answer_contains": "E2E OK scenario_075_p4",
+        "query_type_in": [
+          "",
+          "ANSWER",
+          "DIRECT",
+          "BM25"
+        ]
+      }
+    },
+    {
+      "name": "scenario_076_p0",
+      "pipeline_name": "P0",
+      "user_query": "Test query 76 for P0",
+      "translate_chat": false,
+      "model_outputs": {
+        "e2e/answer_v1": [
+          "[Answer:] E2E OK scenario_076_p0"
+        ],
+        "e2e/router_v1": [
+          "[DIRECT:]"
+        ]
+      },
+      "retriever_results": [],
+      "graph_expand_result": {
+        "nodes": [],
+        "edges": []
+      },
+      "node_texts": [],
+      "repository": "Repo",
+      "snapshot_id": "snap",
+      "expected": {
+        "final_answer_contains": "E2E OK scenario_076_p0",
+        "query_type_in": [
+          "",
+          "ANSWER",
+          "DIRECT",
+          "BM25"
+        ]
+      }
+    },
+    {
+      "name": "scenario_077_p1",
+      "pipeline_name": "P1",
+      "user_query": "Test query 77 for P1",
+      "translate_chat": false,
+      "model_outputs": {
+        "e2e/answer_v1": [
+          "[Answer:] E2E OK scenario_077_p1"
+        ],
+        "e2e/router_v1": [
+          "[BM25:] search"
+        ]
+      },
+      "retriever_results": [
+        {
+          "Id": "N1",
+          "File": "a.cs",
+          "Content": "class A {}"
+        },
+        {
+          "Id": "N2",
+          "File": "b.cs",
+          "Content": "class B {}"
+        }
+      ],
+      "graph_expand_result": {
+        "nodes": [],
+        "edges": []
+      },
+      "node_texts": [],
+      "repository": "Repo",
+      "snapshot_id": "snap",
+      "expected": {
+        "final_answer_contains": "E2E OK scenario_077_p1",
+        "query_type_in": [
+          "",
+          "ANSWER",
+          "DIRECT",
+          "BM25"
+        ]
+      }
+    },
+    {
+      "name": "scenario_078_p2",
+      "pipeline_name": "P2",
+      "user_query": "Test query 78 for P2",
+      "translate_chat": true,
+      "model_outputs": {
+        "e2e/answer_v1": [
+          "[Answer:] E2E OK scenario_078_p2"
+        ],
+        "e2e/router_v1": [
+          "[BM25:] search"
+        ]
+      },
+      "retriever_results": [
+        {
+          "Id": "N1",
+          "File": "a.cs",
+          "Content": "class A {}"
+        },
+        {
+          "Id": "N2",
+          "File": "b.cs",
+          "Content": "class B {}"
+        }
+      ],
+      "graph_expand_result": {
+        "nodes": [
+          "N1",
+          "N2"
+        ],
+        "edges": []
+      },
+      "node_texts": [
+        {
+          "node_id": "N1",
+          "kind": "regular_code",
+          "file": "a.cs",
+          "text": "class A {}"
+        },
+        {
+          "node_id": "N2",
+          "kind": "regular_code",
+          "file": "b.cs",
+          "text": "class B {}"
+        }
+      ],
+      "repository": "Repo",
+      "snapshot_id": "snap",
+      "expected": {
+        "final_answer_contains": "E2E OK scenario_078_p2",
+        "query_type_in": [
+          "",
+          "ANSWER",
+          "DIRECT",
+          "BM25"
+        ]
+      }
+    },
+    {
+      "name": "scenario_079_p3",
+      "pipeline_name": "P3",
+      "user_query": "Test query 79 for P3",
+      "translate_chat": false,
+      "model_outputs": {
+        "e2e/answer_v1": [
+          "[Answer:] E2E OK scenario_079_p3"
+        ]
+      },
+      "retriever_results": [],
+      "graph_expand_result": {
+        "nodes": [
+          "N1",
+          "N2"
+        ],
+        "edges": []
+      },
+      "node_texts": [
+        {
+          "node_id": "N1",
+          "kind": "regular_code",
+          "file": "a.cs",
+          "text": "class A {}"
+        },
+        {
+          "node_id": "N2",
+          "kind": "regular_code",
+          "file": "b.cs",
+          "text": "class B {}"
+        }
+      ],
+      "repository": "Repo",
+      "snapshot_id": "snap",
+      "expected": {
+        "final_answer_contains": "E2E OK scenario_079_p3",
+        "query_type_in": [
+          "",
+          "ANSWER",
+          "DIRECT",
+          "BM25"
+        ]
+      }
+    },
+    {
+      "name": "scenario_080_p4",
+      "pipeline_name": "P4",
+      "user_query": "Test query 80 for P4",
+      "translate_chat": false,
+      "model_outputs": {
+        "e2e/answer_v1": [
+          "[Answer:] E2E OK scenario_080_p4"
+        ],
+        "e2e/router_v1": [
+          "[DIRECT:]"
+        ]
+      },
+      "retriever_results": [],
+      "graph_expand_result": {
+        "nodes": [],
+        "edges": []
+      },
+      "node_texts": [],
+      "repository": "Repo",
+      "snapshot_id": "snap",
+      "expected": {
+        "final_answer_contains": "E2E OK scenario_080_p4",
+        "query_type_in": [
+          "",
+          "ANSWER",
+          "DIRECT",
+          "BM25"
+        ]
+      }
+    },
+    {
+      "name": "scenario_081_p0",
+      "pipeline_name": "P0",
+      "user_query": "Test query 81 for P0",
+      "translate_chat": true,
+      "model_outputs": {
+        "e2e/answer_v1": [
+          "[Answer:] E2E OK scenario_081_p0"
+        ],
+        "e2e/router_v1": [
+          "[DIRECT:]"
+        ]
+      },
+      "retriever_results": [],
+      "graph_expand_result": {
+        "nodes": [],
+        "edges": []
+      },
+      "node_texts": [],
+      "repository": "Repo",
+      "snapshot_id": "snap",
+      "expected": {
+        "final_answer_contains": "E2E OK scenario_081_p0",
+        "query_type_in": [
+          "",
+          "ANSWER",
+          "DIRECT",
+          "BM25"
+        ]
+      }
+    },
+    {
+      "name": "scenario_082_p1",
+      "pipeline_name": "P1",
+      "user_query": "Test query 82 for P1",
+      "translate_chat": false,
+      "model_outputs": {
+        "e2e/answer_v1": [
+          "[Answer:] E2E OK scenario_082_p1"
+        ],
+        "e2e/router_v1": [
+          "[BM25:] search"
+        ]
+      },
+      "retriever_results": [
+        {
+          "Id": "N1",
+          "File": "a.cs",
+          "Content": "class A {}"
+        },
+        {
+          "Id": "N2",
+          "File": "b.cs",
+          "Content": "class B {}"
+        }
+      ],
+      "graph_expand_result": {
+        "nodes": [],
+        "edges": []
+      },
+      "node_texts": [],
+      "repository": "Repo",
+      "snapshot_id": "snap",
+      "expected": {
+        "final_answer_contains": "E2E OK scenario_082_p1",
+        "query_type_in": [
+          "",
+          "ANSWER",
+          "DIRECT",
+          "BM25"
+        ]
+      }
+    },
+    {
+      "name": "scenario_083_p2",
+      "pipeline_name": "P2",
+      "user_query": "Test query 83 for P2",
+      "translate_chat": false,
+      "model_outputs": {
+        "e2e/answer_v1": [
+          "[Answer:] E2E OK scenario_083_p2"
+        ],
+        "e2e/router_v1": [
+          "[BM25:] search"
+        ]
+      },
+      "retriever_results": [
+        {
+          "Id": "N1",
+          "File": "a.cs",
+          "Content": "class A {}"
+        },
+        {
+          "Id": "N2",
+          "File": "b.cs",
+          "Content": "class B {}"
+        }
+      ],
+      "graph_expand_result": {
+        "nodes": [
+          "N1",
+          "N2"
+        ],
+        "edges": []
+      },
+      "node_texts": [
+        {
+          "node_id": "N1",
+          "kind": "regular_code",
+          "file": "a.cs",
+          "text": "class A {}"
+        },
+        {
+          "node_id": "N2",
+          "kind": "regular_code",
+          "file": "b.cs",
+          "text": "class B {}"
+        }
+      ],
+      "repository": "Repo",
+      "snapshot_id": "snap",
+      "expected": {
+        "final_answer_contains": "E2E OK scenario_083_p2",
+        "query_type_in": [
+          "",
+          "ANSWER",
+          "DIRECT",
+          "BM25"
+        ]
+      }
+    },
+    {
+      "name": "scenario_084_p3",
+      "pipeline_name": "P3",
+      "user_query": "Test query 84 for P3",
+      "translate_chat": true,
+      "model_outputs": {
+        "e2e/answer_v1": [
+          "[Answer:] E2E OK scenario_084_p3"
+        ]
+      },
+      "retriever_results": [],
+      "graph_expand_result": {
+        "nodes": [
+          "N1",
+          "N2"
+        ],
+        "edges": []
+      },
+      "node_texts": [
+        {
+          "node_id": "N1",
+          "kind": "regular_code",
+          "file": "a.cs",
+          "text": "class A {}"
+        },
+        {
+          "node_id": "N2",
+          "kind": "regular_code",
+          "file": "b.cs",
+          "text": "class B {}"
+        }
+      ],
+      "repository": "Repo",
+      "snapshot_id": "snap",
+      "expected": {
+        "final_answer_contains": "E2E OK scenario_084_p3",
+        "query_type_in": [
+          "",
+          "ANSWER",
+          "DIRECT",
+          "BM25"
+        ]
+      }
+    },
+    {
+      "name": "scenario_085_p4",
+      "pipeline_name": "P4",
+      "user_query": "Test query 85 for P4",
+      "translate_chat": false,
+      "model_outputs": {
+        "e2e/answer_v1": [
+          "[Answer:] E2E OK scenario_085_p4"
+        ],
+        "e2e/router_v1": [
+          "[DIRECT:]"
+        ]
+      },
+      "retriever_results": [],
+      "graph_expand_result": {
+        "nodes": [],
+        "edges": []
+      },
+      "node_texts": [],
+      "repository": "Repo",
+      "snapshot_id": "snap",
+      "expected": {
+        "final_answer_contains": "E2E OK scenario_085_p4",
+        "query_type_in": [
+          "",
+          "ANSWER",
+          "DIRECT",
+          "BM25"
+        ]
+      }
+    },
+    {
+      "name": "scenario_086_p0",
+      "pipeline_name": "P0",
+      "user_query": "Test query 86 for P0",
+      "translate_chat": false,
+      "model_outputs": {
+        "e2e/answer_v1": [
+          "[Answer:] E2E OK scenario_086_p0"
+        ],
+        "e2e/router_v1": [
+          "[DIRECT:]"
+        ]
+      },
+      "retriever_results": [],
+      "graph_expand_result": {
+        "nodes": [],
+        "edges": []
+      },
+      "node_texts": [],
+      "repository": "Repo",
+      "snapshot_id": "snap",
+      "expected": {
+        "final_answer_contains": "E2E OK scenario_086_p0",
+        "query_type_in": [
+          "",
+          "ANSWER",
+          "DIRECT",
+          "BM25"
+        ]
+      }
+    },
+    {
+      "name": "scenario_087_p1",
+      "pipeline_name": "P1",
+      "user_query": "Test query 87 for P1",
+      "translate_chat": true,
+      "model_outputs": {
+        "e2e/answer_v1": [
+          "[Answer:] E2E OK scenario_087_p1"
+        ],
+        "e2e/router_v1": [
+          "[BM25:] search"
+        ]
+      },
+      "retriever_results": [
+        {
+          "Id": "N1",
+          "File": "a.cs",
+          "Content": "class A {}"
+        },
+        {
+          "Id": "N2",
+          "File": "b.cs",
+          "Content": "class B {}"
+        }
+      ],
+      "graph_expand_result": {
+        "nodes": [],
+        "edges": []
+      },
+      "node_texts": [],
+      "repository": "Repo",
+      "snapshot_id": "snap",
+      "expected": {
+        "final_answer_contains": "E2E OK scenario_087_p1",
+        "query_type_in": [
+          "",
+          "ANSWER",
+          "DIRECT",
+          "BM25"
+        ]
+      }
+    },
+    {
+      "name": "scenario_088_p2",
+      "pipeline_name": "P2",
+      "user_query": "Test query 88 for P2",
+      "translate_chat": false,
+      "model_outputs": {
+        "e2e/answer_v1": [
+          "[Answer:] E2E OK scenario_088_p2"
+        ],
+        "e2e/router_v1": [
+          "[BM25:] search"
+        ]
+      },
+      "retriever_results": [
+        {
+          "Id": "N1",
+          "File": "a.cs",
+          "Content": "class A {}"
+        },
+        {
+          "Id": "N2",
+          "File": "b.cs",
+          "Content": "class B {}"
+        }
+      ],
+      "graph_expand_result": {
+        "nodes": [
+          "N1",
+          "N2"
+        ],
+        "edges": []
+      },
+      "node_texts": [
+        {
+          "node_id": "N1",
+          "kind": "regular_code",
+          "file": "a.cs",
+          "text": "class A {}"
+        },
+        {
+          "node_id": "N2",
+          "kind": "regular_code",
+          "file": "b.cs",
+          "text": "class B {}"
+        }
+      ],
+      "repository": "Repo",
+      "snapshot_id": "snap",
+      "expected": {
+        "final_answer_contains": "E2E OK scenario_088_p2",
+        "query_type_in": [
+          "",
+          "ANSWER",
+          "DIRECT",
+          "BM25"
+        ]
+      }
+    },
+    {
+      "name": "scenario_089_p3",
+      "pipeline_name": "P3",
+      "user_query": "Test query 89 for P3",
+      "translate_chat": false,
+      "model_outputs": {
+        "e2e/answer_v1": [
+          "[Answer:] E2E OK scenario_089_p3"
+        ]
+      },
+      "retriever_results": [],
+      "graph_expand_result": {
+        "nodes": [
+          "N1",
+          "N2"
+        ],
+        "edges": []
+      },
+      "node_texts": [
+        {
+          "node_id": "N1",
+          "kind": "regular_code",
+          "file": "a.cs",
+          "text": "class A {}"
+        },
+        {
+          "node_id": "N2",
+          "kind": "regular_code",
+          "file": "b.cs",
+          "text": "class B {}"
+        }
+      ],
+      "repository": "Repo",
+      "snapshot_id": "snap",
+      "expected": {
+        "final_answer_contains": "E2E OK scenario_089_p3",
+        "query_type_in": [
+          "",
+          "ANSWER",
+          "DIRECT",
+          "BM25"
+        ]
+      }
+    },
+    {
+      "name": "scenario_090_p4",
+      "pipeline_name": "P4",
+      "user_query": "Test query 90 for P4",
+      "translate_chat": true,
+      "model_outputs": {
+        "e2e/answer_v1": [
+          "[Answer:] E2E OK scenario_090_p4"
+        ],
+        "e2e/router_v1": [
+          "[DIRECT:]"
+        ]
+      },
+      "retriever_results": [],
+      "graph_expand_result": {
+        "nodes": [],
+        "edges": []
+      },
+      "node_texts": [],
+      "repository": "Repo",
+      "snapshot_id": "snap",
+      "expected": {
+        "final_answer_contains": "E2E OK scenario_090_p4",
+        "query_type_in": [
+          "",
+          "ANSWER",
+          "DIRECT",
+          "BM25"
+        ]
+      }
+    },
+    {
+      "name": "scenario_091_p0",
+      "pipeline_name": "P0",
+      "user_query": "Test query 91 for P0",
+      "translate_chat": false,
+      "model_outputs": {
+        "e2e/answer_v1": [
+          "[Answer:] E2E OK scenario_091_p0"
+        ],
+        "e2e/router_v1": [
+          "[DIRECT:]"
+        ]
+      },
+      "retriever_results": [],
+      "graph_expand_result": {
+        "nodes": [],
+        "edges": []
+      },
+      "node_texts": [],
+      "repository": "Repo",
+      "snapshot_id": "snap",
+      "expected": {
+        "final_answer_contains": "E2E OK scenario_091_p0",
+        "query_type_in": [
+          "",
+          "ANSWER",
+          "DIRECT",
+          "BM25"
+        ]
+      }
+    },
+    {
+      "name": "scenario_092_p1",
+      "pipeline_name": "P1",
+      "user_query": "Test query 92 for P1",
+      "translate_chat": false,
+      "model_outputs": {
+        "e2e/answer_v1": [
+          "[Answer:] E2E OK scenario_092_p1"
+        ],
+        "e2e/router_v1": [
+          "[BM25:] search"
+        ]
+      },
+      "retriever_results": [
+        {
+          "Id": "N1",
+          "File": "a.cs",
+          "Content": "class A {}"
+        },
+        {
+          "Id": "N2",
+          "File": "b.cs",
+          "Content": "class B {}"
+        }
+      ],
+      "graph_expand_result": {
+        "nodes": [],
+        "edges": []
+      },
+      "node_texts": [],
+      "repository": "Repo",
+      "snapshot_id": "snap",
+      "expected": {
+        "final_answer_contains": "E2E OK scenario_092_p1",
+        "query_type_in": [
+          "",
+          "ANSWER",
+          "DIRECT",
+          "BM25"
+        ]
+      }
+    },
+    {
+      "name": "scenario_093_p2",
+      "pipeline_name": "P2",
+      "user_query": "Test query 93 for P2",
+      "translate_chat": true,
+      "model_outputs": {
+        "e2e/answer_v1": [
+          "[Answer:] E2E OK scenario_093_p2"
+        ],
+        "e2e/router_v1": [
+          "[BM25:] search"
+        ]
+      },
+      "retriever_results": [
+        {
+          "Id": "N1",
+          "File": "a.cs",
+          "Content": "class A {}"
+        },
+        {
+          "Id": "N2",
+          "File": "b.cs",
+          "Content": "class B {}"
+        }
+      ],
+      "graph_expand_result": {
+        "nodes": [
+          "N1",
+          "N2"
+        ],
+        "edges": []
+      },
+      "node_texts": [
+        {
+          "node_id": "N1",
+          "kind": "regular_code",
+          "file": "a.cs",
+          "text": "class A {}"
+        },
+        {
+          "node_id": "N2",
+          "kind": "regular_code",
+          "file": "b.cs",
+          "text": "class B {}"
+        }
+      ],
+      "repository": "Repo",
+      "snapshot_id": "snap",
+      "expected": {
+        "final_answer_contains": "E2E OK scenario_093_p2",
+        "query_type_in": [
+          "",
+          "ANSWER",
+          "DIRECT",
+          "BM25"
+        ]
+      }
+    },
+    {
+      "name": "scenario_094_p3",
+      "pipeline_name": "P3",
+      "user_query": "Test query 94 for P3",
+      "translate_chat": false,
+      "model_outputs": {
+        "e2e/answer_v1": [
+          "[Answer:] E2E OK scenario_094_p3"
+        ]
+      },
+      "retriever_results": [],
+      "graph_expand_result": {
+        "nodes": [
+          "N1",
+          "N2"
+        ],
+        "edges": []
+      },
+      "node_texts": [
+        {
+          "node_id": "N1",
+          "kind": "regular_code",
+          "file": "a.cs",
+          "text": "class A {}"
+        },
+        {
+          "node_id": "N2",
+          "kind": "regular_code",
+          "file": "b.cs",
+          "text": "class B {}"
+        }
+      ],
+      "repository": "Repo",
+      "snapshot_id": "snap",
+      "expected": {
+        "final_answer_contains": "E2E OK scenario_094_p3",
+        "query_type_in": [
+          "",
+          "ANSWER",
+          "DIRECT",
+          "BM25"
+        ]
+      }
+    },
+    {
+      "name": "scenario_095_p4",
+      "pipeline_name": "P4",
+      "user_query": "Test query 95 for P4",
+      "translate_chat": false,
+      "model_outputs": {
+        "e2e/answer_v1": [
+          "[Answer:] E2E OK scenario_095_p4"
+        ],
+        "e2e/router_v1": [
+          "[DIRECT:]"
+        ]
+      },
+      "retriever_results": [],
+      "graph_expand_result": {
+        "nodes": [],
+        "edges": []
+      },
+      "node_texts": [],
+      "repository": "Repo",
+      "snapshot_id": "snap",
+      "expected": {
+        "final_answer_contains": "E2E OK scenario_095_p4",
+        "query_type_in": [
+          "",
+          "ANSWER",
+          "DIRECT",
+          "BM25"
+        ]
+      }
+    },
+    {
+      "name": "scenario_096_p0",
+      "pipeline_name": "P0",
+      "user_query": "Test query 96 for P0",
+      "translate_chat": true,
+      "model_outputs": {
+        "e2e/answer_v1": [
+          "[Answer:] E2E OK scenario_096_p0"
+        ],
+        "e2e/router_v1": [
+          "[DIRECT:]"
+        ]
+      },
+      "retriever_results": [],
+      "graph_expand_result": {
+        "nodes": [],
+        "edges": []
+      },
+      "node_texts": [],
+      "repository": "Repo",
+      "snapshot_id": "snap",
+      "expected": {
+        "final_answer_contains": "E2E OK scenario_096_p0",
+        "query_type_in": [
+          "",
+          "ANSWER",
+          "DIRECT",
+          "BM25"
+        ]
+      }
+    },
+    {
+      "name": "scenario_097_p1",
+      "pipeline_name": "P1",
+      "user_query": "Test query 97 for P1",
+      "translate_chat": false,
+      "model_outputs": {
+        "e2e/answer_v1": [
+          "[Answer:] E2E OK scenario_097_p1"
+        ],
+        "e2e/router_v1": [
+          "[BM25:] search"
+        ]
+      },
+      "retriever_results": [
+        {
+          "Id": "N1",
+          "File": "a.cs",
+          "Content": "class A {}"
+        },
+        {
+          "Id": "N2",
+          "File": "b.cs",
+          "Content": "class B {}"
+        }
+      ],
+      "graph_expand_result": {
+        "nodes": [],
+        "edges": []
+      },
+      "node_texts": [],
+      "repository": "Repo",
+      "snapshot_id": "snap",
+      "expected": {
+        "final_answer_contains": "E2E OK scenario_097_p1",
+        "query_type_in": [
+          "",
+          "ANSWER",
+          "DIRECT",
+          "BM25"
+        ]
+      }
+    },
+    {
+      "name": "scenario_098_p2",
+      "pipeline_name": "P2",
+      "user_query": "Test query 98 for P2",
+      "translate_chat": false,
+      "model_outputs": {
+        "e2e/answer_v1": [
+          "[Answer:] E2E OK scenario_098_p2"
+        ],
+        "e2e/router_v1": [
+          "[BM25:] search"
+        ]
+      },
+      "retriever_results": [
+        {
+          "Id": "N1",
+          "File": "a.cs",
+          "Content": "class A {}"
+        },
+        {
+          "Id": "N2",
+          "File": "b.cs",
+          "Content": "class B {}"
+        }
+      ],
+      "graph_expand_result": {
+        "nodes": [
+          "N1",
+          "N2"
+        ],
+        "edges": []
+      },
+      "node_texts": [
+        {
+          "node_id": "N1",
+          "kind": "regular_code",
+          "file": "a.cs",
+          "text": "class A {}"
+        },
+        {
+          "node_id": "N2",
+          "kind": "regular_code",
+          "file": "b.cs",
+          "text": "class B {}"
+        }
+      ],
+      "repository": "Repo",
+      "snapshot_id": "snap",
+      "expected": {
+        "final_answer_contains": "E2E OK scenario_098_p2",
+        "query_type_in": [
+          "",
+          "ANSWER",
+          "DIRECT",
+          "BM25"
+        ]
+      }
+    },
+    {
+      "name": "scenario_099_p3",
+      "pipeline_name": "P3",
+      "user_query": "Test query 99 for P3",
+      "translate_chat": true,
+      "model_outputs": {
+        "e2e/answer_v1": [
+          "[Answer:] E2E OK scenario_099_p3"
+        ]
+      },
+      "retriever_results": [],
+      "graph_expand_result": {
+        "nodes": [
+          "N1",
+          "N2"
+        ],
+        "edges": []
+      },
+      "node_texts": [
+        {
+          "node_id": "N1",
+          "kind": "regular_code",
+          "file": "a.cs",
+          "text": "class A {}"
+        },
+        {
+          "node_id": "N2",
+          "kind": "regular_code",
+          "file": "b.cs",
+          "text": "class B {}"
+        }
+      ],
+      "repository": "Repo",
+      "snapshot_id": "snap",
+      "expected": {
+        "final_answer_contains": "E2E OK scenario_099_p3",
+        "query_type_in": [
+          "",
+          "ANSWER",
+          "DIRECT",
+          "BM25"
+        ]
+      }
+    },
+    {
+      "name": "scenario_100_p4",
+      "pipeline_name": "P4",
+      "user_query": "Test query 100 for P4",
+      "translate_chat": false,
+      "model_outputs": {
+        "e2e/answer_v1": [
+          "[Answer:] E2E OK scenario_100_p4"
+        ],
+        "e2e/router_v1": [
+          "[DIRECT:]"
+        ]
+      },
+      "retriever_results": [],
+      "graph_expand_result": {
+        "nodes": [],
+        "edges": []
+      },
+      "node_texts": [],
+      "repository": "Repo",
+      "snapshot_id": "snap",
+      "expected": {
+        "final_answer_contains": "E2E OK scenario_100_p4",
+        "query_type_in": [
+          "",
+          "ANSWER",
+          "DIRECT",
+          "BM25"
+        ]
+      }
+    }
+  ]
+}

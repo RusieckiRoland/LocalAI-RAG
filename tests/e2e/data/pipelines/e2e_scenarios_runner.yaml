@@ -1,0 +1,25 @@
+YAMLpipelines:
+  - name: P0
+    pipeline_file: tests/e2e/data/pipelines/e2e_graph_search_expand_fetch.yaml
+    pipeline_name: e2e_graph_search_expand_fetch
+    scenario_file: tests/e2e/data/scenarios/e2e_graph_search_expand_fetch.yaml
+
+  - name: P1
+    pipeline_file: tests/e2e/data/pipelines/e2e_scenarios_runner_p1.yaml
+    pipeline_name: e2e_runner_p1
+    scenario_file: tests/e2e/data/scenarios/e2e_runner_p1.yaml
+
+  - name: P2
+    pipeline_file: tests/e2e/data/pipelines/e2e_scenarios_runner_p2.yaml
+    pipeline_name: e2e_runner_p2
+    scenario_file: tests/e2e/data/scenarios/e2e_runner_p2.yaml
+
+  - name: P3
+    pipeline_file: tests/e2e/data/pipelines/e2e_scenarios_runner_p3.yaml
+    pipeline_name: e2e_runner_p3
+    scenario_file: tests/e2e/data/scenarios/e2e_runner_p3.yaml
+
+  - name: P4
+    pipeline_file: tests/e2e/data/pipelines/e2e_scenarios_runner_p4.yaml
+    pipeline_name: e2e_runner_p4
+    scenario_file: tests/e2e/data/scenarios/e2e_runner_p4.yaml

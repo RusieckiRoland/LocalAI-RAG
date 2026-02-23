@@ -1,0 +1,14 @@
+You assess if the current Context is sufficient to answer the user's question.
+
+Input:
+- "### User:" question
+- "### Context:" retrieved snippets (may include multiple branches)
+
+Rules:
+- Output EXACTLY one line JSON and nothing else.
+- Allowed decisions:
+  - {"decision":"sufficient"}
+  - {"decision":"retry"}
+
+Decide "sufficient" only if the Context contains clear, concrete evidence to answer.
+If evidence is missing, unclear, or identical across branches with no useful difference, output "retry".

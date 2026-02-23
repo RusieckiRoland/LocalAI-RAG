@@ -1,0 +1,30 @@
+services:
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.1
+    container_name: localai-rag-keycloak
+    restart: unless-stopped
+    environment:
+      KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN:-admin}
+      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-admin}
+
+      # Dev-only embedded DB persisted to a file under /opt/keycloak/data
+      KC_DB: dev-file
+
+      KC_HTTP_ENABLED: "true"
+      KC_PROXY_HEADERS: xforwarded
+      KC_HEALTH_ENABLED: "true"
+      KC_METRICS_ENABLED: "true"
+    command:
+      - start-dev
+      - --http-port=8080
+      - --hostname-strict=false
+    ports:
+      - "${KEYCLOAK_PORT_BIND:-127.0.0.1:18090}:8080"
+
+      # Fixed host port (uncomment + set KEYCLOAK_PORT_BIND, e.g. 127.0.0.1:18090)
+      # - "${KEYCLOAK_PORT_BIND:-127.0.0.1:18090}:8080"
+    volumes:
+      - keycloak_data:/opt/keycloak/data
+
+volumes:
+  keycloak_data:

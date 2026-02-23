@@ -61,7 +61,6 @@ models/**
 commands.txt
 branches/
 
-
 # Summarizer artifacts
 sumarizing_tests/batches
 sumarizing_tests/output
@@ -72,3 +71,26 @@ out_proc_rag/
 
 .coverage
 .coverage.*
+
+/repositories/
+
+
+
+# Legacy layout outputs (if still present)
+vector_indexes/
+vector_indexes/**
+
+# Temp files produced by the editor/scripts
+*.py.temp
+*.json.temp
+*.temp
+
+rag_dump_*.txt
+clip_dump_*.txt
+
+/log/
+
+# Polish documentation (default: ignore), but allow selected tracked contracts.
+docs_pl/**
+!docs_pl/contacts/
+!docs_pl/contacts/conversation_history_service_contract.md

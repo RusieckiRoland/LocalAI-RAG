@@ -1,0 +1,311 @@
+YAMLpipeline:
+  name: marian_rejewski_code_analysis_base
+
+  settings:
+    entry_step_id: maybe_translate_in
+    model_language: en
+    behavior_version: "0.2.0"
+    compat_mode: locked
+
+    # Defaults (must be overridden in child pipeline)
+
+    # call_model default (step.native_chat overrides this)
+    native_chat: true
+
+    # Loop guard
+    max_turn_loops: 6
+
+    # Token budgets
+    max_context_tokens: 5000
+    max_history_tokens: 800
+
+    # Rolling summary policy
+    history_summarization_policy: "incremental_resummarize"
+
+    # Graph expansion defaults
+    graph_max_depth: 2
+    graph_max_nodes: 120
+    graph_edge_allowlist:
+      - "ReadsFrom"
+      - "WritesTo"
+      - "Calls"
+      - "Executes"
+      - "FK"
+      - "On"
+      - "SynonymFor"
+      - "ReferencedBy(C#)"
+
+    # How many node texts/snippets we can fetch by identity after expansion
+    node_text_fetch_top_n: 12
+
+    # Retrieval modes supported by the system
+    retrieval_modes:
+      - semantic
+      - bm25
+      - hybrid
+
+    # Callback visibility policy for this pipeline (global config has higher priority)
+    callback: allowed
+    stages_visibility: explicit
+      
+
+  steps:
+    - id: maybe_translate_in
+      action: translate_in_if_needed
+      next: load_history
+
+    - id: load_history
+      action: load_conversation_history
+      next: call_model_router
+
+    - id: call_model_router
+      action: call_model
+      prompt_key: "rejewski/router_v1"
+      user_parts:
+        question:
+          source: user_question_neutral
+          template: "### User:\n{}\n\n"
+      next: dispatch_router_directives
+
+
+    - id: dispatch_router_directives
+      action: inbox_dispatcher
+      directives_key: "dispatch"
+      rules:
+        fetch_node_texts:
+          topic: "config"
+          allow_keys: ["prioritization_mode", "policy"]
+          rename:
+            policy: "prioritization_mode"
+      next: handle_router_decision
+
+    - id: handle_router_decision
+      action: json_decision_router
+      routes:
+        direct: call_model_direct_answer
+        retrieve: search_auto
+      on_other: call_model_direct_answer
+
+    - id: search_auto
+      search_type: auto
+      action: search_nodes
+      stages_visible: true
+      callback_caption: "Searching sources"
+      callback_caption_translated: "Wyszukiwanie źródeł"
+      top_k: 12
+      query_parser: JsonishQueryParser
+      next: expand_dependency_tree
+    
+    - id: search_hyde
+      search_type: semantic
+      action: search_nodes
+      stages_visible: true
+      callback_caption: "HyDE retrieval"
+      callback_caption_translated: "Wyszukiwanie HyDE"
+      top_k: 12
+      next: expand_dependency_tree
+
+    - id: expand_dependency_tree
+      action: expand_dependency_tree
+      stages_visible: true
+      callback_caption: "Expanding dependencies"
+      callback_caption_translated: "Rozszerzanie zależności"
+      max_depth_from_settings: "graph_max_depth"
+      max_nodes_from_settings: "graph_max_nodes"
+      edge_allowlist_from_settings: "graph_edge_allowlist"
+      next: fetch_node_texts
+
+    - id: fetch_node_texts
+      action: fetch_node_texts
+      include_metadata_in_context: true
+      stages_visible: true
+      callback_caption: "Materializing context"
+      callback_caption_translated: "Budowanie kontekstu"
+      max_context_tokens: 6000
+      top_n_from_settings: "node_text_fetch_top_n"
+      next: manage_budget
+
+    - id: manage_budget
+      action: manage_context_budget
+      stages_visible: true
+      callback_caption: "Applying context budget"
+      callback_caption_translated: "Stosowanie budżetu kontekstu"      
+      on_ok: suff_loop_guard
+      on_over: budget_loop_guard
+
+    - id: budget_loop_guard
+      action: loop_guard
+      max_turn_loops_from_settings: "max_turn_loops"
+      on_allow: call_summarize_context
+      on_deny: call_model_answer_not_sure
+
+    - id: call_summarize_context
+      action: call_model
+      prompt_key: "sumarizer"
+      max_output_tokens: 2000
+      user_parts:
+        context:
+          source: context_blocks
+          template: "### Context:\n{}\n\n"
+        user_question:
+          source: user_question_neutral
+          template: "### User:\n{}\n\n"
+      next: set_context_from_summary
+
+    - id: set_context_from_summary
+      action: set_variables
+      rules:
+        - set: context_blocks
+          from: last_model_response
+          transform: to_context_blocks
+        - set: last_model_response
+          value: null
+      next: manage_budget
+
+    - id: suff_loop_guard
+      action: loop_guard
+      max_turn_loops_from_settings: "max_turn_loops"
+      on_allow: call_model_sufficiency
+      on_deny: call_model_answer_not_sure
+
+    - id: call_model_sufficiency
+      action: call_model
+      stages_visible: true
+      callback_caption: "Assessing sufficiency"
+      callback_caption_translated: "Ocena wystarczalności"
+      prompt_key: "rejewski/sufficiency_router_v1"
+      max_output_tokens: 650
+      temperature: 0.2
+      top_p: 0.6
+      use_history: true
+      user_parts:
+        search_mode_constraint:
+          source: sufficiency_search_mode_constraint
+          template: "### Search Mode Constraint:\n{}\n\n"        
+        context:
+          source: composed_context_for_prompt
+          template: "### Context:\n{}\n\n"
+        user_question:
+          source: user_question_neutral
+          template: "### User:\n{}\n\n"
+      next: dispatch_sufficiency_directives
+
+
+    - id: dispatch_sufficiency_directives
+      action: inbox_dispatcher
+      directives_key: "dispatch"
+      rules:
+        fetch_node_texts:
+          topic: "config"
+          allow_keys: ["prioritization_mode", "policy"]
+          rename:
+            policy: "prioritization_mode"
+      next: handle_sufficiency_decision
+
+    - id: handle_sufficiency_decision
+      action: json_decision_router
+      routes:
+        sufficient: call_model_sure_answer
+        retrieve: guard_repeat_query
+      on_other: call_model_answer_not_sure
+
+    - id: guard_repeat_query
+      action: repeat_query_guard
+      query_parser: JsonishQueryParser
+      on_ok: search_auto
+      on_repeat: HyDE_model_fallback
+
+    - id: HyDE_model_fallback
+      action: call_model
+      stages_visible: true
+      callback_caption: "Generating HyDE draft"
+      callback_caption_translated: "Generowanie szkicu HyDE"
+      prompt_key: "rejewski/hyde_fallback"
+      max_output_tokens: 300
+      temperature: 0.2
+      top_p: 0.7
+      use_history: true
+      user_parts:
+        context:
+          source: composed_context_for_prompt
+          template: "### Context:\n{}\n\n"
+        user_question:
+          source: user_question_neutral
+          template: "### User:\n{}\n\n"
+      next: search_hyde
+
+    - id: call_model_sure_answer
+      action: call_model
+      stages_visible: true
+      callback_caption: "Generating grounded answer"
+      callback_caption_translated: "Generowanie odpowiedzi z kontekstu"
+      prompt_key: "rejewski/sure_answer_v1"
+      custom_banner:
+        neutral: "✅ Evidence note: This answer is fully supported by the retrieved context and cited verbatim evidence."
+        translated: "✅ Uwaga: Ta odpowiedź jest w pełni oparta na pobranym kontekście i cytowanych fragmentach."
+      use_history: true
+      user_parts:
+        context:
+          source: composed_context_for_prompt
+          template: "### Context:\n{}\n\n"
+        user_question:
+          source: user_question_neutral
+          template: "### User:\n{}\n\n"
+      next: set_answer_from_last_model_response
+
+    - id: call_model_direct_answer
+      action: call_model
+      stages_visible: true
+      callback_caption: "Generating direct answer"
+      callback_caption_translated: "Generowanie odpowiedzi bez retrieval"
+      prompt_key: "rejewski/direct_answer_v1"
+      custom_banner:
+        neutral: "ℹ️ Direct-answer note: This question was classified as general knowledge; no repository search was performed."
+        translated: "ℹ️ Odpowiedź bezpośrednia: To pytanie zostało zaklasyfikowane jako wiedza ogólna; nie wykonano przeszukania repozytorium."
+      use_history: true
+      user_parts:
+        user_question:
+          source: user_question_neutral
+          template: "### User:\n{}\n\n"
+        history:
+          source: history_for_prompt
+          template: "### History:\n{}\n\n"
+      next: set_answer_from_last_model_response
+
+    - id: call_model_answer_not_sure
+      action: call_model
+      stages_visible: true
+      callback_caption: "Preparing fallback answer"
+      callback_caption_translated: "Przygotowanie odpowiedzi fallback"
+      prompt_key: "rejewski/answer_not_sure"
+      custom_banner:
+        neutral: "⚠️ Uncertain answer: This response may be incomplete; no definitive evidence was found in the retrieved context."
+        translated: "⚠️ Odpowiedź niepewna: Ta odpowiedź może być niepełna; nie znaleziono jednoznacznych dowodów w pobranym kontekście."
+      user_parts:
+         user_question:
+          source: user_question_neutral
+          template: "\n<<<USER_QUESTION:\n{}\nUSER_QUESTION\n\n"
+         evidence:
+          source: context_blocks
+          template: "<<<EVIDENCE:\n{}\nEVIDENCE"       
+      next: set_answer_from_last_model_response
+
+    - id: set_answer_from_last_model_response
+      action: set_variables
+      rules:
+        - set: answer_neutral
+          from: last_model_response
+        - set: answer_translated
+          value: null
+      next: translate_out
+
+    
+    - id: translate_out
+      action: translate_out_if_needed      
+      use_main_model: true
+      translate_prompt_key: "utility/translate_md_en_pl"      
+      next: finalize
+
+    - id: finalize
+      action: finalize
+      end: true

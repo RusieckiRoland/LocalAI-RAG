@@ -1,11 +1,11 @@
-# File: inference/model.py
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict
+from typing import Any, Optional, Callable
 
 from llama_cpp import Llama
-from prompt_builder.factory import get_prompt_builder
+from code_query_engine.pipeline.cancellation import PipelineCancelled
+from code_query_engine.llm_query_logger import log_llm_query, LLMCallTimer
 
 
 logger = logging.getLogger(__name__)
@@ -13,110 +13,369 @@ logger = logging.getLogger(__name__)
 
 class Model:
     """
-    Thin wrapper around llama-cpp to:
-      - build prompts via a pluggable prompt builder,
-      - run a single completion call,
-      - guard against obvious hallucination loops.
+    Thin wrapper around llama-cpp.
 
-    Notes
-    -----
-    - Default llama parameters mirror your previous setup.
-    - A GPU→CPU fallback is attempted if GPU init fails.
-    - Some llama-cpp flags (e.g., flash_attn, offload_kqv, low_vram) may be
-      version-dependent; if unsupported by your build they are ignored by the
-      fallback path.
+    Responsibility:
+    - Accept a fully built prompt (string),
+    - Run a single completion call,
+    - Guard against obvious hallucination loops.
+
+    NOTE:
+    Prompt construction is NOT done here. It must be done by the pipeline step (call_model).
     """
+    supports_cancel_check = True
 
-    def __init__(self, model_path: str):
+    def __init__(
+        self,
+        model_path: str,
+        *,
+        default_max_tokens: int = 1500,
+        n_ctx: int = 4096,
+        use_gpu: bool = True,
+        n_gpu_layers: Optional[int] = None,
+    ):
         self.modelPath = model_path  # keep original attribute name for compatibility
-        self.llm = self._create_llama(self.modelPath)
-        self.promptBuilder = get_prompt_builder(model_path=self.modelPath)
+        self.default_max_tokens = int(default_max_tokens)
+        self.n_ctx = int(n_ctx)
+        self.use_gpu = bool(use_gpu)
+        self.n_gpu_layers = n_gpu_layers if n_gpu_layers is None else int(n_gpu_layers)
+        if self.default_max_tokens <= 0:
+            raise ValueError("Model: default_max_tokens must be > 0")
+        if self.n_ctx <= 0:
+            raise ValueError("Model: n_ctx must be > 0")
+        self.llm = self._create_llama(self.modelPath, n_ctx=self.n_ctx)
 
     # --------------------------------------------------------------------- #
     # Public API
     # --------------------------------------------------------------------- #
 
-    def ask(self, context: str, question: str, consultant: str) -> str:
-        """
-        Build a prompt and query the model.
+    def ask(
+        self,
+        *,
+        prompt: str,
+        system_prompt: Optional[str] = None,
+        max_tokens: Optional[int] = None,
+        temperature: Optional[float] = None,
+        repeat_penalty: float = 1.2,
+        top_k: int = 40,
+        top_p: Optional[float] = None,
+        cancel_check: Optional[Callable[[], None]] = None,
+    ) -> str:
+        if max_tokens is None:
+            max_tokens = self.default_max_tokens
+        if temperature is None:
+            temperature = 0.1
 
-        Returns
-        -------
-        str
-            Model's text output (trimmed). If a severe error or a suspected
-            hallucination loop occurs, a short error marker is returned.
-        """
-        prompt = self.promptBuilder.build_prompt(context, question, consultant)
+        timer = LLMCallTimer()
+
+        # Optional: prepend system prompt if your renderer doesn't already include it.
+        if system_prompt:
+            prompt = f"{system_prompt}\n\n{prompt}"
+
         try:
-            res = self.llm(
-                prompt=prompt,
-                max_tokens=1500,
-                temperature=0.1,
-                repeat_penalty=1.2,
-                top_k=40,
-            )
-            output = (res.get("choices") or [{}])[0].get("text", "").strip()
+            call_kwargs: dict[str, Any] = {
+                "prompt": prompt,
+                "max_tokens": max_tokens,
+                "temperature": temperature,
+                "repeat_penalty": repeat_penalty,
+                "top_k": top_k,
+            }
+            if top_p is not None:
+                call_kwargs["top_p"] = top_p  # llama-cpp-python supports top_p
+
+            output = ""
+            if cancel_check is not None:
+                cancel_check()
+                call_kwargs["stream"] = True
+                try:
+                    parts: list[str] = []
+                    for chunk in self.llm(**call_kwargs):
+                        cancel_check()
+                        text = ""
+                        if isinstance(chunk, dict):
+                            choice = (chunk.get("choices") or [{}])[0] if chunk else {}
+                            text = choice.get("text") or ""
+                        parts.append(str(text))
+                    output = "".join(parts).strip()
+                except TypeError:
+                    call_kwargs.pop("stream", None)
+                    res = self.llm(**call_kwargs)
+                    output = (res.get("choices") or [{}])[0].get("text", "").strip()
+            else:
+                res = self.llm(**call_kwargs)
+                output = (res.get("choices") or [{}])[0].get("text", "").strip()
 
             if self._looks_like_hallucination(output):
                 raise RuntimeError("Detected hallucination or recursive loop in LLM response.")
 
-            return output or ""
+            log_llm_query(
+                op="local_completion",
+                request={
+                    "prompt": prompt,
+                    "max_tokens": max_tokens,
+                    "temperature": temperature,
+                    "repeat_penalty": repeat_penalty,
+                    "top_k": top_k,
+                    "top_p": top_p,
+                },
+                response=output,
+                duration_ms=timer.ms(),
+            )
+            return output
+
+        except PipelineCancelled:
+            raise
         except Exception as e:
-            logger.warning("Error during LLM call: %s", e, exc_info=False)
-            return "[ERROR: Response suppressed due to suspected hallucination or runtime failure.]"
+            log_llm_query(
+                op="local_completion",
+                request={
+                    "prompt": prompt,
+                    "max_tokens": max_tokens,
+                    "temperature": temperature,
+                    "repeat_penalty": repeat_penalty,
+                    "top_k": top_k,
+                    "top_p": top_p,
+                },
+                response=None,
+                error=str(e),
+                duration_ms=timer.ms(),
+            )
+            logger.error(f"Model error: {e}")
+            return "[MODEL_ERROR]"
+
+    def ask_chat(
+        self,
+        *,
+        prompt: str,
+        history: Optional[list[tuple[str, str]]] = None,
+        system_prompt: Optional[str] = None,
+        max_tokens: Optional[int] = None,
+        temperature: Optional[float] = None,
+        repeat_penalty: float = 1.2,
+        top_k: int = 40,
+        top_p: Optional[float] = None,
+        cancel_check: Optional[Callable[[], None]] = None,
+    ) -> str:
+        """
+        Chat mode:
+        - `prompt` is the CURRENT user message content.
+          If your pipeline does RAG, it can embed evidence/context inside this string.
+        - `history` is a list of (user_message, assistant_message) for previous turns.
+          The model does NOT remember history by itself; you must pass it every call.
+        """
+        if max_tokens is None:
+            max_tokens = self.default_max_tokens
+        if temperature is None:
+            temperature = 0.1
+
+        timer = LLMCallTimer()
+
+        try:
+            messages: list[dict[str, str]] = []
+
+            if system_prompt:
+                messages.append({"role": "system", "content": system_prompt})
+
+            if history:
+                for user_msg, assistant_msg in history:
+                    messages.append({"role": "user", "content": user_msg})
+                    messages.append({"role": "assistant", "content": assistant_msg})
+
+            messages.append({"role": "user", "content": prompt})
+
+            call_kwargs: dict[str, Any] = {
+                "messages": messages,
+                "max_tokens": max_tokens,
+                "temperature": temperature,
+                "repeat_penalty": repeat_penalty,
+                "top_k": top_k,
+            }
+            if top_p is not None:
+                call_kwargs["top_p"] = top_p
+
+            output = ""
+            if cancel_check is not None:
+                cancel_check()
+                call_kwargs["stream"] = True
+                try:
+                    parts: list[str] = []
+                    for chunk in self.llm.create_chat_completion(**call_kwargs):
+                        cancel_check()
+                        text = ""
+                        if isinstance(chunk, dict):
+                            choice = (chunk.get("choices") or [{}])[0] if chunk else {}
+                            delta = choice.get("delta") or {}
+                            text = delta.get("content") or ""
+                        parts.append(str(text))
+                    output = "".join(parts).strip()
+                except TypeError:
+                    call_kwargs.pop("stream", None)
+                    res = self.llm.create_chat_completion(**call_kwargs)
+                    output = (
+                        (res.get("choices") or [{}])[0]
+                        .get("message", {})
+                        .get("content", "")
+                        .strip()
+                    )
+            else:
+                res = self.llm.create_chat_completion(**call_kwargs)
+                output = (
+                    (res.get("choices") or [{}])[0]
+                    .get("message", {})
+                    .get("content", "")
+                    .strip()
+                )
+
+            if self._looks_like_hallucination(output):
+                raise RuntimeError("Detected hallucination or recursive loop in LLM response.")
+
+            log_llm_query(
+                op="local_chat",
+                request={
+                    "messages": messages,
+                    "max_tokens": max_tokens,
+                    "temperature": temperature,
+                    "repeat_penalty": repeat_penalty,
+                    "top_k": top_k,
+                    "top_p": top_p,
+                },
+                response=output,
+                duration_ms=timer.ms(),
+            )
+            return output
+
+        except PipelineCancelled:
+            raise
+        except Exception as e:
+            log_llm_query(
+                op="local_chat",
+                request={
+                    "messages": messages if "messages" in locals() else [],
+                    "max_tokens": max_tokens,
+                    "temperature": temperature,
+                    "repeat_penalty": repeat_penalty,
+                    "top_k": top_k,
+                    "top_p": top_p,
+                },
+                response=None,
+                error=str(e),
+                duration_ms=timer.ms(),
+            )
+            logger.error(f"Model chat error: {e}")
+            return "[MODEL_ERROR]"
+
+    def generate(
+        self,
+        prompt: str,
+        system_prompt: Optional[str] = None,
+        max_tokens: Optional[int] = None,
+        temperature: Optional[float] = None,
+        repeat_penalty: float = 1.2,
+        top_k: int = 40,
+        top_p: Optional[float] = None,
+    ) -> str:
+        """
+        Adapter for pipeline call_model contract (text completion).
+        """
+        return self.ask(
+            prompt=prompt,
+            system_prompt=system_prompt,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            repeat_penalty=repeat_penalty,
+            top_k=top_k,
+            top_p=top_p,
+        )
+
+    def __call__(self, prompt: str, system_prompt: Optional[str] = None) -> str:
+        return self.generate(prompt=prompt, system_prompt=system_prompt)
 
     # --------------------------------------------------------------------- #
-    # Internals
+    # Internal helpers
     # --------------------------------------------------------------------- #
+
+    def _create_llama(self, model_path: str, *, n_ctx: int) -> Llama:
+        """
+        Try GPU first, then fall back to CPU if GPU init fails.
+        """
+        if not self.use_gpu:
+            llm = Llama(
+                model_path=model_path,
+                n_ctx=int(n_ctx),
+                n_threads=8,
+                n_gpu_layers=0,
+                verbose=False,
+            )
+            self._log_gpu_status(llm, requested_layers=0)
+            return llm
+
+        requested_layers = -1 if self.n_gpu_layers is None else int(self.n_gpu_layers)
+        try:
+            llm = Llama(
+                model_path=model_path,
+                n_ctx=int(n_ctx),
+                n_threads=8,
+                n_gpu_layers=requested_layers,
+                verbose=False,
+            )
+            self._log_gpu_status(llm, requested_layers=requested_layers)
+            return llm
+        except Exception as gpu_err:
+            logger.error(self._red(f"GPU init failed, falling back to CPU. Error: {gpu_err}"))
+            llm = Llama(
+                model_path=model_path,
+                n_ctx=int(n_ctx),
+                n_threads=8,
+                n_gpu_layers=0,
+                verbose=False,
+            )
+            self._log_gpu_status(llm, requested_layers=0)
+            return llm
+
+    def _log_gpu_status(self, llm: Llama, *, requested_layers: int) -> None:
+        """
+        Best-effort logging of GPU/CPU offload status.
+        Logs red warning when running on CPU or partial offload is detected.
+        """
+        try:
+            actual_layers = (
+                getattr(llm, "n_gpu_layers", None)
+                or getattr(llm, "_n_gpu_layers", None)
+                or getattr(getattr(llm, "model", None), "n_gpu_layers", None)
+            )
+            total_layers = (
+                getattr(llm, "n_layers", None)
+                or getattr(getattr(llm, "model", None), "n_layers", None)
+            )
+            if isinstance(actual_layers, int) and actual_layers == 0:
+                logger.error(self._red("LLM running on CPU (n_gpu_layers=0)."))
+                return
+            if isinstance(actual_layers, int) and isinstance(total_layers, int):
+                if 0 < actual_layers < total_layers:
+                    logger.warning(self._red(
+                        f"LLM partial GPU offload: n_gpu_layers={actual_layers}/{total_layers}."
+                    ))
+                    return
+            # Fallback info log if we cannot resolve actual layers
+            logger.info(
+                "LLM init: requested n_gpu_layers=%s, detected n_gpu_layers=%s, total_layers=%s",
+                requested_layers,
+                actual_layers,
+                total_layers,
+            )
+        except Exception as e:
+            logger.warning("LLM GPU status detection failed: %s", e)
 
     @staticmethod
-    def _looks_like_hallucination(text: str) -> bool:
-        """
-        Simple pattern-based guard; tune as needed.
-        Returns True if any suspicious pattern appears excessively.
-        """
-        suspicious_phrases = [
-            "TransactionErrorTransaction",
-            "ErrorTransactionError",
-            "TransactionErrorTransactionErrorTransaction",
-        ]
-        return any(text.count(p) > 5 for p in suspicious_phrases)
+    def _red(msg: str) -> str:
+        return f"\x1b[31m{msg}\x1b[0m"
 
-    def _create_llama(self, model_path: str) -> Llama:
-        """
-        Try to initialize a GPU-backed model first; if it fails,
-        retry with a conservative CPU config.
-        """
-        primary_kwargs: Dict[str, Any] = {
-            "model_path": model_path,
-            "n_gpu_layers": 40,
-            "n_batch": 512,
-            "n_ctx": 9000,
-            "verbose": False,
-            # The following flags may be build-dependent in llama.cpp:
-            "low_vram": True,
-            "chat_mode": False,
-            "flash_attn": True,
-            "offload_kqv": True,
-        }
+    def _looks_like_hallucination(self, text: str) -> bool:
+        t = (text or "").strip().lower()
+        if not t:
+            return False
 
-        try:
-            logger.info("Loading llama model (GPU-first): %s", model_path)
-            return Llama(**primary_kwargs)
-        except Exception as gpu_err:
-            logger.warning("GPU init failed (%s). Falling back to CPU.", gpu_err)
+        if len(t) > 200 and len(set(t.split())) < 10:
+            return True
 
-        # CPU fallback (trim to broadly-supported arguments)
-        cpu_kwargs: Dict[str, Any] = {
-            "model_path": model_path,
-            "n_gpu_layers": 0,
-            "n_batch": 256,
-            "n_ctx": 4096,
-            "verbose": False,
-        }
-        try:
-            return Llama(**cpu_kwargs)
-        except Exception as cpu_err:
-            # Re-raise with clearer context; caller will handle the error path
-            logger.error("CPU init failed: %s", cpu_err)
-            raise
+        return False

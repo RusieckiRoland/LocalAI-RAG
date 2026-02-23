@@ -1,0 +1,87 @@
+YAMLpipeline:
+  name: e2e_smoke
+
+  settings:
+    test: true
+    entry_step_id: translate_in
+    behavior_version: "0.2.0"
+    compat_mode: latest
+    top_k: 3
+    prompts_dir: "tests/e2e/data/prompts"
+    max_context_tokens: 1200
+
+  steps:
+    - id: translate_in
+      action: translate_in_if_needed
+      next: load_history
+
+    - id: load_history
+      action: load_conversation_history
+      next: call_router
+
+    - id: call_router
+      action: call_model
+      prompt_key: "e2e/router_v1"
+      user_parts:
+        user:
+          source: user_query
+          template: "### User:\n{}\n\n"
+      next: handle_router
+
+    - id: handle_router
+      action: prefix_router
+      routes:
+        direct:
+          prefix: "[DIRECT:]"
+          next: call_answer
+        bm25:
+          prefix: "[BM25:]"
+          next: fetch
+        semantic:
+          prefix: "[SEMANTIC:]"
+          next: fetch
+        hybrid:
+          prefix: "[HYBRID:]"
+          next: fetch
+      on_other: call_answer
+
+    - id: fetch
+      action: search_nodes
+      search_type: "bm25"
+      next: call_answer
+
+    - id: call_answer
+      action: call_model
+      prompt_key: "e2e/answer_v1"
+      user_parts:
+        evidence:
+          source: context_blocks
+          template: "### Evidence:\n{}\n\n"
+        user:
+          source: user_query
+          template: "### User:\n{}\n\n"
+      next: handle_answer
+
+    - id: handle_answer
+      action: prefix_router
+      routes:
+        answer:
+          prefix: "[Answer:]"
+          next: set_answer_from_last_model_response
+        followup:
+          prefix: "[Requesting data on:]"
+          next: set_answer_from_last_model_response
+      on_other: set_answer_from_last_model_response
+
+    - id: set_answer_from_last_model_response
+      action: set_variables
+      rules:
+        - set: answer_neutral
+          from: last_model_response
+        - set: answer_translated
+          value: null
+      next: finalize
+
+    - id: finalize
+      action: finalize
+      end: true

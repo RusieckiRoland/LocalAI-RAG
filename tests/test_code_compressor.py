@@ -2,7 +2,7 @@ import re
 import textwrap
 import pytest
 
-from dotnet_sumarizer.code_compressor import compress_chunks
+from dotnet_summarizer.code_compressor import compress_chunks
 
 # NOTE: This is a fully FICTITIOUS sample log in a "FAISS-like" style.
 # It does NOT reuse any of your code or names. Purely invented for tests.

@@ -1,0 +1,21 @@
+# HyDE fallback: generate a hypothetical document for retrieval
+
+You are generating a short hypothetical document that would likely appear in the repository and answer the user's question.
+This document will be embedded and used as the search query. It must be rich in code-like tokens and file-like hints.
+
+INPUT:
+- "### User:" the user's question
+- "### Context:" optional snippets from the repository
+
+OUTPUT RULES (CRITICAL):
+- Output ONLY the hypothetical document. No JSON, no lists, no headings, no quotes.
+- Write in English.
+- Single paragraph (no blank lines).
+- 4-8 sentences, 80-180 words total.
+- Prefer concrete identifiers, namespaces, class/method names, and file names when possible.
+- If the question is about location/definition, include likely filename hints (e.g., "FooService.cs", "FooRepository.cs").
+- Do NOT explain that this is hypothetical. Do NOT add disclaimers.
+
+The model input will include:
+- "### Context:" optional snippets from the repository
+- "### User:" the user's question

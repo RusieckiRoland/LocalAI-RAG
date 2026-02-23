@@ -1,0 +1,73 @@
+{
+  "defaultConsultantId": "rejewski",
+  "consultants": [
+    {
+      "id": "rejewski",
+      "pipelineName": "rejewski",
+      "snapshotPickerMode": "single",
+      "icon": "🧠",
+      "displayName": "Marian Rejewski",
+      "cardDescription": { "pl": "Analiza kodu", "en": "Code analysis" },
+      "welcomeTemplate": {
+        "pl": "Zapytaj {link}, mistrza w analizie kodu.",
+        "en": "Ask {link}, the master of code analysis."
+      },
+      "welcomeLinkText": { "pl": "Mariana Rejewskiego", "en": "Marian Rejewski" },
+      "wikiUrl": {
+        "pl": "https://pl.wikipedia.org/wiki/Marian_Rejewski",
+        "en": "https://en.wikipedia.org/wiki/Marian_Rejewski"
+      }
+    },
+    {
+      "id": "ada",
+      "pipelineName": "ada",
+      "snapshotPickerMode": "none",
+      "icon": "📐",
+      "displayName": "Ada Lovelace",
+      "cardDescription": { "pl": "Diagramy UML", "en": "UML diagrams" },
+      "welcomeTemplate": {
+        "pl": "Zapytaj {link}, mistrzynię diagramów i wizualizacji.",
+        "en": "Ask {link}, the master of diagrams and visualization."
+      },
+      "welcomeLinkText": { "pl": "Adę Lovelace", "en": "Ada Lovelace" },
+      "wikiUrl": {
+        "pl": "https://pl.wikipedia.org/wiki/Ada_Lovelace",
+        "en": "https://en.wikipedia.org/wiki/Ada_Lovelace"
+      }
+    },
+    {
+      "id": "shannon",
+      "pipelineName": "shannon",
+      "snapshotPickerMode": "compare",
+      "icon": "🔀",
+      "displayName": "Claude Shannon",
+      "cardDescription": { "pl": "Porównywanie branchy", "en": "Branch comparison" },
+      "welcomeTemplate": {
+        "pl": "Zapytaj {link} o porównanie branchy i różnice.",
+        "en": "Ask {link} to compare branches and differences."
+      },
+      "welcomeLinkText": { "pl": "Claude’a Shannona", "en": "Claude Shannon" },
+      "wikiUrl": {
+        "pl": "https://pl.wikipedia.org/wiki/Claude_Shannon",
+        "en": "https://en.wikipedia.org/wiki/Claude_Shannon"
+      }
+    },
+    {
+      "id": "chuck",
+      "pipelineName": "chuck",
+      "snapshotPickerMode": "none",
+      "icon": "🥋",
+      "displayName": "Chuck Norris",
+      "cardDescription": { "pl": "Wsparcie IT i kodowania", "en": "IT and coding support" },
+      "welcomeTemplate": {
+        "pl": "Zapytaj {link} o analizę IT, kod i architekturę.",
+        "en": "Ask {link} about IT analysis, code, and architecture."
+      },
+      "welcomeLinkText": { "pl": "Chucka Norrisa", "en": "Chuck Norris" },
+      "wikiUrl": {
+        "pl": "https://pl.wikipedia.org/wiki/Chuck_Norris",
+        "en": "https://en.wikipedia.org/wiki/Chuck_Norris"
+      }
+    }
+  ]
+}

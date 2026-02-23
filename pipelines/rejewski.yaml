@@ -1,0 +1,12 @@
+# File: pipelines/rejewski_assesment.yaml
+YAMLpipeline:
+  name: rejewski
+
+  extends: ./base/marian_rejewski_code_analysis_base.yaml
+
+  settings:
+    entry_step_id: maybe_translate_in
+    model_language: en
+    behavior_version: "0.2.0"
+    compat_mode: locked
+    snapshot_set_id: "nopCommerce_4-60_4-90"
