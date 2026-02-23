@@ -1,108 +1,19 @@
   // English comments only.
 
-  const API_BASE = (window.location.protocol === "file:")
-    ? "http://localhost:8081"
-    : window.location.origin;
-  const URL_MODE = (new URLSearchParams(window.location.search).get("mode") || "dev").toLowerCase();
-  const IS_FILE_MODE = window.location.protocol === "file:";
-  const APP_MODE = (URL_MODE === "prod") ? "prod" : "dev";
-  const APP_CONFIG_PATH = IS_FILE_MODE ? "/app-config" : `/app-config/${APP_MODE}`;
-  const SEARCH_PATH = IS_FILE_MODE ? "/search" : `/search/${APP_MODE}`;
-  const CANCEL_PATH = IS_FILE_MODE ? "/pipeline/cancel" : `/pipeline/cancel/${APP_MODE}`;
-  const DEFAULT_APP_CONFIG = {
-    defaultConsultantId: "rejewski",
-    isMultilingualProject: true,
-    neutralLanguage: "en",
-    translatedLanguage: "pl",
-    snapshotPolicy: "single",
-    historyGroups: [
-      {
-        neutral_description: "today",
-        translated_description: "dzisiaj",
-        formula: { type: "today" }
-      },
-      {
-        neutral_description: "last week",
-        translated_description: "ostatni tydzień",
-        formula: { type: "last_n_days", days: 7 }
-      }
-    ],
-    historyImportant: {
-      neutral_description: "important",
-      translated_description: "ważne",
-      show_important_on_the_top: true
-    },
-    consultants: [
-      {
-        id: "rejewski",
-        pipelineName: "rejewski",
-        snapshotPickerMode: "single",
-        icon: "🧠",
-        displayName: "Marian Rejewski",
-        cardDescription: { pl: "Analiza kodu", en: "Code analysis" },
-        welcomeTemplate: {
-          pl: "Zapytaj {link}, mistrza w analizie kodu.",
-          en: "Ask {link}, the master of code analysis."
-        },
-        welcomeLinkText: { pl: "Mariana Rejewskiego", en: "Marian Rejewski" },
-        wikiUrl: {
-          pl: "https://pl.wikipedia.org/wiki/Marian_Rejewski",
-          en: "https://en.wikipedia.org/wiki/Marian_Rejewski"
-        }
-      },
-      {
-        id: "ada",
-        pipelineName: "ada",
-        snapshotPickerMode: "none",
-        icon: "📐",
-        displayName: "Ada Lovelace",
-        cardDescription: { pl: "Diagramy UML", en: "UML diagrams" },
-        welcomeTemplate: {
-          pl: "Zapytaj {link}, mistrzynię diagramów i wizualizacji.",
-          en: "Ask {link}, the master of diagrams and visualization."
-        },
-        welcomeLinkText: { pl: "Adę Lovelace", en: "Ada Lovelace" },
-        wikiUrl: {
-          pl: "https://pl.wikipedia.org/wiki/Ada_Lovelace",
-          en: "https://en.wikipedia.org/wiki/Ada_Lovelace"
-        }
-      },
-      {
-        id: "shannon",
-        pipelineName: "shannon",
-        snapshotPickerMode: "compare",
-        icon: "🔀",
-        displayName: "Claude Shannon",
-        cardDescription: { pl: "Porównywanie branchy", en: "Branch comparison" },
-        welcomeTemplate: {
-          pl: "Zapytaj {link} o porównanie branchy i różnice.",
-          en: "Ask {link} to compare branches and differences."
-        },
-        welcomeLinkText: { pl: "Claude’a Shannona", en: "Claude Shannon" },
-        wikiUrl: {
-          pl: "https://pl.wikipedia.org/wiki/Claude_Shannon",
-          en: "https://en.wikipedia.org/wiki/Claude_Shannon"
-        }
-      },
-      {
-        id: "chuck",
-        pipelineName: "chuck",
-        snapshotPickerMode: "none",
-        icon: "🥋",
-        displayName: "Chuck Norris",
-        cardDescription: { pl: "Wsparcie IT i kodowania", en: "IT and coding support" },
-        welcomeTemplate: {
-          pl: "Zapytaj {link} o analizę IT, kod i architekturę.",
-          en: "Ask {link} about IT analysis, code, and architecture."
-        },
-        welcomeLinkText: { pl: "Chucka Norrisa", en: "Chuck Norris" },
-        wikiUrl: {
-          pl: "https://pl.wikipedia.org/wiki/Chuck_Norris",
-          en: "https://en.wikipedia.org/wiki/Chuck_Norris"
-        }
-      }
-    ]
-  };
+  const {
+    API_BASE,
+    URL_MODE,
+    IS_FILE_MODE,
+    APP_MODE,
+    APP_CONFIG_PATH,
+    SEARCH_PATH,
+    CANCEL_PATH,
+    TRACE_STREAM_PATH,
+    DEFAULT_APP_CONFIG,
+    HISTORY_STORAGE_KEY,
+    HISTORY_SEARCH_PAGE_SIZE,
+    MAX_BRANCH_LABEL_LEN,
+  } = (window.App && window.App.config) || {};
 
   let sessionId = localStorage.getItem("sessionId") || null;
 
@@ -124,8 +35,6 @@
   let isMultilingualProject = true;
   let neutralLanguageCode = "en";
   let translatedLanguageCode = "pl";
-
-  const HISTORY_STORAGE_KEY = "chatHistoryByUser_v1";
   let historyStore = null;
   let historyBackendAvailable = true;
   let activeHistorySessionId = null;
@@ -136,104 +45,105 @@
   let historySearchModalCursor = null;
   let historySearchModalLoading = false;
   let historySearchModalItems = [];
-  const HISTORY_SEARCH_PAGE_SIZE = 50;
   const historyGroupCollapsed = {};
   let historySearchModalOnlyImportant = false;
   let historyOpenMenu = null;
   let renameTargetSessionId = null;
   let historyContextTarget = null;
 
-  const form = document.getElementById("queryForm");
-  const queryInput = document.getElementById("query");
-  const responseDiv = document.getElementById("response");
-  const submitButton = document.getElementById("sendBtn");
-  const welcomeMessage = document.getElementById("welcomeMessage");
-  const langSelect = document.getElementById("lang");
-  const consultantsContainer = document.getElementById("consultants");
-  const newChatBtn = document.getElementById("newChatBtn");
-  const uiError = document.getElementById("uiError");
-  const branchControls = document.getElementById("branchControls");
-  const controlsSpacer = document.getElementById("controlsSpacer");
-  const authToggleBtn = document.getElementById("authToggleBtn");
-  const authUserSelect = document.getElementById("authUserSelect");
-  const authControls = document.getElementById("authControls");
-  const authCompact = document.getElementById("authCompact");
-  const authCompactBtn = document.getElementById("authCompactBtn");
-  const authCompactMenu = document.getElementById("authCompactMenu");
-  const authCompactAction = document.getElementById("authCompactAction");
-  const authCompactActionLabel = document.getElementById("authCompactActionLabel");
-  const authCompactActionIcon = document.getElementById("authCompactActionIcon");
-  const authCompactClearHistory = document.getElementById("authCompactClearHistory");
-  const authCompactClearHistoryLabel = document.getElementById("authCompactClearHistoryLabel");
-  const historyPanel = document.getElementById("history-panel");
-  const historyCollapseBtn = document.getElementById("historyCollapseBtn");
-  const historyExpandBtn = document.getElementById("historyExpandBtn");
-  const historyNewChatBtn = document.getElementById("historyNewChatBtn");
-  const historySearchInput = document.getElementById("historySearchInput");
-  const historySearchBtn = document.getElementById("historySearchBtn");
-  const historySectionTitle = document.getElementById("historySectionTitle");
-  const historyList = document.getElementById("historyList");
-  const historyEmpty = document.getElementById("historyEmpty");
-  const snapshotModalBackdrop = document.getElementById("snapshotModalBackdrop");
-  const snapshotModalTitle = document.getElementById("snapshotModalTitle");
-  const snapshotModalBody = document.getElementById("snapshotModalBody");
-  const snapshotModalCancel = document.getElementById("snapshotModalCancel");
-  const snapshotModalConfirm = document.getElementById("snapshotModalConfirm");
-  const traceList = document.getElementById("traceList");
-  const traceTitle = document.getElementById("traceTitle");
-  const traceStatus = document.getElementById("traceStatus");
-  const traceFilterInput = document.getElementById("traceFilterInput");
-  const traceDocFilterWrap = document.getElementById("traceDocFilterWrap");
-  const traceDocFilterInput = document.getElementById("traceDocFilterInput");
-  const traceFilterClearBtn = document.getElementById("traceFilterClearBtn");
-  const traceFilterEmpty = document.getElementById("traceFilterEmpty");
-  const traceHandle = document.getElementById("traceHandle");
-  const traceCloseBtn = document.getElementById("traceCloseBtn");
-  const traceBackdrop = document.getElementById("trace-backdrop");
-  const queryProgress = document.getElementById("queryProgress");
-  const traceDocModalBackdrop = document.getElementById("traceDocModalBackdrop");
-  const traceDocModalTitle = document.getElementById("traceDocModalTitle");
-  const traceDocModalBody = document.getElementById("traceDocModalBody");
-  const traceDocModalCount = document.getElementById("traceDocModalCount");
-  const traceDocPrevBtn = document.getElementById("traceDocPrev");
-  const traceDocNextBtn = document.getElementById("traceDocNext");
-  const traceDocModalClose = document.getElementById("traceDocModalClose");
-  const historySearchModalBackdrop = document.getElementById("historySearchModalBackdrop");
-  const historySearchModalTitle = document.getElementById("historySearchModalTitle");
-  const historySearchModalInput = document.getElementById("historySearchModalInput");
-  const historySearchModalList = document.getElementById("historySearchModalList");
-  const historySearchModalEmpty = document.getElementById("historySearchModalEmpty");
-  const historySearchModalMore = document.getElementById("historySearchModalMore");
-  const historySearchModalClose = document.getElementById("historySearchModalClose");
-  const historySearchModalCount = document.getElementById("historySearchModalCount");
-  const historySearchModalImportant = document.getElementById("historySearchModalImportant");
-  const historySearchModalImportantLabel = document.getElementById("historySearchModalImportantLabel");
-  const renameChatModalBackdrop = document.getElementById("renameChatModalBackdrop");
-  const renameChatModalTitle = document.getElementById("renameChatModalTitle");
-  const renameChatModalLabel = document.getElementById("renameChatModalLabel");
-  const renameChatInput = document.getElementById("renameChatInput");
-  const renameChatModalCancel = document.getElementById("renameChatModalCancel");
-  const renameChatModalConfirm = document.getElementById("renameChatModalConfirm");
-  const clearHistoryModalBackdrop = document.getElementById("clearHistoryModalBackdrop");
-  const clearHistoryModalTitle = document.getElementById("clearHistoryModalTitle");
-  const clearHistoryModalBody = document.getElementById("clearHistoryModalBody");
-  const clearHistoryModalCancel = document.getElementById("clearHistoryModalCancel");
-  const clearHistoryModalConfirm = document.getElementById("clearHistoryModalConfirm");
-  const historyContextMenu = document.getElementById("historyContextMenu");
-  const historyContextRename = document.getElementById("historyContextRename");
-  const historyContextImportant = document.getElementById("historyContextImportant");
-  const historyContextDelete = document.getElementById("historyContextDelete");
-  const historyContextClearAll = document.getElementById("historyContextClearAll");
-  const historyContextRenameLabel = document.getElementById("historyContextRenameLabel");
-  const historyContextImportantLabel = document.getElementById("historyContextImportantLabel");
-  const historyContextDeleteLabel = document.getElementById("historyContextDeleteLabel");
-  const historyContextClearAllLabel = document.getElementById("historyContextClearAllLabel");
+  const {
+    form,
+    queryInput,
+    responseDiv,
+    submitButton,
+    welcomeMessage,
+    langSelect,
+    consultantsContainer,
+    newChatBtn,
+    uiError,
+    branchControls,
+    controlsSpacer,
+    authToggleBtn,
+    authUserSelect,
+    authControls,
+    authCompact,
+    authCompactBtn,
+    authCompactMenu,
+    authCompactAction,
+    authCompactActionLabel,
+    authCompactActionIcon,
+    authCompactClearHistory,
+    authCompactClearHistoryLabel,
+    historyPanel,
+    historyCollapseBtn,
+    historyExpandBtn,
+    historyNewChatBtn,
+    historySearchInput,
+    historySearchBtn,
+    historySectionTitle,
+    historyList,
+    historyEmpty,
+    snapshotModalBackdrop,
+    snapshotModalTitle,
+    snapshotModalBody,
+    snapshotModalCancel,
+    snapshotModalConfirm,
+    traceList,
+    traceTitle,
+    traceStatus,
+    traceFilterInput,
+    traceDocFilterWrap,
+    traceDocFilterInput,
+    traceFilterClearBtn,
+    traceFilterEmpty,
+    traceHandle,
+    traceCloseBtn,
+    traceBackdrop,
+    queryProgress,
+    traceDocModalBackdrop,
+    traceDocModalTitle,
+    traceDocModalBody,
+    traceDocModalCount,
+    traceDocPrevBtn,
+    traceDocNextBtn,
+    traceDocModalClose,
+    historySearchModalBackdrop,
+    historySearchModalTitle,
+    historySearchModalInput,
+    historySearchModalList,
+    historySearchModalEmpty,
+    historySearchModalMore,
+    historySearchModalClose,
+    historySearchModalCount,
+    historySearchModalImportant,
+    historySearchModalImportantLabel,
+    renameChatModalBackdrop,
+    renameChatModalTitle,
+    renameChatModalLabel,
+    renameChatInput,
+    renameChatModalCancel,
+    renameChatModalConfirm,
+    clearHistoryModalBackdrop,
+    clearHistoryModalTitle,
+    clearHistoryModalBody,
+    clearHistoryModalCancel,
+    clearHistoryModalConfirm,
+    historyContextMenu,
+    historyContextRename,
+    historyContextImportant,
+    historyContextDelete,
+    historyContextClearAll,
+    historyContextRenameLabel,
+    historyContextImportantLabel,
+    historyContextDeleteLabel,
+    historyContextClearAllLabel,
+  } = (window.App && window.App.dom) || {};
+  const api = (window.App && window.App.services && window.App.services.api) || null;
+  const historyApi = (window.App && window.App.services && window.App.services.historyStore) || null;
+  const traceApi = (window.App && window.App.services && window.App.services.traceStream) || null;
 
   // If name is longer than this, we shorten it in CLOSED state.
   // In compare mode we also shorten even if it's below the threshold (to make differences obvious).
-  const MAX_BRANCH_LABEL_LEN = 28;
-
-  const TRACE_STREAM_PATH = IS_FILE_MODE ? "/pipeline/stream" : `/pipeline/stream/${APP_MODE}`;
   let traceSource = null;
   let currentTraceRunId = null;
   let traceEventCount = 0;
@@ -271,16 +181,14 @@
     historyStore = {};
     historyBackendAvailable = true;
     try {
-      const authHeaders = {};
-      if (fakeAuthEnabled) {
-        authHeaders["Authorization"] = `Bearer dev-user:${activeDevUserId}`;
+      if (!historyApi || !historyApi.fetchSessions) {
+        throw new Error("History API not ready");
       }
-      const res = await fetch(`${API_BASE}/chat-history/sessions?limit=200`, { headers: authHeaders });
-      if (!res.ok) {
-        historyBackendAvailable = false;
-        return;
-      }
-      const json = await res.json();
+      const json = await historyApi.fetchSessions({
+        limit: 200,
+        fakeAuthEnabled,
+        activeDevUserId
+      });
       const sessions = Array.isArray(json.items) ? json.items : [];
       historyStore = { sessions };
     } catch (e) {
@@ -325,7 +233,7 @@
   }
 
   function getHistoryImportantConfig() {
-    return appConfig?.historyImportant || DEFAULT_APP_CONFIG.historyImportant || {};
+    return (appConfig && appConfig.historyImportant) || DEFAULT_APP_CONFIG.historyImportant || {};
   }
 
   function getHistoryImportantLabel() {
@@ -336,14 +244,14 @@
   }
 
   function getHistoryGroupsConfig() {
-    const cfg = appConfig?.historyGroups || DEFAULT_APP_CONFIG.historyGroups || [];
+    const cfg = (appConfig && appConfig.historyGroups) || DEFAULT_APP_CONFIG.historyGroups || [];
     return Array.isArray(cfg) ? cfg : [];
   }
 
   function getHistoryGroupLabel(group) {
     const lang = getCurrentLang();
-    if (lang === "pl") return String(group?.translated_description || group?.neutral_description || "").trim();
-    return String(group?.neutral_description || group?.translated_description || "").trim();
+    if (lang === "pl") return String((group && group.translated_description) || (group && group.neutral_description) || "").trim();
+    return String((group && group.neutral_description) || (group && group.translated_description) || "").trim();
   }
 
   function resolveHistoryGroupRange(formula, nowMs) {
@@ -412,7 +320,7 @@
     const seen = new Set();
     const sessions = [];
     sessionsRaw.forEach((s) => {
-      const sid = String(s?.sessionId || "");
+      const sid = String((s && s.sessionId) || "");
       if (!sid || seen.has(sid)) return;
       seen.add(sid);
       sessions.push(s);
@@ -484,10 +392,10 @@
     }
 
     groups.forEach((group, idx) => {
-      const range = resolveHistoryGroupRange(group?.formula, now);
+      const range = resolveHistoryGroupRange((group && group.formula), now);
       if (!range) return;
       const label = getHistoryGroupLabel(group);
-      const groupKey = String(group?.neutral_description || label || idx);
+      const groupKey = String((group && group.neutral_description) || label || idx);
       const items = sessions.filter((s) => {
         if (!s || assigned.has(s.sessionId)) return false;
         const ts = Number(s.updatedAt || 0);
@@ -576,18 +484,17 @@
     renderHistorySearchResults();
     const q = String(query || "").trim();
     if (historyBackendAvailable) {
-      const authHeaders = {};
-      if (fakeAuthEnabled) {
-        authHeaders["Authorization"] = `Bearer dev-user:${activeDevUserId}`;
-      }
-      const params = new URLSearchParams();
-      params.set("limit", String(HISTORY_SEARCH_PAGE_SIZE));
-      if (q) params.set("q", q);
-      if (cursor) params.set("cursor", cursor);
       try {
-        const res = await fetch(`${API_BASE}/chat-history/sessions?${params.toString()}`, { headers: authHeaders });
-        if (!res.ok) throw new Error("history search failed");
-        const json = await res.json();
+        if (!historyApi || !historyApi.searchSessions) {
+          throw new Error("History API not ready");
+        }
+        const json = await historyApi.searchSessions({
+          query: q,
+          cursor,
+          limit: HISTORY_SEARCH_PAGE_SIZE,
+          fakeAuthEnabled,
+          activeDevUserId
+        });
         const items = Array.isArray(json.items) ? json.items : [];
         historySearchModalItems = historySearchModalItems.concat(items);
         historySearchModalCursor = json.next_cursor || null;
@@ -686,14 +593,12 @@
     setUserSessions(next);
     renderHistoryList();
     if (!historyBackendAvailable) return;
-    const authHeaders = {};
-    if (fakeAuthEnabled) {
-      authHeaders["Authorization"] = `Bearer dev-user:${activeDevUserId}`;
-    }
-    fetch(`${API_BASE}/chat-history/sessions/${encodeURIComponent(sessionId)}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json", ...authHeaders },
-      body: JSON.stringify(patch)
+    if (!historyApi || !historyApi.patchSession) return;
+    historyApi.patchSession({
+      sessionId,
+      patch,
+      fakeAuthEnabled,
+      activeDevUserId
     }).catch(() => {});
   }
 
@@ -727,13 +632,11 @@
     }
     renderHistoryList();
     if (!historyBackendAvailable) return;
-    const authHeaders = {};
-    if (fakeAuthEnabled) {
-      authHeaders["Authorization"] = `Bearer dev-user:${activeDevUserId}`;
-    }
-    fetch(`${API_BASE}/chat-history/sessions/${encodeURIComponent(sessionId)}`, {
-      method: "DELETE",
-      headers: { ...authHeaders }
+    if (!historyApi || !historyApi.deleteSession) return;
+    historyApi.deleteSession({
+      sessionId,
+      fakeAuthEnabled,
+      activeDevUserId
     }).catch(() => {});
   }
 
@@ -749,15 +652,13 @@
     activeHistorySessionId = null;
     renderHistoryList();
     if (!historyBackendAvailable) return;
-    const authHeaders = {};
-    if (fakeAuthEnabled) {
-      authHeaders["Authorization"] = `Bearer dev-user:${activeDevUserId}`;
-    }
     sessions.forEach((s) => {
-      fetch(`${API_BASE}/chat-history/sessions/${encodeURIComponent(s.sessionId)}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json", ...authHeaders },
-        body: JSON.stringify({ softDeleted: true })
+      if (!historyApi || !historyApi.patchSession) return;
+      historyApi.patchSession({
+        sessionId: s.sessionId,
+        patch: { softDeleted: true },
+        fakeAuthEnabled,
+        activeDevUserId
       }).catch(() => {});
     });
   }
@@ -828,29 +729,27 @@
     renderHistoryList();
 
     if (!historyBackendAvailable) return;
-    const authHeaders = {};
-    if (fakeAuthEnabled) {
-      authHeaders["Authorization"] = `Bearer dev-user:${activeDevUserId}`;
-    }
     try {
       if (!existing._persisted) {
-        const res = await fetch(`${API_BASE}/chat-history/sessions`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json", ...authHeaders },
-          body: JSON.stringify({
-            sessionId,
-            title: existing.title || existing.firstQuestion || "New chat",
-            consultantId: consultantId || null
-          })
+        if (!historyApi || !historyApi.createSession) return;
+        const res = await historyApi.createSession({
+          sessionId,
+          title: existing.title || existing.firstQuestion || "New chat",
+          consultantId: consultantId || null,
+          fakeAuthEnabled,
+          activeDevUserId
         });
         if (res.ok) {
           existing._persisted = true;
         }
       }
-      await fetch(`${API_BASE}/chat-history/sessions/${encodeURIComponent(sessionId)}/messages`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", ...authHeaders },
-        body: JSON.stringify({ q: question || "", a: answer || "" })
+      if (!historyApi || !historyApi.postMessage) return;
+      await historyApi.postMessage({
+        sessionId,
+        question,
+        answer,
+        fakeAuthEnabled,
+        activeDevUserId
       });
     } catch (e) {
       historyBackendAvailable = false;
@@ -871,15 +770,16 @@
     let messages = session.messages || [];
     if (historyBackendAvailable) {
       try {
-        const authHeaders = {};
-        if (fakeAuthEnabled) {
-          authHeaders["Authorization"] = `Bearer dev-user:${activeDevUserId}`;
+        if (!historyApi || !historyApi.getMessages) {
+          throw new Error("History API not ready");
         }
-        const res = await fetch(`${API_BASE}/chat-history/sessions/${encodeURIComponent(selectedSessionId)}/messages?limit=200`, { headers: authHeaders });
-        if (res.ok) {
-          const json = await res.json();
-          messages = Array.isArray(json.items) ? json.items : messages;
-        }
+        const json = await historyApi.getMessages({
+          sessionId: selectedSessionId,
+          limit: 200,
+          fakeAuthEnabled,
+          activeDevUserId
+        });
+        messages = Array.isArray(json.items) ? json.items : messages;
       } catch (e) {
         historyBackendAvailable = false;
       }
@@ -1406,55 +1306,11 @@
     updateTraceFilterClearState();
   }
 
-  function setRequestInFlight(isActive) {
-    requestInFlight = isActive;
-    const t = getTexts(getCurrentLang());
-    const label = submitButton ? submitButton.querySelector(".send-label") : null;
-    if (label) label.textContent = isActive ? t.wait : t.send;
-    submitButton.classList.toggle("is-cancel", !!isActive);
-    setQueryProgress(isActive);
-    if (!isActive) {
-      clearTraceAttention();
-    }
-  }
-
-  async function sendCancelRequest(runId) {
-    if (!runId) return;
-    const authHeaders = {};
-    if (fakeAuthEnabled) {
-      authHeaders["Authorization"] = `Bearer dev-user:${activeDevUserId}`;
-    }
-    try {
-      await fetch(`${API_BASE}${CANCEL_PATH}`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...authHeaders,
-          ...(sessionId ? { "X-Session-ID": sessionId } : {})
-        },
-        body: JSON.stringify({ pipeline_run_id: runId })
-      });
-    } catch (e) {
-      // Best-effort cancel. Ignore failures.
-    }
-  }
-
-  function cancelActiveRequest() {
-    if (!requestInFlight) return;
-    sendCancelRequest(currentTraceRunId);
-    if (activeAbortController) {
-      try { activeAbortController.abort(); } catch (e) {}
-    }
-    stopTraceStream({ hidePanel: false });
-    setTraceAvailable(true);
-    setTraceOpen(false);
-    setTraceStatusByKey("cancelled");
-    clearTraceAttention();
-  }
-
   function stopTraceStream(opts = {}) {
     const hidePanel = opts.hidePanel !== false;
-    if (traceSource) {
+    if (traceApi && traceApi.stopTraceStream) {
+      traceApi.stopTraceStream(traceSource);
+    } else if (traceSource) {
       try { traceSource.close(); } catch (e) {}
     }
     traceSource = null;
@@ -1474,19 +1330,27 @@
     setTraceStatusByKey("connected");
     setTraceAvailable(true);
 
-    const url = `${API_BASE}${TRACE_STREAM_PATH}?run_id=${encodeURIComponent(runId)}`;
-    traceSource = new EventSource(url);
+    if (traceApi && traceApi.startTraceStream) {
+      traceSource = traceApi.startTraceStream({
+        runId,
+        onEvent: handleTraceEvent,
+        onError: () => setTraceStatusByKey("retry"),
+      });
+    } else {
+      const url = `${API_BASE}${TRACE_STREAM_PATH}?run_id=${encodeURIComponent(runId)}`;
+      traceSource = new EventSource(url);
 
-    traceSource.onmessage = (evt) => {
-      if (!evt || !evt.data) return;
-      let payload = null;
-      try { payload = JSON.parse(evt.data); } catch (e) { return; }
-      handleTraceEvent(payload);
-    };
+      traceSource.onmessage = (evt) => {
+        if (!evt || !evt.data) return;
+        let payload = null;
+        try { payload = JSON.parse(evt.data); } catch (e) { return; }
+        handleTraceEvent(payload);
+      };
 
-    traceSource.onerror = () => {
-      setTraceStatusByKey("retry");
-    };
+      traceSource.onerror = () => {
+        setTraceStatusByKey("retry");
+      };
+    }
   }
 
   function handleTraceEvent(evt) {
@@ -1737,7 +1601,7 @@
 
   function getCurrentLang() {
     const saved = localStorage.getItem("lang");
-    const selected = langSelect?.value || "";
+    const selected = (langSelect && langSelect.value) || "";
     const resolved = getSupportedUiLang(saved || selected || translatedLanguageCode);
     return isMultilingualProject ? resolved : neutralLanguageCode;
   }
@@ -1752,18 +1616,10 @@
   }
 
   async function fetchAppConfig() {
-    const authHeaders = {};
-    if (fakeAuthEnabled) {
-      authHeaders["Authorization"] = `Bearer dev-user:${activeDevUserId}`;
+    if (!api || !api.fetchAppConfig) {
+      throw new Error("API not ready");
     }
-
-    const res = await fetch(`${API_BASE}${APP_CONFIG_PATH}`, {
-      headers: {
-        ...authHeaders,
-      }
-    });
-    if (!res.ok) throw new Error(`GET ${APP_CONFIG_PATH} failed: ${res.status}`);
-    const data = await res.json();
+    const data = await api.fetchAppConfig({ fakeAuthEnabled, activeDevUserId });
     try {
       localStorage.setItem("lastAppConfig", JSON.stringify(data));
     } catch (e) {
@@ -1783,10 +1639,10 @@
 
   function rebuildConsultantsIndex() {
     consultantsById = {};
-    for (const c of (appConfig?.consultants || [])) {
+    for (const c of ((appConfig && appConfig.consultants) || [])) {
       consultantsById[c.id] = c;
     }
-    snapshotPolicy = String(appConfig?.snapshotPolicy || "single").trim() || "single";
+    snapshotPolicy = String((appConfig && appConfig.snapshotPolicy) || "single").trim() || "single";
   }
 
   function updateConsultantLayout() {
@@ -1812,8 +1668,8 @@
   function buildConsultantsBar(lang) {
     consultantsContainer.innerHTML = "";
 
-    for (const c of (appConfig?.consultants || [])) {
-      const desc = c.cardDescription?.[lang] || c.cardDescription?.pl || "";
+    for (const c of ((appConfig && appConfig.consultants) || [])) {
+      const desc = (c.cardDescription && c.cardDescription[lang]) || (c.cardDescription && c.cardDescription.pl) || "";
 
       const card = document.createElement("div");
       card.className = "consultant-card";
@@ -1861,18 +1717,18 @@
       return;
     }
 
-    const template = c.welcomeTemplate?.[lang] || c.welcomeTemplate?.pl || "";
-    const href = c.wikiUrl?.[lang] || c.wikiUrl?.pl || "";
+    const template = (c.welcomeTemplate && c.welcomeTemplate[lang]) || (c.welcomeTemplate && c.welcomeTemplate.pl) || "";
+    const href = (c.wikiUrl && c.wikiUrl[lang]) || (c.wikiUrl && c.wikiUrl.pl) || "";
 
     const linkText =
-      c.welcomeLinkText?.[lang] ||
-      c.welcomeLinkText?.pl ||
+      (c.welcomeLinkText && c.welcomeLinkText[lang]) ||
+      (c.welcomeLinkText && c.welcomeLinkText.pl) ||
       c.displayName ||
       c.id;
 
     const parts = String(template).split("{link}");
-    const before = parts[0] ?? "";
-    const after = parts.slice(1).join("{link}") ?? "";
+    const before = (parts[0] != null ? parts[0] : "");
+    const after = (parts.slice(1).join("{link}") != null ? parts.slice(1).join("{link}") : "");
 
     welcomeMessage.innerHTML = "";
     welcomeMessage.appendChild(document.createTextNode(before));
@@ -1900,7 +1756,7 @@
   }
 
   function getConsultantSnapshots(c) {
-    return Array.isArray(c?.snapshots) ? c.snapshots : [];
+    return Array.isArray((c && c.snapshots)) ? c.snapshots : [];
   }
 
   function hasSnapshots(c) {
@@ -1908,7 +1764,7 @@
   }
 
   function getSnapshotSetId(c) {
-    const sid = String(c?.snapshotSetId || "").trim();
+    const sid = String((c && c.snapshotSetId) || "").trim();
     return sid || null;
   }
 
@@ -1989,10 +1845,11 @@
   function autoSizeSelectToValue(selectEl, opts = {}) {
     if (!selectEl) return;
 
-    const minPx = opts.minPx ?? 160;
-    const maxPx = opts.maxPx ?? 520;
+    const minPx = (opts.minPx != null ? opts.minPx : 160);
+    const maxPx = (opts.maxPx != null ? opts.maxPx : 520);
 
-    const text = selectEl.options?.[selectEl.selectedIndex]?.text ?? "";
+    const optText = (selectEl.options && selectEl.options[selectEl.selectedIndex]) ? selectEl.options[selectEl.selectedIndex].text : null;
+    const text = optText != null ? optText : "";
     const cs = window.getComputedStyle(selectEl);
 
     __selectMeasureSpan.style.fontFamily = cs.fontFamily;
@@ -2019,12 +1876,12 @@
 
   function commonPrefixLen(strings) {
     if (!strings || strings.length === 0) return 0;
-    const s0 = String(strings[0] ?? "");
+    const s0 = String(strings[0] != null ? strings[0] : "");
     let i = 0;
     while (i < s0.length) {
       const ch = s0[i];
       for (let k = 1; k < strings.length; k++) {
-        const sk = String(strings[k] ?? "");
+        const sk = String(strings[k] != null ? strings[k] : "");
         if (i >= sk.length || sk[i] !== ch) return i;
       }
       i++;
@@ -2034,12 +1891,12 @@
 
   function commonSuffixLen(strings) {
     if (!strings || strings.length === 0) return 0;
-    const s0 = String(strings[0] ?? "");
+    const s0 = String(strings[0] != null ? strings[0] : "");
     let i = 0;
     while (i < s0.length) {
       const ch = s0[s0.length - 1 - i];
       for (let k = 1; k < strings.length; k++) {
-        const sk = String(strings[k] ?? "");
+        const sk = String(strings[k] != null ? strings[k] : "");
         if (i >= sk.length || sk[sk.length - 1 - i] !== ch) return i;
       }
       i++;
@@ -2056,7 +1913,7 @@
   }
 
   function computeClosedBranchLabel(fullName, mode, allLabels) {
-    const name = String(fullName ?? "");
+    const name = String(fullName != null ? fullName : "");
     if (!name) return "";
 
     const inCompare = (mode === "compare");
@@ -2117,8 +1974,8 @@
 
     setAllOptionsToFull(selectEl);
 
-    const opt = selectEl.options?.[selectEl.selectedIndex];
-    const full = String(opt?.getAttribute("data-full") ?? "");
+    const opt = (selectEl.options && selectEl.options[selectEl.selectedIndex]) ? selectEl.options[selectEl.selectedIndex] : null;
+    const full = String(opt ? (opt.getAttribute("data-full") || "") : "");
     const label = computeClosedBranchLabel(full, mode, allLabels);
 
     if (opt) opt.textContent = label;
@@ -2130,47 +1987,6 @@
 
   function prepareOpenSelect(selectEl) {
     setAllOptionsToFull(selectEl);
-  }
-
-  function updateSendButtonState() {
-    const lang = getCurrentLang();
-    const t = getTexts(lang);
-
-    const c = consultantsById[selectedConsultant];
-    const mode = (c && (c.snapshotPickerMode || c.branchPickerMode)) ? (c.snapshotPickerMode || c.branchPickerMode) : "single";
-
-    if (!submitButton) return;
-
-    // Default: enabled.
-    submitButton.disabled = false;
-    submitButton.title = "";
-
-    if (requestInFlight) {
-      return;
-    }
-
-    if (mode !== "compare") return;
-
-    // Compare mode: must have 2 different snapshots.
-    let effectiveA = selectedSnapshotA;
-    let effectiveB = selectedSnapshotB;
-    const selects = branchControls ? branchControls.querySelectorAll(".branch-select") : [];
-    if (selects && selects.length >= 2) {
-      effectiveA = selects[0].value || effectiveA;
-      effectiveB = selects[1].value || effectiveB;
-    }
-
-    if (!effectiveA || !effectiveB) {
-      submitButton.disabled = true;
-      submitButton.title = t.compareChooseTwo;
-      return;
-    }
-
-    if (effectiveA === effectiveB) {
-      submitButton.disabled = true;
-      submitButton.title = t.compareChooseDifferent;
-      return;
-    }
   }
 
   function renderBranchControls() {
@@ -2201,7 +2017,8 @@
 
     const snapshots = getConsultantSnapshots(c);
     if (!selectedSnapshotA) {
-      selectedSnapshotA = firstSnapshotOrNull(snapshots)?.id || null;
+      const firstSnap = firstSnapshotOrNull(snapshots);
+    selectedSnapshotA = firstSnap ? (firstSnap.id || null) : null;
     }
     if (mode === "compare") {
       if (!selectedSnapshotB) {
@@ -2268,7 +2085,7 @@
         const prevLabel = currentSnapshotLabel || prevId;
         selectedSnapshotA = v;
         const chosen = snapshots.find(s => s.id === v);
-        const nextLabel = chosen?.label || v;
+        const nextLabel = (chosen && chosen.label) || v;
         updateSnapshotState(v, nextLabel, getSnapshotSetId(c));
         if (responseDiv.children.length > 0 && prevId && prevId !== v) {
           const t = getTexts(getCurrentLang());
@@ -2538,6 +2355,90 @@
     });
   }
 
+  function setRequestInFlight(isActive) {
+    requestInFlight = isActive;
+    const t = getTexts(getCurrentLang());
+    const label = submitButton ? submitButton.querySelector(".send-label") : null;
+    if (label) label.textContent = isActive ? t.wait : t.send;
+    submitButton.classList.toggle("is-cancel", !!isActive);
+    if (typeof setQueryProgress === "function") setQueryProgress(isActive);
+    if (!isActive && typeof clearTraceAttention === "function") {
+      clearTraceAttention();
+    }
+  }
+
+  async function sendCancelRequest(runId) {
+    if (!runId) return;
+    try {
+      if (api && api.cancelRun) {
+        await api.cancelRun({
+          runId,
+          sessionId,
+          fakeAuthEnabled,
+          activeDevUserId
+        });
+      }
+    } catch (e) {
+      // Best-effort cancel. Ignore failures.
+    }
+  }
+
+  function cancelActiveRequest() {
+    if (!requestInFlight) return;
+    sendCancelRequest(currentTraceRunId);
+    if (activeAbortController) {
+      try { activeAbortController.abort(); } catch (e) {}
+    }
+    if (typeof stopTraceStream === "function") stopTraceStream({ hidePanel: false });
+    if (typeof setTraceAvailable === "function") setTraceAvailable(true);
+    if (typeof setTraceOpen === "function") setTraceOpen(false);
+    if (typeof setTraceStatusByKey === "function") setTraceStatusByKey("cancelled");
+    if (typeof clearTraceAttention === "function") clearTraceAttention();
+  }
+
+  function updateSendButtonState() {
+    const lang = getCurrentLang();
+    const t = getTexts(lang);
+
+    const c = consultantsById[selectedConsultant];
+    const mode = (c && (c.snapshotPickerMode || c.branchPickerMode)) ? (c.snapshotPickerMode || c.branchPickerMode) : "single";
+
+    if (!submitButton) return;
+
+    // Default: enabled.
+    submitButton.disabled = false;
+    submitButton.title = "";
+
+    if (requestInFlight) {
+      return;
+    }
+
+    if (mode !== "compare") return;
+
+    // Compare mode: must have 2 different snapshots.
+    let effectiveA = selectedSnapshotA;
+    let effectiveB = selectedSnapshotB;
+    const selects = typeof branchControls !== "undefined" && branchControls
+      ? branchControls.querySelectorAll(".branch-select")
+      : [];
+    if (selects && selects.length >= 2) {
+      effectiveA = selects[0].value || effectiveA;
+      effectiveB = selects[1].value || effectiveB;
+    }
+
+    if (!effectiveA || !effectiveB) {
+      submitButton.disabled = true;
+      submitButton.title = t.compareChooseTwo;
+      return;
+    }
+
+    if (effectiveA === effectiveB) {
+      submitButton.disabled = true;
+      submitButton.title = t.compareChooseDifferent;
+      return;
+    }
+  }
+
   function addCopyButtons() {
     document.querySelectorAll("pre").forEach(pre => {
       if (pre.querySelector(".copy-btn")) return;
@@ -2549,7 +2450,8 @@
 
       button.addEventListener("click", e => {
         e.preventDefault();
-        const code = pre.querySelector("code")?.textContent || "";
+        const codeNode = pre.querySelector("code");
+        const code = codeNode ? (codeNode.textContent || "") : "";
         const markCopied = () => {
           const t2 = getTexts(getCurrentLang());
           button.textContent = t2.copied;
@@ -2600,7 +2502,7 @@
         if (traceDocFilterInput) traceDocFilterInput.value = selected;
         applyTraceFilters();
         updateTraceFilterClearState();
-        setTraceOpen(true);
+        if (typeof setTraceOpen === "function") setTraceOpen(true);
       });
       pre.appendChild(findBtn);
     });
@@ -2680,33 +2582,24 @@
     }
 
     try {
-      setQueryProgress(true);
-      setTraceAvailable(true);
-      setTraceOpen(false);
-      resetTracePanel();
-      setTraceStatusByKey("connecting");
-      startTraceStream(traceRunId);
-
-      const authHeaders = {};
-      if (fakeAuthEnabled) {
-        authHeaders["Authorization"] = `Bearer dev-user:${activeDevUserId}`;
-      }
+      if (typeof setQueryProgress === "function") setQueryProgress(true);
+      if (typeof setTraceAvailable === "function") setTraceAvailable(true);
+      if (typeof setTraceOpen === "function") setTraceOpen(false);
+      if (typeof resetTracePanel === "function") resetTracePanel();
+      if (typeof setTraceStatusByKey === "function") setTraceStatusByKey("connecting");
+      if (typeof startTraceStream === "function") startTraceStream(traceRunId);
 
       activeAbortController = new AbortController();
-      const res = await fetch(`${API_BASE}${SEARCH_PATH}`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...authHeaders,
-          ...(sessionId ? { "X-Session-ID": sessionId } : {})
-        },
-        body: JSON.stringify(body),
+      if (!api || !api.postSearch) {
+        throw new Error("API not ready");
+      }
+      const json = await api.postSearch({
+        body,
+        sessionId,
+        fakeAuthEnabled,
+        activeDevUserId,
         signal: activeAbortController.signal
       });
-
-      if (!res.ok) throw new Error(`POST ${SEARCH_PATH} failed: ${res.status}`);
-
-      const json = await res.json();
       if (json.session_id) {
         if (!activeHistorySessionId || activeHistorySessionId === json.session_id) {
           sessionId = json.session_id;
@@ -2720,14 +2613,14 @@
       if (json.pipeline_run_id) {
         const backendRunId = String(json.pipeline_run_id);
         if (backendRunId !== traceRunId) {
-          startTraceStream(backendRunId);
+          if (typeof startTraceStream === "function") startTraceStream(backendRunId);
         }
         setTraceOpen(false);
       } else {
-        stopTraceStream({ hidePanel: false });
-        setTraceAvailable(true);
-        setTraceOpen(false);
-        setTraceStatusByKey("no_run_id");
+        if (typeof stopTraceStream === "function") stopTraceStream({ hidePanel: false });
+        if (typeof setTraceAvailable === "function") setTraceAvailable(true);
+        if (typeof setTraceOpen === "function") setTraceOpen(false);
+        if (typeof setTraceStatusByKey === "function") setTraceStatusByKey("no_run_id");
       }
 
       const markdown = json.results || t.noResponse;
@@ -2744,7 +2637,7 @@
       `;
 
       responseDiv.innerHTML = questionHTML + responseDiv.innerHTML;
-      if (sessionId) {
+      if (sessionId && typeof upsertHistorySession === "function") {
         upsertHistorySession({
           sessionId,
           consultantId: selectedConsultant,
@@ -2759,27 +2652,27 @@
         localStorage.setItem("conversationSnapshotSetId", conversationSnapshotSetId);
       }
       queryInput.value = "";
-      resetQueryInputHeight();
+      if (typeof resetQueryInputHeight === "function") resetQueryInputHeight();
       addCopyButtons();
       scrollToLatestResponse();
     } catch (error) {
       if (error && error.name === "AbortError") {
-        stopTraceStream({ hidePanel: false });
-        setTraceAvailable(true);
-        setTraceOpen(false);
-        setTraceStatusByKey("cancelled");
+        if (typeof stopTraceStream === "function") stopTraceStream({ hidePanel: false });
+        if (typeof setTraceAvailable === "function") setTraceAvailable(true);
+        if (typeof setTraceOpen === "function") setTraceOpen(false);
+        if (typeof setTraceStatusByKey === "function") setTraceStatusByKey("cancelled");
         return;
       }
       console.error("submit:", error);
       alert(t.error);
-      stopTraceStream({ hidePanel: false });
-      setTraceAvailable(true);
-      setTraceOpen(false);
-      setTraceStatusByKey("start_error");
+      if (typeof stopTraceStream === "function") stopTraceStream({ hidePanel: false });
+      if (typeof setTraceAvailable === "function") setTraceAvailable(true);
+      if (typeof setTraceOpen === "function") setTraceOpen(false);
+      if (typeof setTraceStatusByKey === "function") setTraceStatusByKey("start_error");
     } finally {
       activeAbortController = null;
       setRequestInFlight(false);
-      updateFormPosition();
+      if (typeof updateFormPosition === "function") updateFormPosition();
       localStorage.setItem("lang", lang);
       updateSendButtonState();
     }
@@ -2842,7 +2735,7 @@
     rebuildConsultantsIndex();
     selectedConsultant =
       appConfig.defaultConsultantId ||
-      (appConfig.consultants?.[0]?.id ?? null);
+      (appConfig.consultants && appConfig.consultants[0] ? appConfig.consultants[0].id : null);
 
     selectedSnapshotA = null;
     selectedSnapshotB = null;
@@ -2864,6 +2757,7 @@
       );
     }
   }
+
 
   document.addEventListener("DOMContentLoaded", () => {
     if (langSelect) {
@@ -3183,3 +3077,6 @@
 
     bootstrapUi();
   });
+
+  window.App = window.App || {};
+  window.App.features = window.App.features || {};

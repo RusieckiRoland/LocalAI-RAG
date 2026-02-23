@@ -305,7 +305,7 @@
       z-index: 40;
     }
     .trace-doc-modal {
-      background: white;
+      background: var(--surface-1);
       border-radius: 0.9rem;
       width: min(980px, 94vw);
       max-height: 86vh;
@@ -336,7 +336,7 @@
       min-width: 4.2rem;
       text-align: center;
       font-variant-numeric: tabular-nums;
-      background: rgba(255, 255, 255, 0.9);
+      background: var(--surface-1);
       border: 1px solid var(--border);
       border-radius: 999px;
       padding: 0.15rem 0.6rem;
@@ -349,8 +349,8 @@
       pointer-events: none;
     }
     .trace-doc-nav-btn {
-      border: 1px solid rgba(15, 23, 42, 0.15);
-      background: rgba(255, 255, 255, 0.92);
+      border: 1px solid var(--border);
+      background: var(--surface-1);
       color: var(--text);
       border-radius: 999px;
       width: 38px;
@@ -363,7 +363,7 @@
       justify-content: center;
     }
     .trace-doc-nav-btn:hover {
-      background: var(--surface-1);
+      background: var(--surface-2);
       box-shadow: 0 8px 22px rgba(15, 23, 42, 0.2);
     }
     .trace-doc-nav-btn:disabled {

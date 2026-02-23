@@ -3,7 +3,7 @@
   "model_path_embd": "models/embedding/e5-base-v2",
   "model_path_analysis": "models/code_analysis/Codestral/Codestral-22B-v0.1-Q6_K.gguf",
   "enable_model_path_analysis": true,
-  "serverLLM": true,
+  "serverLLM": false,
   "model_max_tokens": 1500,
   "model_context_window":8192 ,
   "model_translation_en_pl": "models/translation/en_pl/Helsinki_NLPopus_mt_en_pl",
@@ -55,7 +55,7 @@
       "translated": "Nie wykonano analizy, ponieważ żaden serwer LLM nie spełnia polityki bezpieczeństwa."
     }
   },
-  "is_multilingual_project": false,
+  "is_multilingual_project": true,
   "neutral_language": "en",
   "translated_language": "pl",
   "use_gpu": true,

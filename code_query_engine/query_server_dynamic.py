@@ -12,7 +12,7 @@ from pathlib import Path
 from threading import Lock
 from typing import Any, Dict, List, Optional, Tuple
 
-from flask import Flask, abort, jsonify, request, send_file, g
+from flask import Flask, abort, jsonify, request, send_file, send_from_directory, g
 from flask_cors import CORS
 
 from common.logging_setup import LoggingConfig, configure_logging, logging_config_from_runtime_config
@@ -67,7 +67,8 @@ except Exception:
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 
 RUNTIME_CONFIG_PATH = os.path.join(PROJECT_ROOT, "config.json")
-FRONTEND_HTML_PATH = os.path.join(PROJECT_ROOT, "frontend", "Rag.html")
+FRONTEND_HTML_PATH = os.path.join(PROJECT_ROOT, "frontend", "production", "Rag.html")
+FRONTEND_ASSETS_DIR = os.path.join(PROJECT_ROOT, "frontend", "production", "assets")
 
 REPOSITORIES_ROOT = os.path.join(PROJECT_ROOT, "repositories")
 
@@ -896,6 +897,13 @@ def ui_index():
     if not os.path.isfile(FRONTEND_HTML_PATH):
         return jsonify({"ok": False, "error": "Frontend file not found.", "path": FRONTEND_HTML_PATH}), 404
     return send_file(FRONTEND_HTML_PATH)
+
+
+@app.get("/assets/<path:filename>")
+def ui_assets(filename: str):
+    if not os.path.isdir(FRONTEND_ASSETS_DIR):
+        return jsonify({"ok": False, "error": "Assets directory not found.", "path": FRONTEND_ASSETS_DIR}), 404
+    return send_from_directory(FRONTEND_ASSETS_DIR, filename)
 
 
 # ------------------------------------------------------------

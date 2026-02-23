@@ -438,6 +438,19 @@
     }
     .find-doc-btn.hidden { display: none; }
     pre:hover .copy-btn { opacity: 1; }
+
+    /* Response cards in dark mode */
+    body[data-theme="dark"] .response-entry {
+      background: var(--surface-1);
+      border: 1px solid var(--border);
+      color: var(--text);
+    }
+    body[data-theme="dark"] .response-entry .text-gray-500 {
+      color: var(--text-muted);
+    }
+    body[data-theme="dark"] .response-entry .text-gray-900 {
+      color: var(--text);
+    }
     pre:hover .find-doc-btn { opacity: 1; }
     .copy-btn:hover { background-color: #2563eb; }
     .copy-btn.copied { background-color: #10b981; }
