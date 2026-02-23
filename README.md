@@ -24,7 +24,21 @@ The system supports **classification-aware generation**:
 - policies can **block external LLM traffic entirely**, or
 - **route generation** to a safe internal/local LLM when a retrieval batch contains content above a configured threshold.
 
-### Why it works well for code analysis
+> ⚠️ **Important: Security Review checkpoint — “Does this app meet my requirements?”**
+>
+> If you’re reading this because you’re considering using the system in a company setting (especially for code, internal, classified, or regulated data),
+> then **after you learn the basic concepts below, come back to the [Security Review](#security-review) section**.
+>
+> **Why?** In practice, most RAG projects don’t fail on retrieval quality — they fail on security questions like:
+> - **Who exactly** can see **which documents** through this system?
+> - If permissions change in the source (e.g., SharePoint / S3 / Confluence) today — **when** will the RAG reflect that?
+> - What **technically** prevents User A from seeing User B’s data (including “accidental” leakage via semantic similarity)?
+>
+> If you can’t answer those questions (and have it documented + tested), passing an Enterprise Security Review is unlikely.
+
+---
+
+## Why it works well for code analysis
 
 The core optimization for code-repo analysis is that retrieval is not just “top-K chunks”.  
 This system is designed to cooperate with a **.NET + SQL code indexer** that produces:
@@ -70,7 +84,7 @@ Think of it as pipeline composition by configuration, not by code — like confi
 
 **At a glance**
 
-```mermaid id="idjbe5"
+```mermaid
 flowchart LR
     A["translate_in_if_needed"] --> B["load_conversation_history"]
     B --> C{"sufficiency router"}
@@ -154,7 +168,7 @@ The lockfile freezes version-sensitive behavior (defaults, normalization, valida
 
 Generate the lockfile:
 
-```bash id="ohhaol"
+```bash 
 python -m code_query_engine.pipeline.pipeline_cli lock pipelines/rejewski.yaml
 ```
 
@@ -223,20 +237,78 @@ YAMLpipeline:
       next: "finalize"
 ```
 
-### Access control via pipeline assignment
+---
 
-Assigning users to specific pipelines is not only a UX choice — it is also a practical **access-control mechanism**.
+<a name="security-review"></a>
+## Security Review
 
-Different pipelines can enforce different constraints:
+The documentation goes deeper into security (policies, configuration, edge-cases), but it’s worth stating the fundamentals here so you can quickly judge deployability and identify any additional integration work you may need.
+
+### Security model at a glance (three layers)
+
+This system supports multiple security approaches you can enable and combine depending on your requirements.
+
+#### 1) Baseline: user auth + group → pipeline assignment
+At the basic level:
+- users authenticate and are assigned to groups,
+- groups are allowed to use specific pipelines,
+- pipelines define **which datasets/snapshots and which retrieval behaviors** are available.
+
+This is a practical access-control boundary: **access to a pipeline == access to the resources that pipeline can query**.
+
+In practice, pipelines can enforce constraints such as:
 - which repositories/snapshots a user can query,
 - which metadata filters must always apply,
 - whether graph expansion is allowed,
 - whether external LLM calls are permitted,
-- and how classification labels affect routing.
+- and how classification/ACL signals affect routing.
 
-In other words: granting a user access to a pipeline can be used to grant (or deny) access to specific datasets and behaviors.
+#### 2) ACL layer (label-based authorization)
+If you enable ACL-based authorization:
+- content is tagged with ACL labels (e.g., `production`, `finance`, …),
+- users carry their allowed ACL labels,
+- retrieval is constrained so users only see chunks whose ACL labels they are allowed to access.
 
-## **Hardware target.** 
+Example: a user allowed for `production` will **not** retrieve content labeled `finance`.
+
+#### 3) Security classification layer (two supported modes)
+This layer can be configured in one of two ways:
+
+**A) `clearance_level`**
+- each document/chunk has a numeric (or ordered) classification level,
+- the user must have clearance **>=** the document level to retrieve it.
+
+**B) `labels_universe_subset`**
+- each document carries a set of classification labels (e.g., `["internal", "restricted"]`),
+- the user is allowed to retrieve a document only if they hold the required label subset
+  (or a configured policy deems it acceptable).
+
+### Snapshot rule: classification is frozen at import time
+**Important:** security labels / ACL labels / classification levels are stored at import time in Weaviate,
+and because this system is snapshot-oriented, those values are **frozen** as part of the snapshot.
+
+That means:
+- if someone changes a document’s classification in the source system later,
+  it does **not** automatically change what is already stored in an existing snapshot,
+- user permissions can be changed (users removed, access revoked, group/pipeline assignment updated),
+  but **documents already indexed into a snapshot keep the security metadata they had at snapshot creation time**.
+
+### If you need “live” source-permission reflection
+If your requirements include:
+- reflecting source permission changes without re-indexing,
+- or enforcing the source system’s ACL model as the single source of truth,
+
+then you need an **additional integration** with the source authorization system.
+In practice this typically means:
+- a real-time or near-real-time permission sync,
+- and/or a separate authorization graph/service that resolves user→document access at query time
+  (so retrieval can be pre-filtered before ranking/top-K).
+
+> [!WARNING]
+> As part of deployment risk assessment, decide whether the snapshot-based model (ACL/classification frozen at import time) is sufficient, or whether you need source-system integration for “live” permission changes without re-indexing.
+---
+
+### **Hardware target.** 
 Optimized for a **single NVIDIA RTX 4090** (CUDA 12.x). Defaults (e.g., full llama.cpp CUDA offload) are tuned for a single high-end GPU (e.g., RTX 4090-class).
 
 **Stack focus.**
