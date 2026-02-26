@@ -53,22 +53,22 @@
     #queryForm:not(.centered) .welcome-message { display: none; }
 
     .welcome-message a {
-      color: #2563eb;
+      color: var(--selection);
       text-decoration: underline;
       text-underline-offset: 3px;
-      text-decoration-color: #bfdbfe;
+      text-decoration-color: var(--selection-soft-border);
       transition: color .2s ease, text-decoration-color .2s ease;
     }
     .welcome-message a:hover,
     .welcome-message a:focus-visible {
-      color: #1d4ed8;
-      text-decoration-color: #60a5fa;
+      color: var(--selection-hover);
+      text-decoration-color: var(--selection);
       outline: none;
     }
 
     .input-field::placeholder {
-      color: var(--text-muted);
-      opacity: 0.85;
+      color: var(--text-tertiary);
+      opacity: 1;
     }
 
     .select-field:disabled,
@@ -82,7 +82,7 @@
       border: 1px solid var(--border);
       border-radius: 0.75rem;
       padding: 0.75rem 0.9rem;
-      background-color: var(--surface-1);
+      background-color: var(--field-bg);
       color: var(--text);
       outline: none;
     }
@@ -95,7 +95,7 @@
       border: 1px solid var(--border);
       border-radius: 0.75rem;
       padding: 0.45rem 0.75rem;
-      background-color: var(--surface-1);
+      background-color: var(--field-bg);
       color: var(--text);
       outline: none;
       min-width: 220px;
@@ -168,8 +168,8 @@
       text-overflow: ellipsis;
     }
     .branch-select:focus {
-      border-color: #2563eb;
-      box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px var(--accent-soft);
     }
 
     .branch-controls.compare .branch-select {
@@ -226,7 +226,7 @@
       gap: 0.35rem;
       font-size: 0.78rem;
       font-weight: 700;
-      color: #1d4ed8;
+      color: var(--selection-hover);
       opacity: 0;
       transition: opacity 0.15s ease;
       position: absolute;
@@ -242,17 +242,17 @@
       width: 0.6rem;
       height: 0.6rem;
       border-radius: 999px;
-      border: 2px solid #93c5fd;
-      border-top-color: #2563eb;
+      border: 2px solid var(--selection-soft-border);
+      border-top-color: var(--selection);
       animation: querySpin 0.8s linear infinite;
     }
     .send-btn.is-cancel {
-      background: #2563eb;
-      border-color: #1d4ed8;
-      color: var(--surface-1);
+      background: var(--selection);
+      border-color: var(--selection-hover);
+      color: var(--c-on-selection, #fff);
     }
     .send-btn.is-cancel:hover {
-      background: #1d4ed8;
+      background: var(--selection-hover);
     }
     .send-btn .send-label {
       display: inline-block;
@@ -285,8 +285,9 @@
     }
 
     .send-btn {
-      background-color: #2aaea1;
-      color: white;
+      background-color: var(--accent);
+      border: 1px solid transparent;
+      color: var(--c-on-primary, #fff);
       border-radius: 0.75rem;
       font-weight: 700;
       transition: background-color 0.15s;
@@ -311,7 +312,7 @@
     .controls-row .send-btn {
       padding: 9px 1rem;
     }
-    .send-btn:hover { background-color: #239487; }
+    .send-btn:hover { background-color: var(--accent-hover); }
     .send-btn:disabled { opacity: 0.6; cursor: not-allowed; }
 
     .command-link {
@@ -320,20 +321,20 @@
       gap: 0.45rem;
       padding: 0.45rem 0.85rem;
       border-radius: 999px;
-      background: #eef2ff;
-      color: #1d4ed8;
+      background: var(--surface-3);
+      color: var(--selection-hover);
       font-weight: 700;
       text-decoration: none;
-      border: 1px solid #c7d2fe;
-      box-shadow: 0 4px 12px rgba(37, 99, 235, 0.12);
+      border: 1px solid var(--selection-soft-border);
+      box-shadow: 0 4px 12px rgba(17, 24, 39, 0.08);
     }
     .command-link::before {
       content: "↗";
       font-weight: 800;
     }
     .command-link:hover {
-      background: #e0e7ff;
-      border-color: #a5b4fc;
+      background: var(--surface-2);
+      border-color: var(--selection);
     }
     .command-links {
       display: inline-flex;
@@ -429,7 +430,7 @@
 
     .copy-btn {
       position: absolute; right: 0.5em; top: 0.5em;
-      background-color: #3b82f6; color: white; border: none; border-radius: 0.5em;
+      background-color: var(--selection); color: var(--c-on-selection, #fff); border: none; border-radius: 0.5em;
       padding: 0.25em 0.55em; font-size: 0.75em; cursor: pointer; opacity: 0;
       transition: opacity 0.2s;
     }
@@ -455,7 +456,7 @@
       color: var(--text);
     }
     pre:hover .find-doc-btn { opacity: 1; }
-    .copy-btn:hover { background-color: #2563eb; }
+    .copy-btn:hover { background-color: var(--selection-hover); }
     .copy-btn.copied { background-color: #10b981; }
     .find-doc-btn:hover { background-color: #0284c7; }
 
@@ -513,8 +514,8 @@
       color: var(--text);
     }
     .modal-btn.confirm {
-      background: #2563eb;
-      color: white;
+      background: var(--accent);
+      color: var(--c-on-primary, #fff);
     }
 
     .auth-controls {
@@ -642,6 +643,64 @@
       gap: 0.5rem;
     }
     .auth-compact-menu button:hover { background: var(--surface-2); }
+    .auth-compact-menu button:focus-visible {
+      outline: 2px solid var(--focus);
+      outline-offset: 2px;
+      border-radius: 0.55rem;
+    }
+
+    /* Menu switch (palette toggle): label left, visual toggle right */
+    .auth-compact-menu button.menu-switch {
+      justify-content: space-between;
+      gap: 0.75rem;
+    }
+    .auth-compact-menu button.menu-switch .menu-left {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      min-width: 0;
+      flex: 1 1 auto;
+    }
+    .auth-compact-menu button.menu-switch #paletteToggleLabel {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .auth-compact-menu button.menu-switch .switch {
+      width: 34px;
+      height: 18px;
+      border-radius: 999px;
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      position: relative;
+      flex: 0 0 auto;
+      transition: background 140ms ease, border-color 140ms ease;
+    }
+    .auth-compact-menu button.menu-switch .switch-thumb {
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: var(--surface-1);
+      position: absolute;
+      top: 50%;
+      left: 2px;
+      transform: translate(0, -50%);
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.22);
+      transition: transform 160ms ease;
+    }
+    .auth-compact-menu button.menu-switch.is-on .switch {
+      background: var(--accent);
+      border-color: var(--accent);
+    }
+    .auth-compact-menu button.menu-switch.is-on .switch-thumb {
+      transform: translate(16px, -50%);
+    }
+    .auth-compact-menu button.menu-switch:active .switch-thumb {
+      transform: translate(1px, -50%) scale(0.98);
+    }
+    .auth-compact-menu button.menu-switch.is-on:active .switch-thumb {
+      transform: translate(15px, -50%) scale(0.98);
+    }
     .auth-compact-menu .icon {
       width: 16px;
       height: 16px;

@@ -1680,9 +1680,10 @@
   }
 
   function getCurrentLang() {
-    const saved = localStorage.getItem("lang");
     const selected = (langSelect && langSelect.value) || "";
-    const resolved = getSupportedUiLang(saved || selected || translatedLanguageCode);
+    const saved = localStorage.getItem("lang");
+    // UI language must follow the current selector when available; saved value is fallback only.
+    const resolved = getSupportedUiLang(selected || saved || translatedLanguageCode);
     return isMultilingualProject ? resolved : neutralLanguageCode;
   }
 
@@ -2217,6 +2218,7 @@
     const effectiveLang = isMultilingualProject ? getSupportedUiLang(lang) : neutralLanguageCode;
     renderLanguageSelector(effectiveLang);
     const t = getTexts(effectiveLang);
+    try { document.documentElement.lang = effectiveLang; } catch (e) {}
 
     if (submitButton) {
       const label = submitButton.querySelector(".send-label");
@@ -2292,6 +2294,9 @@
 
     localStorage.setItem("lang", effectiveLang);
     if (langSelect && langSelect.value !== effectiveLang) langSelect.value = effectiveLang;
+    try {
+      document.dispatchEvent(new CustomEvent("localai:lang", { detail: { lang: effectiveLang } }));
+    } catch (e) {}
 
     buildConsultantsBar(effectiveLang);
     renderWelcomeMessage(effectiveLang);

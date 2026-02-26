@@ -1,14 +1,50 @@
 :root {
-  --bg: #f8fafc;
-  --surface-1: #ffffff;
-  --surface-2: #f1f5f9;
-  --surface-3: #e9f0ff;
-  --border: #d6dde8;
-  --border-strong: #c2cbd8;
-  --text: #111827;
-  --text-muted: #5b6472;
-  --accent: #2563eb;
-  --accent-soft: rgba(37, 99, 235, 0.12);
+  /* Palette selector (default to WCAG). */
+  --palette-primary: wcag;
+
+  /* Semantic color tokens (light) */
+  --c-bg: #F0F4F8;
+  --c-surface-1: #FFFFFF;
+  --c-field-bg: #F0F4F8;
+  --c-text-primary: #27394A;
+  --c-text-secondary: #6B7280;
+  --c-text-tertiary: #64748B;
+  --c-outline: #858D99;
+  --c-outline-strong: #27394A;
+  --c-primary: #0F766E;
+  --c-on-primary: #FFFFFF;
+  --c-focus: #0F766E;
+  --c-selection: #2563EB;
+  --c-on-selection: #FFFFFF;
+  --c-selection-hover: #1D4ED8;
+  --c-selection-soft: rgba(37, 99, 235, 0.18);
+  --c-selection-soft-border: rgba(37, 99, 235, 0.28);
+  --c-chip-selected-bg: #E8F0FC;
+  --c-shadow: 0 8px 24px rgba(17,24,39,0.08);
+
+  /* Backward-compatible aliases used by the existing CSS */
+  --bg: var(--c-bg);
+  --surface-1: var(--c-surface-1);
+  /* Used widely for hover fills; keep it close to field background. */
+  --surface-2: var(--c-field-bg);
+  /* Used as "selected" fill in consultant cards / panels. */
+  --surface-3: var(--c-chip-selected-bg);
+  --field-bg: var(--c-field-bg);
+
+  --border: var(--c-outline);
+  --border-strong: var(--c-outline-strong);
+  --text: var(--c-text-primary);
+  --text-muted: var(--c-text-secondary);
+  --text-tertiary: var(--c-text-tertiary);
+
+  --accent: var(--c-primary);
+  --accent-hover: #0B5F59;
+  --accent-soft: rgba(15, 118, 110, 0.18);
+
+  --selection: var(--c-selection);
+  --selection-hover: var(--c-selection-hover);
+  --selection-soft: var(--c-selection-soft);
+  --selection-soft-border: var(--c-selection-soft-border);
   --info-bg: #e0f2fe;
   --info-border: #b6dcfb;
   --info-text: #1d4ed8;
@@ -18,20 +54,80 @@
   --danger-bg: #fef2f2;
   --danger-border: #f3b4b4;
   --danger-text: #991b1b;
+  --shadow: var(--c-shadow);
+}
+
+/* "Normal" palette: as close as possible to the UI before the recent token/contrast changes. */
+body[data-palette="normal"],
+body[data-palette="legacy"] {
+  /* Match original theme.css (light) */
+  --bg: #f8fafc;
+  --surface-1: #ffffff;
+  --surface-2: #f1f5f9;
+  --surface-3: #e9f0ff;
+  --field-bg: #ffffff;
+
+  --border: #d6dde8;
+  --border-strong: #c2cbd8;
+  --text: #111827;
+  --text-muted: #5b6472;
+  --text-tertiary: #5b6472;
+
+  /* CTA (historical) */
+  --accent: #2aaea1;
+  --accent-hover: #239487;
+  --accent-soft: rgba(42, 174, 161, 0.18);
+
+  /* Selection (historical: blue) */
+  --selection: #2563eb;
+  --selection-hover: #1d4ed8;
+  --selection-soft: rgba(37, 99, 235, 0.18);
+  --selection-soft-border: rgba(37, 99, 235, 0.28);
+
   --shadow: 0 1px 2px rgba(0,0,0,0.06);
 }
 
 body[data-theme="dark"] {
-  --bg: #0c1016;
-  --surface-1: #111a28;
-  --surface-2: #162133;
-  --surface-3: #1b2a41;
-  --border: #2f3f5c;
-  --border-strong: #3a4d6d;
-  --text: #e8eef6;
-  --text-muted: #b3bfce;
-  --accent: #52e3c2;
-  --accent-soft: rgba(82, 227, 194, 0.18);
+  /* Semantic color tokens (dark) */
+  --c-bg: #142030;
+  --c-surface-1: #101828;
+  --c-field-bg: #142030;
+  --c-text-primary: #E8EEF6;
+  --c-text-secondary: #C6CDD4;
+  --c-text-tertiary: #AEB7C2;
+  --c-outline: #5A6A8A;
+  --c-outline-strong: #B6C2D1;
+  --c-primary: #0F766E;
+  --c-on-primary: #FFFFFF;
+  --c-focus: #0F766E;
+  --c-selection: #60A5FA;
+  --c-on-selection: #0B1220;
+  --c-selection-hover: #93C5FD;
+  --c-selection-soft: rgba(96, 165, 250, 0.22);
+  --c-selection-soft-border: rgba(96, 165, 250, 0.32);
+  --c-chip-selected-bg: #1B2A41;
+  --c-shadow: 0 12px 32px rgba(0,0,0,0.35);
+
+  --bg: var(--c-bg);
+  --surface-1: var(--c-surface-1);
+  --surface-2: var(--c-field-bg);
+  --surface-3: var(--c-chip-selected-bg);
+  --field-bg: var(--c-field-bg);
+
+  --border: var(--c-outline);
+  --border-strong: var(--c-outline-strong);
+  --text: var(--c-text-primary);
+  --text-muted: var(--c-text-secondary);
+  --text-tertiary: var(--c-text-tertiary);
+
+  --accent: var(--c-primary);
+  --accent-hover: #0B5F59;
+  --accent-soft: rgba(15, 118, 110, 0.18);
+
+  --selection: var(--c-selection);
+  --selection-hover: var(--c-selection-hover);
+  --selection-soft: var(--c-selection-soft);
+  --selection-soft-border: var(--c-selection-soft-border);
   --info-bg: #13283f;
   --info-border: #2a4460;
   --info-text: #9cc4ff;
@@ -41,6 +137,36 @@ body[data-theme="dark"] {
   --danger-bg: #2a1316;
   --danger-border: #5a1b22;
   --danger-text: #ff9aa2;
+  --shadow: var(--c-shadow);
+}
+
+/* Legacy palette overrides for dark. */
+body[data-theme="dark"][data-palette="normal"],
+body[data-theme="dark"][data-palette="legacy"] {
+  /* Match original theme.css (dark) */
+  --bg: #0c1016;
+  --surface-1: #111a28;
+  --surface-2: #162133;
+  --surface-3: #1b2a41;
+  --field-bg: #111a28;
+
+  --border: #2f3f5c;
+  --border-strong: #3a4d6d;
+  --text: #e8eef6;
+  --text-muted: #b3bfce;
+  --text-tertiary: #b3bfce;
+
+  /* CTA stays the historical teal used by the UI */
+  --accent: #2aaea1;
+  --accent-hover: #239487;
+  --accent-soft: rgba(42, 174, 161, 0.18);
+
+  /* Selection (historical: mint) */
+  --selection: #52e3c2;
+  --selection-hover: #52e3c2;
+  --selection-soft: rgba(82, 227, 194, 0.18);
+  --selection-soft-border: rgba(82, 227, 194, 0.26);
+
   --shadow: 0 6px 18px rgba(0,0,0,0.35);
 }
 

@@ -46,8 +46,9 @@
       cursor: not-allowed;
     }
     .auth-btn.active {
-      background: #16a34a;
-      border-color: #16a34a;
-      color: var(--surface-1);
-      box-shadow: 0 0 0 3px rgba(22, 163, 74, 0.12);
+      /* Match Send button tint */
+      background: var(--accent);
+      border-color: var(--accent);
+      color: var(--c-on-primary, #fff);
+      box-shadow: 0 0 0 3px var(--accent-soft);
     }
