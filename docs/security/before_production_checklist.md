@@ -8,7 +8,7 @@ This document lists what must be completed before moving to production. It focus
 2. Policies are in `config/auth_policies.json`.
 
 **Required before production**
-1. Integrate a real identity provider (OIDC/Keycloak/LDAP/SSO).
+1. Integrate a real identity provider (OpenID Connect (OIDC), e.g. Keycloak) and use Authorization Code Flow with PKCE for the browser UI.
 2. Validate tokens cryptographically (signature, expiry, issuer, audience).
 3. Map token groups to application groups.
 4. If token only provides `user_id`, add DB mapping `user_id → groups`.

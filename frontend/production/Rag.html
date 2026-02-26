@@ -35,6 +35,19 @@
           <path d="M9 6l6 6-6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
         </svg>
       </button>
+      <div class="history-collapsed-actions" id="historyCollapsedActions" aria-label="Skróty">
+        <button id="historyCompactNewChatBtn" class="history-collapsed-action-btn" type="button" title="Nowy czat" aria-label="Nowy czat">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M20 2H4a2 2 0 0 0-2 2v18l4-4h14a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2zm0 14H5.17L4 17.17V4h16v12z"></path>
+            <path d="M12 6v3H9v2h3v3h2v-3h3V9h-3V6h-2z"></path>
+          </svg>
+        </button>
+        <button id="historyCompactSearchBtn" class="history-collapsed-action-btn" type="button" title="Szukaj w archiwum" aria-label="Szukaj w archiwum">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M15.5 14h-.79l-.28-.27A6.47 6.47 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16a6.47 6.47 0 0 0 4.23-1.57l.27.28v.79L20 21.5 21.5 20 15.5 14zm-6 0A4.5 4.5 0 1 1 14 9.5 4.505 4.505 0 0 1 9.5 14z"></path>
+          </svg>
+        </button>
+      </div>
       <div class="history-panel-content">
         <div class="history-collapse-row">
           <button id="historyCollapseBtn" class="history-collapse-btn" type="button" aria-label="Collapse history">
@@ -44,27 +57,42 @@
           </button>
         </div>
         <div class="history-top">
-          <button id="historyNewChatBtn" class="history-newchat-btn" type="button">Nowy chat</button>
-          <input id="historySearchInput" class="history-search-input" type="search" placeholder="Wyszukaj czaty" aria-label="Wyszukaj czaty">
-          <button id="historySearchBtn" class="history-search-btn" type="button">Szukaj (Ctrl+K)</button>
+          <button id="historyNewChatBtn" class="history-newchat-btn" type="button">
+            <span class="btn-icon" aria-hidden="true">
+              <!-- Material-style: chat bubble outline + plus -->
+              <svg viewBox="0 0 24 24">
+                <path d="M20 2H4a2 2 0 0 0-2 2v18l4-4h14a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2zm0 14H5.17L4 17.17V4h16v12z"></path>
+                <path d="M12 6v3H9v2h3v3h2v-3h3V9h-3V6h-2z"></path>
+              </svg>
+            </span>
+            <span class="btn-label">Nowy chat</span>
+          </button>
+          <input id="historySearchInput" class="history-search-input" type="search" placeholder="Filtruj listę czatów" aria-label="Filtruj listę czatów">
+          <button id="historySearchBtn" class="history-search-btn" type="button">
+            <span class="btn-icon" aria-hidden="true">
+              <!-- Material-style: search -->
+              <svg viewBox="0 0 24 24">
+                <path d="M15.5 14h-.79l-.28-.27A6.47 6.47 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16a6.47 6.47 0 0 0 4.23-1.57l.27.28v.79L20 21.5 21.5 20 15.5 14zm-6 0A4.5 4.5 0 1 1 14 9.5 4.505 4.505 0 0 1 9.5 14z"></path>
+              </svg>
+            </span>
+            <span class="btn-label">Szukaj w archiwum (Ctrl+K)</span>
+          </button>
         </div>
         <div class="history-section-title" id="historySectionTitle">Twoje czaty</div>
         <div id="historyList" class="history-list"></div>
         <div id="historyEmpty" class="history-empty">Brak historii</div>
         <div class="history-footer">
           <div class="auth-controls" id="authControls">
-            <button id="authToggleBtn" class="auth-btn" type="button">Fake Login</button>
-            <select id="authUserSelect" class="auth-user-select" aria-label="Wybierz użytkownika">
-              <option value="dev-user-1">dev-user-1</option>
-              <option value="dev-user-2">dev-user-2</option>
-            </select>
+            <button id="authToggleBtn" class="auth-btn" type="button">Zaloguj</button>
           </div>
         </div>
       </div>
       <div class="history-compact-footer">
         <div class="auth-compact" id="authCompact">
-          <button id="authCompactBtn" class="auth-compact-btn" type="button" aria-label="User menu">
+          <button id="authCompactBtn" class="auth-compact-btn" type="button" aria-label="Menu użytkownika">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 12c2.76 0 5-2.24 5-5S14.76 2 12 2 7 4.24 7 7s2.24 5 5 5zm0 2c-3.33 0-10 1.67-10 5v3h20v-3c0-3.33-6.67-5-10-5z"/></svg>
+            <span id="authCompactUserName" class="auth-compact-name"></span>
+            <span id="authCompactUserInitials" class="auth-compact-initials" aria-hidden="true"></span>
           </button>
           <div class="auth-compact-menu" id="authCompactMenu">
             <button type="button" id="authCompactAction">
@@ -87,7 +115,7 @@
       <div class="topbar">
         <div class="flex gap-2" id="consultants"></div>
         <div class="topbar-actions">
-          <button id="themeToggleBtn" class="theme-toggle-btn theme-toggle-min" type="button" title="Zmień tryb"><span class="theme-icon" aria-hidden="true">🌙</span></button>
+          <button id="themeToggleBtn" class="theme-toggle-btn theme-toggle-min" type="button" title="Motyw: system"><span class="theme-icon" aria-hidden="true">◐</span></button>
         </div>
       </div>
 
@@ -211,7 +239,7 @@
     <div class="history-search-modal">
       <div class="history-search-header">
         <div class="history-search-title-row">
-          <div class="history-search-title" id="historySearchModalTitle">Wyszukaj czaty</div>
+          <div class="history-search-title" id="historySearchModalTitle">Szukaj w archiwum</div>
           <button type="button" class="history-search-close" id="historySearchModalClose" aria-label="Zamknij">×</button>
         </div>
         <input id="historySearchModalInput" class="history-search-input" type="search" placeholder="Szukaj..." aria-label="Szukaj czatów">
@@ -255,9 +283,22 @@
     </button>
   </div>
   <div id="trace-backdrop"></div>
+  <div class="modal-backdrop" id="fakeLoginBackdrop" style="display:none;">
+    <div class="modal">
+      <div class="modal-title">Logowanie (DEV)</div>
+      <div class="modal-body">
+        <label for="fakeLoginSelect">Wybierz użytkownika</label>
+        <select id="fakeLoginSelect" class="select-field" style="width:100%;margin-top:8px;"></select>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="modal-btn confirm" id="fakeLoginConfirm">Zaloguj</button>
+      </div>
+    </div>
+  </div>
   <script src="./assets/js/core/config.js"></script>
   <script src="./assets/js/core/dom.js"></script>
   <script src="./assets/js/services/api.js"></script>
+  <script src="./assets/js/auth/oidc_pkce.js"></script>
   <script src="./assets/js/services/history-store.js"></script>
   <script src="./assets/js/services/trace-stream.js"></script>
   <script src="./assets/js/main.js"></script>

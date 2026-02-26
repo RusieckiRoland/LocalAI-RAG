@@ -5,7 +5,7 @@
   "enable_model_path_analysis": true,
   "serverLLM": false,
   "model_max_tokens": 1500,
-  "model_context_window":8192 ,
+  "model_context_window": 8192,
   "model_translation_en_pl": "models/translation/en_pl/Helsinki_NLPopus_mt_en_pl",
   "model_translation_pl_en": "models/translation/pl_en/Helsinki_NLPopus_mt_pl_en",
   "log_path": "log/ai_interaction.log",
@@ -32,12 +32,17 @@
     {
       "neutral_description": "today",
       "translated_description": "dzisiaj",
-      "formula": { "type": "today" }
+      "formula": {
+        "type": "today"
+      }
     },
     {
       "neutral_description": "last week",
       "translated_description": "ostatni tydzień",
-      "formula": { "type": "last_n_days", "days": 7 }
+      "formula": {
+        "type": "last_n_days",
+        "days": 7
+      }
     }
   ],
   "history_important": {
@@ -115,5 +120,33 @@
     "security_enabled": false,
     "acl_enabled": false,
     "require_travel_permission": false
-  }
+  },
+  "fake_users": [
+    {
+      "id": "john_kowalski",
+      "userName": "John Kowalski",
+      "claims": {
+        "sub": "test-john-kowalski",
+        "preferred_username": "john_kowalski",
+        "email": "john.kowalski@example.local",
+        "groups": [
+          "developer"
+        ],
+        "user_level": 10
+      }
+    },
+    {
+      "id": "anna_nowak",
+      "userName": "Anna Nowak",
+      "claims": {
+        "sub": "test-anna-nowak",
+        "preferred_username": "anna_nowak",
+        "email": "anna.nowak@example.local",
+        "groups": [
+          "analyst"
+        ],
+        "user_level": 20
+      }
+    }
+  ]
 }

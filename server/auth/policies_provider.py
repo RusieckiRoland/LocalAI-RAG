@@ -73,6 +73,7 @@ class JsonAuthPoliciesProvider:
         claim_group_mappings = raw.get("claim_group_mappings") or []
         if not isinstance(claim_group_mappings, list):
             claim_group_mappings = []
+        claim_group_mappings = claim_group_mappings + _load_extra_claim_group_mappings()
         return policies, claim_group_mappings
 
 
@@ -81,6 +82,27 @@ def default_json_provider() -> JsonAuthPoliciesProvider:
     default_path = os.path.join(project_root, "config", "auth_policies.json")
     path = os.getenv("AUTH_POLICIES_PATH") or default_path
     return JsonAuthPoliciesProvider(path=path)
+
+
+def _load_extra_claim_group_mappings() -> List[Dict[str, object]]:
+    """
+    Additional claim->group mappings stored outside of auth_policies.json.
+    Intended for IAM/IDP mappings (e.g. token groups -> application roles).
+    """
+    project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+    default_path = os.path.join(project_root, "security_conf", "claim_group_mappings.json")
+    path = os.getenv("CLAIM_GROUP_MAPPINGS_PATH") or default_path
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            raw = json.load(f)
+    except FileNotFoundError:
+        return []
+    except Exception:
+        return []
+    if not isinstance(raw, list):
+        return []
+    # Keep as-is; DevUserAccessProvider will validate each rule defensively.
+    return raw  # type: ignore[return-value]
 
 
 def _normalize_int(value: object) -> Optional[int]:

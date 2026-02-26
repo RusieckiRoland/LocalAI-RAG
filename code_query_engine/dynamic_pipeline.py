@@ -65,7 +65,7 @@ def _create_history_manager(*, mock_redis: Any, session_id: str, consultant: str
 
 def _validate_override_keys(overrides: dict[str, Any]) -> None:
     for key in overrides.keys():
-        if key in ("permissions", "identity_provider") or key.startswith("security_") or key.startswith("acl_"):
+        if key in ("permissions", "identity_provider", "auth") or key.startswith("security_") or key.startswith("acl_") or key.startswith("auth_"):
             raise ValueError(f"override key '{key}' is not allowed")
         if key not in _OVERRIDE_KEYS_ALLOWED:
             raise ValueError(f"override key '{key}' is not allowed")

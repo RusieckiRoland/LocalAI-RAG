@@ -248,18 +248,23 @@ WEAVIATE_API_KEY=your-weaviate-api-key-here
 * `RAG_PIPELINE_TRACE_FILE` / `RAG_PIPELINE_TRACE_DIR` — optional per-query trace output (debug only).
 * `WEAVIATE_API_KEY` — API key used by Weaviate clients (if your Weaviate is secured).
 
-### IDP settings in `config.json`
+### OIDC resource server settings in `config.json`
 
-`prod` auth can validate JWT tokens against your identity provider:
+`prod` auth can validate JWT tokens against your Identity Provider (OIDC):
 
 ```json
-"identity_provider": {
-  "enabled": true,
-  "issuer": "https://idp.example.com/realms/localai-rag",
-  "jwks_url": "https://idp.example.com/realms/localai-rag/protocol/openid-connect/certs",
-  "audience": "localai-rag-api",
-  "algorithms": ["RS256"],
-  "required_claims": ["sub", "exp", "iss", "aud"]
+"auth": {
+  "oidc": {
+    "enabled": true,
+    "issuer": "https://idp.example.com/realms/localai-rag",
+    "resource_server": {
+      "enabled": true,
+      "jwks_url": "https://idp.example.com/realms/localai-rag/protocol/openid-connect/certs",
+      "audience": "localai-rag-api",
+      "algorithms": ["RS256"],
+      "required_claims": ["sub", "exp", "iss", "aud"]
+    }
+  }
 }
 ```
 
@@ -379,22 +384,29 @@ After configuring your `.env`, start the backend server with:
 python start_AI_server.py --env
 ```
 
-### Endpoint modes (`development`)
+### Endpoint surface and auth
 
-`config.json`:
-- set `"development": true` to expose development endpoints
-- set `"development": false` to hide development endpoints
+The server exposes a single set of endpoints:
+- `GET /app-config`
+- `POST /search`, `POST /query`
+- `GET /pipeline/stream`, `POST /pipeline/cancel`
+- `GET /auth-check`
 
-Development endpoints:
-- `GET /app-config/dev`
-- `POST /search/dev`, `POST /query/dev`
+Bearer requirement depends only on `DEV_ALLOW_NO_AUTH`:
+- When `DEV_ALLOW_NO_AUTH=true` and `APP_PROFILE!=prod`, the server does not require a real security token, but it still requires a fake login header: `Authorization: Bearer dev-user:<user_id>`.
+- In all other cases, bearer validation is required.
+- If `APP_PROFILE` is not set, it defaults to `prod`.
 
-Production endpoints (always bearer-protected):
-- `GET /app-config/prod`
-- `POST /search/prod`, `POST /query/prod`
+Runtime config file is selected by `APP_PROFILE`:
+- `APP_PROFILE=dev` uses `config.dev.json`
+- `APP_PROFILE=prod` uses `config.prod.json`
+- `APP_PROFILE=test` uses `config.test.json`
 
-Auth behavior for `prod` endpoints:
+Auth behavior when bearer is required:
 - if IDP config is active, bearer is validated as JWT (issuer/audience/JWKS)
+
+Keycloak-specific setup (PKCE + audience mapper):
+- `docs/howto/keycloak_oidc_pkce_setup.md`
 - otherwise an optional `API_TOKEN` may be used for **service-to-service** calls only (restricted network); it is not suitable for browser/SPA clients
 - after bearer validation, server enforces custom access checks:
   - user must be allowed to run the selected pipeline

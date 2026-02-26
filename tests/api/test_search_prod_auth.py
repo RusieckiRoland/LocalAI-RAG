@@ -43,7 +43,7 @@ def test_search_prod_requires_token_config(monkeypatch: pytest.MonkeyPatch) -> N
     qsd = _import_query_server_dynamic(monkeypatch)
 
     client = qsd.app.test_client()
-    res = client.post("/search/prod", json={"consultant": "rejewski", "query": "hi"})
+    res = client.post("/search", json={"consultant": "rejewski", "query": "hi"})
 
     assert res.status_code == 503
     assert b"server auth is not configured" in res.data
@@ -54,32 +54,40 @@ def test_search_prod_requires_valid_bearer(monkeypatch: pytest.MonkeyPatch) -> N
     qsd = _import_query_server_dynamic(monkeypatch)
 
     client = qsd.app.test_client()
-    res_bad = client.post("/search/prod", json={"consultant": "rejewski", "query": "hi"})
+    res_bad = client.post("/search", json={"consultant": "rejewski", "query": "hi"})
     assert res_bad.status_code == 401
 
     res_ok = client.post(
-        "/search/prod",
+        "/search",
         json={"consultant": "rejewski", "query": "hi"},
         headers={"Authorization": "Bearer top-secret"},
     )
     assert res_ok.status_code == 200
 
-    check_bad = client.get("/auth-check/prod")
+    check_bad = client.get("/auth-check")
     assert check_bad.status_code == 401
 
-    check_ok = client.get("/auth-check/prod", headers={"Authorization": "Bearer top-secret"})
+    check_ok = client.get("/auth-check", headers={"Authorization": "Bearer top-secret"})
     assert check_ok.status_code == 200
 
 
-def test_search_dev_does_not_require_bearer(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_dev_allow_no_auth_allows_requests_without_bearer(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("API_TOKEN", "top-secret")
-    monkeypatch.setenv("APP_DEVELOPMENT", "1")
+    monkeypatch.setenv("APP_PROFILE", "dev")
+    monkeypatch.setenv("DEV_ALLOW_NO_AUTH", "true")
     qsd = _import_query_server_dynamic(monkeypatch)
 
     client = qsd.app.test_client()
-    res = client.post("/search/dev", json={"consultant": "rejewski", "query": "hi"})
+    res = client.post("/search", json={"consultant": "rejewski", "query": "hi"})
+    assert res.status_code == 401
 
-    assert res.status_code == 200
+    res2 = client.post(
+        "/search",
+        json={"consultant": "rejewski", "query": "hi"},
+        headers={"Authorization": "Bearer dev-user:john_kowalski"},
+    )
+
+    assert res2.status_code == 200
 
 
 def test_search_prod_uses_idp_validation_when_enabled(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -89,7 +97,7 @@ def test_search_prod_uses_idp_validation_when_enabled(monkeypatch: pytest.Monkey
     monkeypatch.setattr(qsd, "_validate_idp_bearer", lambda auth_header: None)
 
     client = qsd.app.test_client()
-    res = client.post("/search/prod", json={"consultant": "rejewski", "query": "hi"})
+    res = client.post("/search", json={"consultant": "rejewski", "query": "hi"})
     assert res.status_code == 200
 
 
@@ -100,32 +108,27 @@ def test_search_prod_returns_idp_error(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(qsd, "_validate_idp_bearer", lambda auth_header: (qsd.jsonify({"ok": False, "error": "unauthorized"}), 401))
 
     client = qsd.app.test_client()
-    res = client.post("/search/prod", json={"consultant": "rejewski", "query": "hi"})
+    res = client.post("/search", json={"consultant": "rejewski", "query": "hi"})
     assert res.status_code == 401
 
 
-def test_dev_endpoints_are_hidden_in_prod_mode(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("APP_DEVELOPMENT", "0")
+def test_app_config_requires_bearer_when_no_auth_disabled(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("API_TOKEN", "top-secret")
     qsd = _import_query_server_dynamic(monkeypatch)
 
     client = qsd.app.test_client()
-
-    res_search_dev = client.post("/search/dev", json={"consultant": "rejewski", "query": "hi"})
-    assert res_search_dev.status_code == 404
-
-    res_app_cfg_dev = client.get("/app-config/dev")
-    assert res_app_cfg_dev.status_code == 404
-
-
-def test_app_config_prod_requires_bearer(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("APP_DEVELOPMENT", "1")
-    monkeypatch.setenv("API_TOKEN", "top-secret")
-    qsd = _import_query_server_dynamic(monkeypatch)
-
-    client = qsd.app.test_client()
-    bad = client.get("/app-config/prod")
+    bad = client.get("/app-config")
     assert bad.status_code == 401
 
-    ok = client.get("/app-config/prod", headers={"Authorization": "Bearer top-secret"})
+    ok = client.get("/app-config", headers={"Authorization": "Bearer top-secret"})
     assert ok.status_code == 200
+
+
+def test_dev_allow_no_auth_is_forbidden_in_prod(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("APP_PROFILE", "prod")
+    monkeypatch.setenv("DEV_ALLOW_NO_AUTH", "1")
+    monkeypatch.setenv("APP_USE_REDIS", "false")
+    monkeypatch.setenv("IDP_AUTH_ENABLED", "0")
+
+    with pytest.raises(RuntimeError):
+        _import_query_server_dynamic(monkeypatch)

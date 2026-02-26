@@ -10,23 +10,14 @@
       }
     }
   ],
-  "groups": {
-    "anonymous": {
-      "allowed_pipelines": [
-        "ada",
-        "chuck"
-      ],
-      "allowed_commands": [],
-      "acl_tags_any": [],
-      "classification_labels_all": []
-    },
-    "authenticated": {
-      "allowed_pipelines": [
-        "rejewski",
-        "ada",
-        "shannon",
-        "chuck"
-      ],
+	  "groups": {
+	    "developers": {
+	      "allowed_pipelines": [
+	        "rejewski",
+	        "ada",
+	        "shannon",
+	        "chuck"
+	      ],
       "allowed_commands": [
         "showDiagram",
         "saveDiagram",
@@ -42,13 +33,36 @@
         "restricted",
         "critical"
       ],
-      "owner_id": "",
-      "source_system_id": ""
-    },
-    "clearance:public": {
-      "allowed_pipelines": [],
-      "allowed_commands": [],
-      "acl_tags_any": [],
+	      "owner_id": "",
+	      "source_system_id": ""
+	    },
+	    "analyst": {
+	      "allowed_pipelines": [
+	        "rejewski",
+	        "ada"
+	      ],
+	      "allowed_commands": [
+	        "showDiagram",
+	        "saveDiagram",
+	        "ea_export"
+	      ],
+	      "acl_tags_any": [
+	        "security",
+	        "finance"
+	      ],
+	      "classification_labels_all": [
+	        "public",
+	        "internal",
+	        "restricted",
+	        "critical"
+	      ],
+	      "owner_id": "",
+	      "source_system_id": ""
+	    },
+	    "clearance:public": {
+	      "allowed_pipelines": [],
+	      "allowed_commands": [],
+	      "acl_tags_any": [],
       "classification_labels_all": [],
       "user_level": 0
     },

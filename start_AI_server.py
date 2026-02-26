@@ -15,6 +15,7 @@ PROJECT_ROOT = os.path.dirname(__file__)
 RUNTIME_CONFIG_DEFAULT_PATH = os.path.join(PROJECT_ROOT, "config.json")
 RUNTIME_CONFIG_DEV_PATH = os.path.join(PROJECT_ROOT, "config.dev.json")
 RUNTIME_CONFIG_PROD_PATH = os.path.join(PROJECT_ROOT, "config.prod.json")
+RUNTIME_CONFIG_TEST_PATH = os.path.join(PROJECT_ROOT, "config.test.json")
 
 # --- Optional --env flag ---
 parser = argparse.ArgumentParser()
@@ -48,26 +49,27 @@ def _get_primary_ipv4() -> str:
 def _print_start_banner(host: str, port: int) -> None:
     # English comments only.
     ip = _get_primary_ipv4()
-    development = _is_development_enabled()
-    mode_label = "dev" if development else "prod"
+    profile = _resolve_app_profile()
+    dev_allow_no_auth = _parse_env_bool(os.getenv("DEV_ALLOW_NO_AUTH")) is True
+    auth_label = "optional" if (dev_allow_no_auth and profile != "prod") else "required"
 
     print("")
     print("🚀 LocalAI-RAG UI")
-    print(f"🧭 Mode: {mode_label}")
+    print(f"🧭 Profile: {profile}")
+    print(f"🔐 Auth: {auth_label}")
     print(f"➜  Local:   http://127.0.0.1:{port}/")
     print(f"➜  Network: http://{ip}:{port}/")
     print("")
     print("🔎 Health / config")
     print(f"➜  /health:     http://127.0.0.1:{port}/health")
-    if development:
-        print(f"➜  /app-config/dev:  http://127.0.0.1:{port}/app-config/dev")
-    print(f"➜  /app-config/prod: http://127.0.0.1:{port}/app-config/prod")
+    print(f"➜  /app-config: http://127.0.0.1:{port}/app-config")
     print("")
-    print("🔐 Prod auth check")
-    print(f"➜  /auth-check/prod: http://127.0.0.1:{port}/auth-check/prod")
-    if development:
-        print(f"➜  /search/dev (POST):  http://127.0.0.1:{port}/search/dev")
-    print(f"➜  /search/prod (POST): http://127.0.0.1:{port}/search/prod")
+    print("🔐 Auth check")
+    print(f"➜  /auth-check: http://127.0.0.1:{port}/auth-check")
+    print(f"➜  /search (POST): http://127.0.0.1:{port}/search")
+    print(f"➜  /query (POST):  http://127.0.0.1:{port}/query")
+    print(f"➜  /pipeline/stream (GET): http://127.0.0.1:{port}/pipeline/stream")
+    print(f"➜  /pipeline/cancel (POST): http://127.0.0.1:{port}/pipeline/cancel")
     print("")
 
 
@@ -80,25 +82,34 @@ def _parse_env_bool(raw: str | None) -> bool | None:
     return None
 
 
+def _resolve_app_profile() -> str:
+    raw = str(os.getenv("APP_PROFILE") or "").strip().lower()
+    if not raw:
+        return "prod"
+    if raw in ("production",):
+        return "prod"
+    if raw in ("development",):
+        return "dev"
+    if raw in ("dev", "prod", "test"):
+        return raw
+    raise RuntimeError("Invalid APP_PROFILE. Allowed values: dev, prod, test.")
+
+
 def _resolve_runtime_config_path() -> str:
     explicit = str(os.getenv("APP_CONFIG_PATH") or "").strip()
     if explicit:
         return explicit if os.path.isabs(explicit) else os.path.join(PROJECT_ROOT, explicit)
 
-    profile = str(os.getenv("APP_CONFIG_PROFILE") or "").strip().lower()
-    if profile in ("dev", "development"):
-        return RUNTIME_CONFIG_DEV_PATH
-    if profile in ("prod", "production"):
-        return RUNTIME_CONFIG_PROD_PATH
+    # Default by APP_PROFILE.
+    profile = _resolve_app_profile()
+    os.environ.setdefault("APP_PROFILE", profile)
 
-    env_dev = _parse_env_bool(os.getenv("APP_DEVELOPMENT"))
-    if env_dev is True:
+    if profile == "dev" and os.path.exists(RUNTIME_CONFIG_DEV_PATH):
         return RUNTIME_CONFIG_DEV_PATH
-    if env_dev is False:
+    if profile == "prod" and os.path.exists(RUNTIME_CONFIG_PROD_PATH):
         return RUNTIME_CONFIG_PROD_PATH
-
-    if os.path.exists(RUNTIME_CONFIG_DEV_PATH):
-        return RUNTIME_CONFIG_DEV_PATH
+    if profile == "test" and os.path.exists(RUNTIME_CONFIG_TEST_PATH):
+        return RUNTIME_CONFIG_TEST_PATH
     return RUNTIME_CONFIG_DEFAULT_PATH
 
 
@@ -125,6 +136,12 @@ def _is_development_enabled() -> bool:
 
 
 if __name__ == "__main__":
+    profile = _resolve_app_profile()
+    os.environ.setdefault("APP_PROFILE", profile)
+    dev_allow_no_auth = _parse_env_bool(os.getenv("DEV_ALLOW_NO_AUTH")) is True
+    if profile == "prod" and dev_allow_no_auth:
+        raise RuntimeError("DEV_ALLOW_NO_AUTH=true is forbidden when APP_PROFILE=prod.")
+
     # Import the Flask app ONLY inside __main__.
     # This is required when semantic search uses multiprocessing "spawn":
     # child processes re-import the main module, and importing the server at top-level
@@ -137,4 +154,4 @@ if __name__ == "__main__":
 
     _print_start_banner(host=host, port=port)
 
-    app.run(host=host, port=port, debug=development, use_reloader=False)
+    app.run(host=host, port=port, debug=(profile != "prod" and development), use_reloader=False)

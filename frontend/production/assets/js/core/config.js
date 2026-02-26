@@ -7,9 +7,10 @@
   const URL_MODE = (new URLSearchParams(window.location.search).get("mode") || "dev").toLowerCase();
   const IS_FILE_MODE = window.location.protocol === "file:";
   const APP_MODE = (URL_MODE === "prod") ? "prod" : "dev";
-  const APP_CONFIG_PATH = IS_FILE_MODE ? "/app-config" : `/app-config/${APP_MODE}`;
-  const SEARCH_PATH = IS_FILE_MODE ? "/search" : `/search/${APP_MODE}`;
-  const CANCEL_PATH = IS_FILE_MODE ? "/pipeline/cancel" : `/pipeline/cancel/${APP_MODE}`;
+  // Single backend API surface; auth behavior depends on DEV_ALLOW_NO_AUTH + APP_PROFILE.
+  const APP_CONFIG_PATH = "/app-config";
+  const SEARCH_PATH = "/search";
+  const CANCEL_PATH = "/pipeline/cancel";
   const DEFAULT_APP_CONFIG = {
     defaultConsultantId: "rejewski",
     isMultilingualProject: true,
@@ -107,7 +108,7 @@
   const HISTORY_STORAGE_KEY = "chatHistoryByUser_v1";
   const HISTORY_SEARCH_PAGE_SIZE = 50;
   const MAX_BRANCH_LABEL_LEN = 28;
-  const TRACE_STREAM_PATH = IS_FILE_MODE ? "/pipeline/stream" : `/pipeline/stream/${APP_MODE}`;
+  const TRACE_STREAM_PATH = "/pipeline/stream";
 
   App.config = {
     API_BASE,

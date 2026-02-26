@@ -13,10 +13,11 @@
   const branchControls = document.getElementById("branchControls");
   const controlsSpacer = document.getElementById("controlsSpacer");
   const authToggleBtn = document.getElementById("authToggleBtn");
-  const authUserSelect = document.getElementById("authUserSelect");
   const authControls = document.getElementById("authControls");
   const authCompact = document.getElementById("authCompact");
   const authCompactBtn = document.getElementById("authCompactBtn");
+  const authCompactUserName = document.getElementById("authCompactUserName");
+  const authCompactUserInitials = document.getElementById("authCompactUserInitials");
   const authCompactMenu = document.getElementById("authCompactMenu");
   const authCompactAction = document.getElementById("authCompactAction");
   const authCompactActionLabel = document.getElementById("authCompactActionLabel");
@@ -26,6 +27,8 @@
   const historyPanel = document.getElementById("history-panel");
   const historyCollapseBtn = document.getElementById("historyCollapseBtn");
   const historyExpandBtn = document.getElementById("historyExpandBtn");
+  const historyCompactNewChatBtn = document.getElementById("historyCompactNewChatBtn");
+  const historyCompactSearchBtn = document.getElementById("historyCompactSearchBtn");
   const historyNewChatBtn = document.getElementById("historyNewChatBtn");
   const historySearchInput = document.getElementById("historySearchInput");
   const historySearchBtn = document.getElementById("historySearchBtn");
@@ -77,6 +80,9 @@
   const clearHistoryModalBody = document.getElementById("clearHistoryModalBody");
   const clearHistoryModalCancel = document.getElementById("clearHistoryModalCancel");
   const clearHistoryModalConfirm = document.getElementById("clearHistoryModalConfirm");
+  const fakeLoginBackdrop = document.getElementById("fakeLoginBackdrop");
+  const fakeLoginSelect = document.getElementById("fakeLoginSelect");
+  const fakeLoginConfirm = document.getElementById("fakeLoginConfirm");
   const historyContextMenu = document.getElementById("historyContextMenu");
   const historyContextRename = document.getElementById("historyContextRename");
   const historyContextImportant = document.getElementById("historyContextImportant");
@@ -100,10 +106,11 @@
     branchControls,
     controlsSpacer,
     authToggleBtn,
-    authUserSelect,
     authControls,
     authCompact,
     authCompactBtn,
+    authCompactUserName,
+    authCompactUserInitials,
     authCompactMenu,
     authCompactAction,
     authCompactActionLabel,
@@ -113,6 +120,8 @@
     historyPanel,
     historyCollapseBtn,
     historyExpandBtn,
+    historyCompactNewChatBtn,
+    historyCompactSearchBtn,
     historyNewChatBtn,
     historySearchInput,
     historySearchBtn,
@@ -164,6 +173,9 @@
     clearHistoryModalBody,
     clearHistoryModalCancel,
     clearHistoryModalConfirm,
+    fakeLoginBackdrop,
+    fakeLoginSelect,
+    fakeLoginConfirm,
     historyContextMenu,
     historyContextRename,
     historyContextImportant,

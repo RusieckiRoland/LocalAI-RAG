@@ -26,22 +26,26 @@ The server is the source of truth.
 ## 3. Environment and endpoint matrix
 
 ### 3.1 Runtime modes
-- Development endpoints are available only when `APP_DEVELOPMENT=true` (or `config.json: development=true`).
-- Production endpoints are always mounted, but require bearer auth.
+- The server exposes a single set of endpoints.
+- Runtime config file is selected by `APP_PROFILE`:
+  - `APP_PROFILE=dev` uses `config.dev.json`
+  - `APP_PROFILE=prod` uses `config.prod.json`
+  - `APP_PROFILE=test` uses `config.test.json`
+- Whether endpoints accept requests without a valid bearer depends only on `DEV_ALLOW_NO_AUTH`:
+  - `DEV_ALLOW_NO_AUTH=true` allows running without a real security token **only** when `APP_PROFILE!=prod`, but still requires a fake login header: `Authorization: Bearer dev-user:<user_id>`.
+  - In all other cases bearer auth is required.
+- If `APP_PROFILE` is not set, it defaults to `prod`.
+
+In no-auth mode, the UI should present a fake login screen to select a user from `config.dev.json: fake_users` (users represent JWT-like claims).
 
 ### 3.2 Endpoint matrix
 - `GET /health`
-- `GET /app-config/dev`
-- `GET /app-config/prod`
-- `POST /search/dev`
-- `POST /search/prod`
-- `POST /query/dev` (same behavior as `/search/dev`)
-- `POST /query/prod` (same behavior as `/search/prod`)
-- `GET /pipeline/stream/dev?run_id=<id>`
-- `GET /pipeline/stream/prod?run_id=<id>`
-- `POST /pipeline/cancel/dev`
-- `POST /pipeline/cancel/prod`
-- `GET /auth-check/prod`
+- `GET /app-config`
+- `POST /search`
+- `POST /query` (same behavior as `/search`)
+- `GET /pipeline/stream?run_id=<id>`
+- `POST /pipeline/cancel`
+- `GET /auth-check`
 - `GET /chat-history/sessions`
 - `POST /chat-history/sessions`
 - `GET /chat-history/sessions/{sessionId}`
@@ -54,20 +58,22 @@ The server is the source of truth.
 
 ## 4. Authentication and headers
 
-### 4.1 Production endpoints (`/prod`)
-- Require `Authorization: Bearer <token>`.
+### 4.1 Bearer auth requirement
+- When `DEV_ALLOW_NO_AUTH` is **not** enabled, protected endpoints require `Authorization: Bearer <token>`.
 - Validation mode:
   - Identity Provider JWT (if enabled).
   - Optional static API token (`API_TOKEN`) may be supported for **service-to-service** clients only (restricted network).
     - It must NOT be used by browser/SPA clients.
+For the browser UI, use OpenID Connect Authorization Code Flow with PKCE (e.g. Keycloak).
 
-### 4.2 Development endpoints (`/dev`)
-- Do not require bearer token.
-- Optional dev identity simulation:
+### 4.2 DEV_ALLOW_NO_AUTH mode (explicit local no-auth)
+- Enabled only when `DEV_ALLOW_NO_AUTH=true` and `APP_PROFILE!=prod`.
+- The server does not require a real security token, but still requires a fake login header: `Authorization: Bearer dev-user:<user_id>`.
+- Optional dev identity simulation (local only):
   - `Authorization: Bearer dev-user:<userId>`
 
 ### 4.3 Headers used by frontend clients
-- `Authorization`: optional in dev, required in prod.
+- `Authorization`: required unless `DEV_ALLOW_NO_AUTH=true` with `APP_PROFILE!=prod`.
 - `X-Session-ID`: optional; if valid, server uses it.
 - `X-Request-ID`: optional idempotency/correlation key for one request.
 - `X-Run-ID`: optional alternative for trace/cancel routes.
@@ -85,13 +91,13 @@ The server is the source of truth.
 
 ---
 
-## 6. Startup contract: `GET /app-config/{mode}`
+## 6. Startup contract: `GET /app-config`
 
 ### 6.1 Request
 - Method: `GET`
-- Path: `/app-config/dev` or `/app-config/prod`
+- Path: `/app-config`
 - Headers:
-  - `Authorization` required only for `/prod`
+  - `Authorization` required (in no-auth mode it must be `Bearer dev-user:<user_id>`)
   - optional `X-Session-ID`
 
 ### 6.2 Response (200)
@@ -425,13 +431,13 @@ Pagination:
 
 ## 10. Optional auth probe endpoint
 
-- `GET /auth-check/prod`
-- Requires valid production bearer token.
+- `GET /auth-check`
+- When bearer auth is required, it validates the bearer token.
 - Success:
 ```json
-{ "ok": true, "mode": "prod", "auth": "bearer" }
+{ "ok": true, "profile": "prod", "auth": "bearer" }
 ```
-- Errors: same auth errors as other `/prod` endpoints (`401`, `503`).
+- Errors: same auth errors as other protected endpoints (`401`, `503`).
 
 ---
 

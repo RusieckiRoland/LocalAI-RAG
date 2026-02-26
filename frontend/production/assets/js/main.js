@@ -15,6 +15,14 @@
     MAX_BRANCH_LABEL_LEN,
   } = (window.App && window.App.config) || {};
 
+  const publicCfg = (window.__RAG_PUBLIC_CONFIG__ && typeof window.__RAG_PUBLIC_CONFIG__ === "object")
+    ? window.__RAG_PUBLIC_CONFIG__
+    : {};
+  const fakeLoginRequired = !!publicCfg.fake_login_required;
+  const fakeUsers = Array.isArray(publicCfg.fake_users) ? publicCfg.fake_users.slice() : [];
+  const oidc = (window.App && window.App.services && window.App.services.oidc) || null;
+  const oidcEnabled = !!(oidc && typeof oidc.isEnabled === "function" && oidc.isEnabled() && !fakeLoginRequired);
+
   let sessionId = localStorage.getItem("sessionId") || null;
 
   let selectedConsultant = null;
@@ -31,7 +39,7 @@
   let isQueryInProgress = false;
 
   let fakeAuthEnabled = false;
-  let activeDevUserId = "dev-user-1";
+  let activeDevUserId = "";
   let isMultilingualProject = true;
   let neutralLanguageCode = "en";
   let translatedLanguageCode = "pl";
@@ -64,10 +72,11 @@
     branchControls,
     controlsSpacer,
     authToggleBtn,
-    authUserSelect,
     authControls,
     authCompact,
     authCompactBtn,
+    authCompactUserName,
+    authCompactUserInitials,
     authCompactMenu,
     authCompactAction,
     authCompactActionLabel,
@@ -77,6 +86,8 @@
     historyPanel,
     historyCollapseBtn,
     historyExpandBtn,
+    historyCompactNewChatBtn,
+    historyCompactSearchBtn,
     historyNewChatBtn,
     historySearchInput,
     historySearchBtn,
@@ -137,6 +148,9 @@
     historyContextImportantLabel,
     historyContextDeleteLabel,
     historyContextClearAllLabel,
+    fakeLoginBackdrop,
+    fakeLoginSelect,
+    fakeLoginConfirm,
   } = (window.App && window.App.dom) || {};
   const api = (window.App && window.App.services && window.App.services.api) || null;
   const historyApi = (window.App && window.App.services && window.App.services.historyStore) || null;
@@ -173,8 +187,8 @@
   }
 
   function getHistoryUserKey() {
-    if (fakeAuthEnabled) return `user:${activeDevUserId}`;
-    return "user:anon";
+    if (fakeAuthEnabled && activeDevUserId) return `user:${activeDevUserId}`;
+    return "user:missing";
   }
 
   async function loadHistoryStore() {
@@ -604,20 +618,86 @@
 
   function updateAuthUi() {
     const t = getTexts(getCurrentLang());
+    if (fakeLoginRequired) {
+      fakeAuthEnabled = true;
+      localStorage.setItem("fakeAuthEnabled", "1");
+    }
     if (authToggleBtn) {
-      authToggleBtn.classList.toggle("active", fakeAuthEnabled);
-      authToggleBtn.textContent = fakeAuthEnabled ? t.authLogout : t.authLogin;
+      const on = oidcEnabled
+        ? (oidc && typeof oidc.getAccessToken === "function" && !!oidc.getAccessToken())
+        : fakeAuthEnabled;
+      authToggleBtn.classList.toggle("active", on);
+      authToggleBtn.textContent = on ? t.authLogout : t.authLogin;
+      if (fakeLoginRequired) authToggleBtn.style.display = "none";
     }
     if (authControls) {
       authControls.classList.toggle("active", fakeAuthEnabled);
+      if (fakeLoginRequired) authControls.style.display = "none";
     }
     if (authCompactActionLabel) {
-      authCompactActionLabel.textContent = fakeAuthEnabled ? t.authLogout : t.authLogin;
+      if (oidcEnabled) {
+        const hasOidc = oidc && typeof oidc.getAccessToken === "function" && !!oidc.getAccessToken();
+        authCompactActionLabel.textContent = hasOidc ? t.authLogout : t.authLogin;
+      } else {
+        authCompactActionLabel.textContent = fakeAuthEnabled ? t.authLogout : t.authLogin;
+      }
     }
     if (authCompactActionIcon) {
-      authCompactActionIcon.innerHTML = fakeAuthEnabled
+      const on = oidcEnabled
+        ? (oidc && typeof oidc.getAccessToken === "function" && !!oidc.getAccessToken())
+        : fakeAuthEnabled;
+      authCompactActionIcon.innerHTML = on
         ? '<svg viewBox="0 0 24 24"><path d="M14 7v-2H5v14h9v-2h2v4H3V3h13v4zM16 13v3l5-4-5-4v3H9v2h7z"/></svg>'
         : '<svg viewBox="0 0 24 24"><path d="M10 17v-2h7V9h-7V7h9v10h-9zm-2-4V9l-5 4 5 4z"/></svg>';
+    }
+    if (authCompactUserName || authCompactUserInitials || authCompactBtn) {
+      let label = "";
+      if (fakeAuthEnabled) {
+        const currentId = String(activeDevUserId || "").trim();
+        const user = fakeUsers.find((u) => String(u.id || "") === currentId) || null;
+        label = user ? String(user.userName || user.id || "").trim() : "";
+      } else if (oidcEnabled && oidc && typeof oidc.getUserName === "function") {
+        label = String(oidc.getUserName() || "").trim();
+      }
+      const initials = label ? getInitialsFromName(label) : "";
+      if (authCompactUserName) authCompactUserName.textContent = label;
+      if (authCompactUserInitials) authCompactUserInitials.textContent = initials;
+      if (authCompactBtn) authCompactBtn.classList.toggle("has-user", !!label);
+    }
+  }
+
+  function isValidFakeUserId(userId) {
+    const id = String(userId || "").trim();
+    if (!id) return false;
+    return fakeUsers.some((u) => String(u.id || "") === id);
+  }
+
+  function getInitialsFromName(fullName) {
+    const s = String(fullName || "").trim();
+    if (!s) return "";
+    const parts = s.split(/\s+/g).filter(Boolean);
+    if (parts.length === 0) return "";
+    const first = parts[0] || "";
+    const last = parts.length > 1 ? parts[parts.length - 1] : "";
+    const i1 = first ? first.slice(0, 1).toUpperCase() : "";
+    const i2 = last ? last.slice(0, 1).toUpperCase() : "";
+    return (i1 && i2) ? `${i1} ${i2}` : (i1 || i2);
+  }
+
+  function showFakeLoginModal(show) {
+    if (!fakeLoginBackdrop) return;
+    fakeLoginBackdrop.style.display = show ? "flex" : "none";
+    if (show && fakeLoginSelect) {
+      fakeLoginSelect.innerHTML = "";
+      fakeUsers.forEach((u) => {
+        const opt = document.createElement("option");
+        opt.value = String(u.id || "");
+        opt.textContent = String(u.userName || u.id || "");
+        fakeLoginSelect.appendChild(opt);
+      });
+      if (activeDevUserId && isValidFakeUserId(activeDevUserId)) {
+        fakeLoginSelect.value = activeDevUserId;
+      }
     }
   }
   function deleteHistorySession(sessionId) {
@@ -879,10 +959,10 @@
         traceDocCount: (idx, total) => `${idx}/${total}`,
         findInDocs: "Szukaj w dok.",
         historyTitle: "Twoje czaty",
-        historySearchPlaceholder: "Wyszukaj czaty",
-        historySearchButton: "Szukaj (Ctrl+K)",
-        historySearchModalTitle: "Wyszukaj czaty",
-        historySearchModalPlaceholder: "Szukaj...",
+        historySearchPlaceholder: "Filtruj listę czatów",
+        historySearchButton: "Szukaj w archiwum (Ctrl+K)",
+        historySearchModalTitle: "Szukaj w archiwum",
+        historySearchModalPlaceholder: "Szukaj w archiwum...",
         historySearchModalEmpty: "Brak wyników",
         historySearchModalMore: "Pokaż więcej",
         historySearchImportantOnly: "Tylko ważne",
@@ -2167,7 +2247,11 @@
       historySearchInput.placeholder = t.historySearchPlaceholder;
       historySearchInput.setAttribute("aria-label", t.historySearchPlaceholder);
     }
-    if (historySearchBtn) historySearchBtn.textContent = t.historySearchButton;
+    if (historySearchBtn) {
+      const label = historySearchBtn.querySelector(".btn-label");
+      if (label) label.textContent = t.historySearchButton;
+      else historySearchBtn.textContent = t.historySearchButton;
+    }
     if (historySearchModalTitle) historySearchModalTitle.textContent = t.historySearchModalTitle;
     if (historySearchModalInput) {
       historySearchModalInput.placeholder = t.historySearchModalPlaceholder;
@@ -2194,7 +2278,11 @@
     if (clearHistoryModalBody) clearHistoryModalBody.textContent = t.historyClearConfirm || "Czy na pewno chcesz usunąć swoją historię?";
     if (clearHistoryModalConfirm) clearHistoryModalConfirm.textContent = t.historyClearModalConfirm || t.historyClear;
     if (clearHistoryModalCancel) clearHistoryModalCancel.textContent = t.historyClearModalCancel || t.modalCancel || "Anuluj";
-    if (historyNewChatBtn) historyNewChatBtn.textContent = t.historyNewChat;
+    if (historyNewChatBtn) {
+      const label = historyNewChatBtn.querySelector(".btn-label");
+      if (label) label.textContent = t.historyNewChat;
+      else historyNewChatBtn.textContent = t.historyNewChat;
+    }
     if (historyEmpty) historyEmpty.textContent = t.historyEmpty;
     if (queryProgress && queryProgress.classList.contains("active")) {
       queryProgress.textContent = t.queryProgressText;
@@ -2691,12 +2779,25 @@
     showUiError("");
 
     // Auth state must be set before fetching /app-config.
-    fakeAuthEnabled = localStorage.getItem("fakeAuthEnabled") === "1";
+    fakeAuthEnabled = fakeLoginRequired || localStorage.getItem("fakeAuthEnabled") === "1";
+    const savedUser = localStorage.getItem("fakeAuthUserId") || "";
+    if (isValidFakeUserId(savedUser)) {
+      activeDevUserId = savedUser;
+    } else if (fakeLoginRequired) {
+      activeDevUserId = "";
+      localStorage.removeItem("fakeAuthUserId");
+    }
+    // If OIDC is enabled, never send dev-user headers. Fake auth is only for DEV_ALLOW_NO_AUTH mode.
+    if (oidcEnabled && !fakeLoginRequired) {
+      fakeAuthEnabled = false;
+      activeDevUserId = "";
+      localStorage.setItem("fakeAuthEnabled", "0");
+      localStorage.removeItem("fakeAuthUserId");
+    }
     updateAuthUi();
-    if (authUserSelect) {
-      const savedUser = localStorage.getItem("fakeAuthUserId");
-      if (savedUser) activeDevUserId = savedUser;
-      authUserSelect.value = activeDevUserId;
+    if (fakeLoginRequired && !activeDevUserId) {
+      showFakeLoginModal(true);
+      return;
     }
 
     await loadHistoryStore();
@@ -2716,6 +2817,39 @@
     } catch (e) {
       console.error("bootstrapUi: fetchAppConfig:", e);
       startupIssue = e;
+      // If OIDC is configured and backend requires auth, redirect to IdP.
+      const status = e && typeof e === "object" ? e.status : null;
+      if (oidcEnabled && oidc && (status === 401 || String(e && e.message || "").includes(" 401"))) {
+        const hasAccess = typeof oidc.getAccessToken === "function" && !!oidc.getAccessToken();
+        const hasRefresh = typeof oidc.getRefreshToken === "function" && !!oidc.getRefreshToken();
+
+        // If we already have tokens, don't re-login in a loop. This is usually an API-side
+        // validation mismatch (e.g. audience) and re-auth will not fix it.
+        if (hasAccess || hasRefresh) {
+          const detail = (e && typeof e === "object" && e.detail) ? String(e.detail || "").trim() : "";
+          showUiError(
+            `OIDC token was rejected by the API (401)${detail ? `: ${detail}` : ""}. ` +
+            "Check server logs for [security_abuse] (invalid_audience/invalid_token/jwks_unavailable) and verify issuer/JWKS/audience."
+          );
+          return;
+        }
+
+        // Guard against accidental redirect loops.
+        let last = 0;
+        try { last = Number(sessionStorage.getItem("oidc_auto_login_ts") || "0") || 0; } catch (_) {}
+        const now = Date.now();
+        if (now - last < 30_000) {
+          showUiError("Login required (401). Auto-redirect is paused to avoid a loop. Click Login.");
+          return;
+        }
+        try { sessionStorage.setItem("oidc_auto_login_ts", String(now)); } catch (_) {}
+
+        showUiError("Login required. Redirecting to the identity provider...");
+        if (typeof oidc.login === "function") {
+          try { await oidc.login(); } catch (_) {}
+        }
+        return;
+      }
     }
 
     if (hasConsultants(fetchedConfig)) {
@@ -2780,6 +2914,17 @@
 
     if (authToggleBtn) {
       authToggleBtn.addEventListener("click", () => {
+        if (fakeLoginRequired) return;
+        if (oidcEnabled && oidc) {
+          const hasOidc = typeof oidc.getAccessToken === "function" && !!oidc.getAccessToken();
+          if (hasOidc && typeof oidc.logout === "function") {
+            Promise.resolve(oidc.logout()).catch((e) => showUiError(`OIDC logout failed: ${String((e && e.message) || e)}`));
+          }
+          if (!hasOidc && typeof oidc.login === "function") {
+            Promise.resolve(oidc.login()).catch((e) => showUiError(`OIDC login failed: ${String((e && e.message) || e)}`));
+          }
+          return;
+        }
         fakeAuthEnabled = !fakeAuthEnabled;
         localStorage.setItem("fakeAuthEnabled", fakeAuthEnabled ? "1" : "0");
         updateAuthUi();
@@ -2801,17 +2946,11 @@
     if (historyExpandBtn) {
       historyExpandBtn.addEventListener("click", () => setHistoryCollapsed(false));
     }
-    if (authUserSelect) {
-      authUserSelect.addEventListener("change", (evt) => {
-        activeDevUserId = String(evt.target.value || "dev-user-1");
-        localStorage.setItem("fakeAuthUserId", activeDevUserId);
-        loadHistoryStore();
-        activeHistorySessionId = null;
-        renderHistoryList();
-      });
-    }
     if (historyNewChatBtn) {
       historyNewChatBtn.addEventListener("click", () => newChat());
+    }
+    if (historyCompactNewChatBtn) {
+      historyCompactNewChatBtn.addEventListener("click", () => newChat());
     }
     if (historySearchInput) {
       historySearchInput.addEventListener("input", (evt) => {
@@ -2821,6 +2960,9 @@
     }
     if (historySearchBtn) {
       historySearchBtn.addEventListener("click", () => openHistorySearchModal());
+    }
+    if (historyCompactSearchBtn) {
+      historyCompactSearchBtn.addEventListener("click", () => openHistorySearchModal());
     }
     if (historySearchModalClose) {
       historySearchModalClose.addEventListener("click", () => setHistorySearchModalVisible(false));
@@ -2857,6 +2999,25 @@
     }
     if (authCompactAction) {
       authCompactAction.addEventListener("click", () => {
+        if (oidcEnabled && oidc) {
+          const hasOidc = typeof oidc.getAccessToken === "function" && !!oidc.getAccessToken();
+          if (hasOidc && typeof oidc.logout === "function") {
+            Promise.resolve(oidc.logout()).catch((e) => showUiError(`OIDC logout failed: ${String((e && e.message) || e)}`));
+          } else if (!hasOidc && typeof oidc.login === "function") {
+            Promise.resolve(oidc.login()).catch((e) => showUiError(`OIDC login failed: ${String((e && e.message) || e)}`));
+          }
+          if (authCompactMenu) authCompactMenu.classList.remove("is-open");
+          return;
+        }
+        if (fakeLoginRequired) {
+          activeDevUserId = "";
+          localStorage.removeItem("fakeAuthUserId");
+          updateAuthUi();
+          if (authCompactMenu) authCompactMenu.classList.remove("is-open");
+          newChat();
+          showFakeLoginModal(true);
+          return;
+        }
         fakeAuthEnabled = !fakeAuthEnabled;
         localStorage.setItem("fakeAuthEnabled", fakeAuthEnabled ? "1" : "0");
         updateAuthUi();
@@ -2870,6 +3031,19 @@
           }
           newChat();
         }
+        bootstrapUi();
+      });
+    }
+    if (fakeLoginConfirm) {
+      fakeLoginConfirm.addEventListener("click", () => {
+        const selected = fakeLoginSelect ? String(fakeLoginSelect.value || "") : "";
+        if (!isValidFakeUserId(selected)) return;
+        activeDevUserId = selected;
+        localStorage.setItem("fakeAuthUserId", activeDevUserId);
+        fakeAuthEnabled = true;
+        localStorage.setItem("fakeAuthEnabled", "1");
+        updateAuthUi();
+        showFakeLoginModal(false);
         bootstrapUi();
       });
     }
@@ -3075,7 +3249,27 @@
     setQueryProgress(false);
     updateFormPosition();
 
-    bootstrapUi();
+    if (oidcEnabled && oidc && typeof oidc.handleRedirectCallback === "function") {
+      oidc.handleRedirectCallback()
+        .then((r) => {
+          if (r && r.handled && r.ok === false) {
+            showUiError(
+              `Logowanie OIDC nie powiodło się (${String(r.error || "unknown")}). ` +
+              "Sprawdź konfigurację klienta w IdP (redirect URI / web origins / CORS)."
+            );
+          }
+          updateAuthUi();
+        })
+        .catch((e) => {
+          showUiError(
+            `Logowanie OIDC nie powiodło się (${String((e && e.message) || e)}). ` +
+            "Sprawdź konfigurację klienta w IdP (redirect URI / web origins / CORS)."
+          );
+        })
+        .finally(() => bootstrapUi());
+    } else {
+      bootstrapUi();
+    }
   });
 
   window.App = window.App || {};

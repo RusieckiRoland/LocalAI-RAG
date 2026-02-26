@@ -30,6 +30,8 @@ def test_query_endpoint_works_with_stubbed_runner(monkeypatch: pytest.MonkeyPatc
 
     monkeypatch.setenv("APP_USE_REDIS", "false")
     monkeypatch.setenv("API_TOKEN", "")
+    monkeypatch.setenv("APP_PROFILE", "dev")
+    monkeypatch.setenv("DEV_ALLOW_NO_AUTH", "true")
 
     # Stub translators (avoid torch)
     _stub_module(monkeypatch, "common.markdown_translator_en_pl", {"MarkdownTranslator": lambda *a, **k: object()})
@@ -76,7 +78,7 @@ def test_query_endpoint_works_with_stubbed_runner(monkeypatch: pytest.MonkeyPatc
         "session_id": "test-session",
     }
 
-    resp = client.post("/search/dev", json=payload)
+    resp = client.post("/search", json=payload, headers={"Authorization": "Bearer dev-user:john_kowalski"})
     assert resp.status_code == 200
 
     data = resp.get_json()

@@ -18,11 +18,11 @@ class FakeAccessProvider:
     def __init__(self, allowed_pipelines):
         self._allowed_pipelines = allowed_pipelines
 
-    def resolve(self, *, user_id, token, session_id):
+    def resolve(self, *, user_id, token, session_id, claims=None):
         return UserAccessContext(
             user_id=None,
             is_anonymous=True,
-            group_ids=["anonymous"],
+            group_ids=[],
             allowed_pipelines=self._allowed_pipelines,
             allowed_commands=[],
             acl_tags_any=[],

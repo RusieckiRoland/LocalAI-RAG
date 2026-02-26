@@ -1,0 +1,15 @@
+[
+  {
+    "claim": "groups",
+    "list_map": {
+      "developer": "developers",
+      "developers": "developers",
+      "/developer": "developers",
+      "/developers": "developers",
+      "analyst": "analyst",
+      "analysts": "analyst",
+      "/analyst": "analyst",
+      "/analysts": "analyst"
+    }
+  }
+]

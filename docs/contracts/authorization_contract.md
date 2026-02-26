@@ -28,9 +28,9 @@ The backend is the source of truth. The frontend treats authorization as an inpu
 - **UserAccessContext** – the resolved access context passed into the pipeline and retrieval layer.
 
 ## 3. Core principles
-1. A user can act as **anonymous** (no authorization).
-2. A user can act as **authenticated** (token `Authorization: Bearer ...`).
-3. Regardless of anonymous/authenticated status, **sessions are always tracked** (`session_id`).
+1. A user acts as **authenticated** (token `Authorization: Bearer ...`).
+2. In `DEV_ALLOW_NO_AUTH=true` mode (only when `APP_PROFILE!=prod`), the system uses a **fake login** token (`Bearer dev-user:<user_id>`).
+3. Sessions are always tracked (`session_id`) and are independent from authorization.
 4. Permissions come from **groups**, and the user **inherits** group permissions.
 5. A user can be treated as a group (standard pattern like PostgreSQL/Unix).
 6. Pipeline and retrieval **do not implement login** – they receive resolved permissions.
@@ -85,7 +85,7 @@ A group determines:
 
 ### 4.3. Inheritance rule
 - The user inherits permissions from all groups they belong to.
-- If the user has no groups, the `anonymous` group is assigned automatically.
+- If the user has no groups, the request is treated as unauthorized (no implicit `anonymous` group).
 
 ### 4.4. `acl_tags_any` semantics (MUST) – when `permissions.acl_enabled=true`
 - `acl_tags_any` means **logical OR**.
@@ -198,10 +198,11 @@ Rules:
 
 ## 5. Current implementation (DEV/PROD boundary)
 ### 5.1. Fake login (frontend)
-The frontend provides a **Fake Login** button:
-- When enabled → sends header:
-  `Authorization: Bearer dev-user:dev-user-1`
-- When disabled → no header, the user is treated as anonymous.
+In `DEV_ALLOW_NO_AUTH=true` mode (only when `APP_PROFILE!=prod`), the frontend must still log in using a **fake login** token:
+- It sends header: `Authorization: Bearer dev-user:<user_id>`
+- Without a selected fake user, the UI must not access protected endpoints.
+
+Fake users are defined in `config.dev.json` under `fake_users` and represent **JWT-like claims** (data that would normally come from a validated OIDC token).
 
 ### 5.2. Authorization provider (backend)
 The server uses an access provider:
@@ -238,19 +239,12 @@ Example (current):
 ```json
 {
   "groups": {
-    "anonymous": {
-      "allowed_pipelines": [
-        "ada"
-      ],
-      "allowed_commands": [],
-      "acl_tags_any": [],
-      "classification_labels_all": []
-    },
-    "authenticated": {
+    "developers": {
       "allowed_pipelines": [
         "rejewski",
         "ada",
-        "shannon"
+        "shannon",
+        "chuck"
       ],
       "allowed_commands": [
         "showDiagram",
@@ -261,6 +255,12 @@ Example (current):
         "security",
         "finance"
       ],
+      "classification_labels_all": ["public", "internal", "restricted", "critical"]
+    },
+    "analyst": {
+      "allowed_pipelines": ["rejewski", "ada"],
+      "allowed_commands": ["showDiagram", "saveDiagram", "ea_export"],
+      "acl_tags_any": ["security", "finance"],
       "classification_labels_all": ["public", "internal", "restricted", "critical"]
     },
     "clearance:public": {
@@ -312,7 +312,7 @@ Optional mapping from JWT claims to groups:
 
 If a group referenced in a token does not exist in `auth_policies.json`:
 - the group is treated as empty,
-- the user retains only permissions from `anonymous`,
+- the user retains only permissions from groups that exist (typically at least `authenticated`),
 - a **warning should be logged**.
 
 ### 5.5. Server logic
@@ -333,15 +333,14 @@ In `query_server_dynamic.py`:
 Security filtering MUST be applied in Weaviate queries (not post-filtered in Python).
 Any deviation (e.g., temporary fallbacks) must be logged and treated as a blocking issue.
 
-Endpoint exposure by mode:
-- Development endpoints are controlled by `config.json`:
-  - `"development": true|false`
-- When disabled, `/app-config/dev`, `/search/dev`, `/query/dev` return `404`.
-- Production endpoints remain available: `/app-config/prod`, `/search/prod`, `/query/prod`.
+Endpoint exposure:
+- The server exposes a single set of endpoints (no `/dev` or `/prod` suffixes).
 
 Bearer enforcement:
-- `/app-config/prod`, `/search/prod`, `/query/prod` always require bearer validation.
-- `/auth-check/prod` is a lightweight bearer validation endpoint for diagnostics.
+- Whether endpoints accept requests without a valid bearer depends only on `DEV_ALLOW_NO_AUTH`.
+- `DEV_ALLOW_NO_AUTH=true` is allowed only when `APP_PROFILE!=prod`.
+- If `APP_PROFILE` is not set, it defaults to `prod`.
+- Runtime config file is selected by `APP_PROFILE`: `config.dev.json` / `config.prod.json` / `config.test.json`.
 
 ### 5.6. Cache / performance (DEV/PROD)
 - DEV: no caching (resolved per request).
@@ -366,11 +365,11 @@ Each entry should include:
 - `path`
 - `remote`
 - `pipeline`
-- `user_id` or `anonymous`
+- `user_id`
 - `session_id`
 
 ## 6. Request flow
-1. The frontend sends `POST /search/dev` (development) or `POST /search/prod` (production).
+1. The frontend sends `POST /search`.
 2. The server resolves `UserAccessContext`.
 3. The server filters available pipelines.
 4. The server runs the pipeline with `retrieval_filters`.
@@ -386,7 +385,7 @@ Authorization: Bearer dev-user:<user_id>
 
 ### 7.2 PROD (current)
 For `prod` endpoints, token validation follows this order:
-1. If IDP auth is active (`identity_provider.enabled=true` and required fields present), validate JWT using `issuer`, `audience`, and `jwks_url`.
+1. If IDP auth is active (`auth.oidc.resource_server.enabled=true` and required fields present), validate JWT using `issuer`, `audience`, and `jwks_url`.
 2. Optional: a static `API_TOKEN` may be supported for **service-to-service** calls only (non-browser clients, restricted network). It must NOT be treated as a general replacement for IDP auth for public/UI traffic.
 
 
@@ -427,7 +426,7 @@ The `UserAccessContext` interface remains stable between DEV and PROD.
 - The UI should show only consultants allowed for the user.
 
 ## 12. Rate limiting / anti‑abuse (recommendation)
-- Anonymous access should be limited (e.g., RPM / IP throttling).
+- Unauthenticated traffic should be blocked; apply rate limiting and abuse detection for all endpoints (e.g., RPM / IP throttling).
 - In production, global rate limiting is recommended for all users.
 - Recommended implementation: **ingress / API Gateway**, optionally with an app‑level limit for `/search`.
 

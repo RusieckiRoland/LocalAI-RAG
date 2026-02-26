@@ -155,9 +155,9 @@ Notes:
 - `IConversationHistoryService` should forward an allowlisted subset of `meta` into SQL `metadata` (e.g. `channel`, `device_type`, `ip_hash`).
 - Non-allowlisted keys should be treated as ephemeral and not persisted in SQL by default.
 
-## Session merge strategy (anonymous → authenticated)
+## Session merge strategy (unauthenticated → authenticated)
 The system must handle the common flow:
-anonymous user starts a conversation → user logs in → continues in the same browser session.
+unauthenticated user starts a conversation → user logs in → continues in the same browser session.
 
 Recommended behavior:
 - Keep the same `session_id` and begin attaching `identity_id` once available.

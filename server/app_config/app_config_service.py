@@ -24,6 +24,7 @@ class AppConfigService:
         runtime_cfg: Dict[str, Any],
         session_id: str,
         auth_header: str,
+        claims: Optional[Dict[str, object]] = None,
     ) -> Dict[str, Any]:
         templates = self.templates_store.load()
         multilingual_enabled, neutral_language, translated_language = self._resolve_language_config(runtime_cfg)
@@ -32,6 +33,7 @@ class AppConfigService:
             user_id=None,
             token=auth_header,
             session_id=session_id,
+            claims=claims,
         )
 
         repos = self._list_repositories(runtime_cfg)

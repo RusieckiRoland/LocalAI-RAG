@@ -216,9 +216,9 @@
     }
     .send-wrap {
       display: flex;
-      flex-direction: column;
-      align-items: flex-end;
-      gap: 0.3rem;
+      align-items: center;
+      justify-content: center;
+      position: relative;
     }
     .query-progress {
       display: inline-flex;
@@ -227,9 +227,12 @@
       font-size: 0.78rem;
       font-weight: 700;
       color: #1d4ed8;
-      min-height: 1rem;
       opacity: 0;
       transition: opacity 0.15s ease;
+      position: absolute;
+      right: 0;
+      top: -1.05rem;
+      pointer-events: none;
     }
     .query-progress.active {
       opacity: 1;
@@ -282,7 +285,7 @@
     }
 
     .send-btn {
-      background-color: #2563eb;
+      background-color: #2aaea1;
       color: white;
       border-radius: 0.75rem;
       font-weight: 700;
@@ -308,7 +311,7 @@
     .controls-row .send-btn {
       padding: 9px 1rem;
     }
-    .send-btn:hover { background-color: #1d4ed8; }
+    .send-btn:hover { background-color: #239487; }
     .send-btn:disabled { opacity: 0.6; cursor: not-allowed; }
 
     .command-link {
@@ -544,13 +547,67 @@
       border: 1px solid var(--border);
       background: var(--surface-2);
       border-radius: 999px;
-      width: 32px;
       height: 32px;
+      width: auto;
+      padding: 0 0.65rem;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.45rem;
+      color: var(--text-muted);
+      cursor: pointer;
+    }
+    .auth-compact-name,
+    .auth-compact-initials {
+      font-size: 0.85rem;
+      font-weight: 700;
+      color: var(--text);
+      max-width: 180px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      display: none;
+    }
+    .auth-compact-initials {
+      max-width: 48px;
+      letter-spacing: 0.02em;
+    }
+    /* Only show identity label when we have an authenticated user */
+    .auth-compact-btn.has-user .auth-compact-name { display: inline; }
+    .auth-compact-btn.has-user .auth-compact-initials { display: none; }
+    /* In collapsed drawer mode, show initials instead of full name */
+    body.history-collapsed .auth-compact-btn.has-user .auth-compact-name { display: none; }
+    body.history-collapsed .auth-compact-btn.has-user .auth-compact-initials { display: inline; }
+
+    .auth-compact-btn svg {
+      width: 18px;
+      height: 18px;
+      fill: currentColor;
+    }
+
+    /* Sidebar buttons with icons */
+    .history-newchat-btn,
+    .history-search-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: flex-start;
+      gap: 0.5rem;
+    }
+    .history-newchat-btn .btn-icon,
+    .history-search-btn .btn-icon {
+      width: 18px;
+      height: 18px;
       display: inline-flex;
       align-items: center;
       justify-content: center;
       color: var(--text-muted);
-      cursor: pointer;
+      flex: 0 0 auto;
+    }
+    .history-newchat-btn .btn-icon svg,
+    .history-search-btn .btn-icon svg {
+      width: 18px;
+      height: 18px;
+      fill: currentColor;
     }
     .auth-compact-btn:hover {
       background: var(--border);
@@ -664,6 +721,42 @@
     }
     body.history-collapsed .history-expand-btn {
       display: inline-flex;
+    }
+    .history-collapsed-actions {
+      display: none;
+      position: absolute;
+      top: 3.2rem;
+      left: 0.35rem;
+      right: 0.35rem;
+      flex-direction: column;
+      gap: 0.55rem;
+      align-items: center;
+      pointer-events: none; /* enabled only when collapsed */
+    }
+    body.history-collapsed .history-collapsed-actions {
+      display: flex;
+      pointer-events: auto;
+    }
+    .history-collapsed-action-btn {
+      width: 36px;
+      height: 36px;
+      border-radius: 0.75rem;
+      border: 1px solid var(--border);
+      background: var(--surface-2);
+      color: var(--text-muted);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+    }
+    .history-collapsed-action-btn:hover {
+      background: var(--surface-3);
+      color: var(--text);
+    }
+    .history-collapsed-action-btn svg {
+      width: 18px;
+      height: 18px;
+      fill: currentColor;
     }
     .history-panel-content {
       display: flex;

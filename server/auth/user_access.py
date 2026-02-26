@@ -50,24 +50,20 @@ class DevUserAccessProvider(UserAccessProvider):
 
     Expected token format:
       Authorization: Bearer dev-user:<user_id>
-
-    If the token is missing or invalid, the request is treated as anonymous.
     """
 
     def __init__(
         self,
         *,
-        anonymous_group_id: str = "anonymous",
-        authenticated_group_id: str = "authenticated",
         user_group_prefix: str = "user:",
         group_policies: Optional[Dict[str, GroupPolicy]] = None,
         claim_group_mappings: Optional[List[Dict[str, object]]] = None,
+        user_extra_groups: Optional[Dict[str, List[str]]] = None,
     ) -> None:
-        self._anonymous_group_id = anonymous_group_id
-        self._authenticated_group_id = authenticated_group_id
         self._user_group_prefix = user_group_prefix
         self._group_policies = group_policies or {}
         self._claim_group_mappings = claim_group_mappings or []
+        self._user_extra_groups = user_extra_groups or {}
 
     def resolve(
         self,
@@ -77,21 +73,19 @@ class DevUserAccessProvider(UserAccessProvider):
         session_id: str,
         claims: Optional[Dict[str, object]] = None,
     ) -> UserAccessContext:
-        resolved_user_id = self._parse_dev_token(token) or user_id
-        has_bearer = self._has_any_bearer_token(token)
+        claims = claims or {}
+        resolved_user_id = self._parse_dev_token(token) or user_id or self._derive_user_id_from_claims(claims)
 
+        mapped_groups = self._map_claims_to_groups(claims)
+
+        base_user_groups: List[str] = []
         if resolved_user_id:
-            group_ids = [self._authenticated_group_id, f"{self._user_group_prefix}{resolved_user_id}"]
-            is_anonymous = False
-        elif has_bearer:
-            # Generic bearer still means "authenticated" in DEV transition mode.
-            group_ids = [self._authenticated_group_id]
-            is_anonymous = False
-        else:
-            group_ids = [self._anonymous_group_id]
-            is_anonymous = True
+            base_user_groups = [f"{self._user_group_prefix}{resolved_user_id}"]
+            base_user_groups.extend(list(self._user_extra_groups.get(resolved_user_id) or []))
 
-        group_ids = _unique_preserve_order(group_ids + self._map_claims_to_groups(claims or {}))
+        # Keep roles/groups (from claims, extra groups) before the user-scoped group, for stable ordering.
+        group_ids = _unique_preserve_order(mapped_groups + base_user_groups)
+        is_anonymous = not bool(resolved_user_id)
 
         acl_tags_any = self._merge_acl_tags_any(group_ids)
         classification_labels_all = self._merge_classification_labels(group_ids)
@@ -127,13 +121,28 @@ class DevUserAccessProvider(UserAccessProvider):
         candidate = raw[len("dev-user:") :].strip()
         return candidate or None
 
-    def _has_any_bearer_token(self, token: Optional[str]) -> bool:
-        if not token:
-            return False
-        t = token.strip()
-        if not t.lower().startswith("bearer "):
-            return False
-        return bool(t[7:].strip())
+    @staticmethod
+    def _derive_user_id_from_claims(claims: Dict[str, object]) -> Optional[str]:
+        """
+        Best-effort identity extraction for non-dev tokens.
+        Keep it stable and safe for downstream IDs.
+        """
+        raw = claims.get("preferred_username") or claims.get("sub") or claims.get("email")
+        if raw is None:
+            return None
+        s = str(raw).strip()
+        if not s:
+            return None
+        # Keep only safe chars used by the rest of the app; collapse others to '_'.
+        out = []
+        for ch in s:
+            if ch.isalnum() or ch in ("_", "-"):
+                out.append(ch)
+            else:
+                out.append("_")
+        safe = "".join(out).strip("_")
+        safe = safe[:64]
+        return safe or None
 
     def _merge_acl_tags_any(self, group_ids: Iterable[str]) -> List[str]:
         tags: List[str] = []
@@ -259,4 +268,3 @@ def get_default_user_access_provider() -> UserAccessProvider:
             claim_group_mappings=claim_group_mappings,
         )
     return _default_provider
-

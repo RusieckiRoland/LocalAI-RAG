@@ -13,22 +13,22 @@ It intentionally excludes `UC-FILE-*` style file inventory entries.
 - Tests: no dedicated `/` endpoint test
 
 ### UC-WEB-V1-002 — Load app config
-- Entry: `GET /app-config/dev`, `GET /app-config/prod`
+- Entry: `GET /app-config`
 - Code: `code_query_engine/query_server_dynamic.py`, `server/app_config/app_config_service.py`, `ui_contracts/frontend_requirements/templates.json`
 - Tests: `tests/api/test_search_prod_auth.py`, `tests/app_config/test_app_config_service.py`, `tests/app_config/test_templates_store.py`
 
 ### UC-WEB-V1-003 — Prod auth check
-- Entry: `GET /auth-check/prod`
+- Entry: `GET /auth-check`
 - Code: `code_query_engine/query_server_dynamic.py`
 - Tests: `tests/api/test_search_prod_auth.py`
 
 ### UC-WEB-V1-004 — Query execution
-- Entry: `POST /search/dev|prod`, `POST /query/dev|prod`
+- Entry: `POST /search`, `POST /query`
 - Code: `code_query_engine/query_server_dynamic.py`, `code_query_engine/dynamic_pipeline.py`
 - Tests: `tests/api/test_search_permissions.py`, `tests/api/test_search_prod_auth.py`, `tests/e2e/test_server_query_degraded_direct.py`
 
 ### UC-WEB-V1-005 — Stream and cancel
-- Entry: `GET /pipeline/stream/dev|prod`, `POST /pipeline/cancel/dev|prod`
+- Entry: `GET /pipeline/stream`, `POST /pipeline/cancel`
 - Code: `code_query_engine/work_callback/controller.py`, `code_query_engine/work_callback/cancel_controller.py`
 - Tests: `tests/mock/test_mock_server_endpoints.py`
 

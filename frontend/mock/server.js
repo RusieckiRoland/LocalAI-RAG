@@ -960,12 +960,7 @@ function buildMockMarkdownResponse(ctx) {
 const server = http.createServer(async (req, res) => {
   const parsed = url.parse(req.url, true);
   const pathname = parsed.pathname || "/";
-  let basePath = pathname;
-  if (pathname.endsWith("/dev")) {
-    basePath = pathname.slice(0, -4);
-  } else if (pathname.endsWith("/prod")) {
-    basePath = pathname.slice(0, -5);
-  }
+  const basePath = pathname;
 
   if (req.method === "OPTIONS") {
     setCors(res);
@@ -1246,10 +1241,10 @@ server.on("error", (err) => {
   process.exit(1);
 });
 
-server.listen(PORT, "0.0.0.0", () => {
+  server.listen(PORT, "0.0.0.0", () => {
   console.log("Mock server running: http://localhost:" + PORT);
   console.log("Open UI:             http://localhost:" + PORT + "/page.html");
-  console.log("Endpoints:           GET /app-config (/dev,/prod), POST /query (/dev,/prod), POST /search (/dev,/prod), POST /pipeline/cancel (/dev,/prod)");
+  console.log("Endpoints:           GET /app-config, POST /query, POST /search, GET /pipeline/stream, POST /pipeline/cancel");
   console.log("Chat history:        GET /chat-history/sessions, GET /chat-history/sessions/{id}, GET /chat-history/sessions/{id}/messages");
   console.log("                     POST /chat-history/sessions, POST /chat-history/sessions/{id}/messages, PATCH/DELETE /chat-history/sessions/{id}");
   console.log("PlantUML server:     " + PLANTUML_SERVER);

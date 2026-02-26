@@ -15,7 +15,8 @@ def _stub_module(module_name: str, attrs: Dict[str, Any]) -> None:
 
 def _import_query_server_dynamic(monkeypatch):
     monkeypatch.setenv("APP_USE_REDIS", "false")
-    monkeypatch.setenv("APP_DEVELOPMENT", "1")
+    monkeypatch.setenv("APP_PROFILE", "dev")
+    monkeypatch.setenv("DEV_ALLOW_NO_AUTH", "true")
 
     # Prevent heavyweight model init (llama-cpp) during module import.
     _stub_module("common.markdown_translator_en_pl", {"MarkdownTranslator": lambda *a, **k: object()})
@@ -51,7 +52,7 @@ def test_search_denies_pipeline_not_allowed(monkeypatch):
             return UserAccessContext(
                 user_id=None,
                 is_anonymous=True,
-                group_ids=["anonymous"],
+                group_ids=[],
                 allowed_pipelines=["ada"],
                 allowed_commands=[],
                 acl_tags_any=[],
@@ -62,7 +63,11 @@ def test_search_denies_pipeline_not_allowed(monkeypatch):
     qsd._snapshot_registry = None
 
     client = qsd.app.test_client()
-    res = client.post("/search/dev", json={"consultant": "rejewski", "query": "hi"})
+    res = client.post(
+        "/search",
+        json={"consultant": "rejewski", "query": "hi"},
+        headers={"Authorization": "Bearer dev-user:john_kowalski"},
+    )
 
     assert res.status_code == 403
 
@@ -75,7 +80,7 @@ def test_search_response_uses_runner_final_output_as_results(monkeypatch):
             return UserAccessContext(
                 user_id=None,
                 is_anonymous=True,
-                group_ids=["anonymous"],
+                group_ids=[],
                 allowed_pipelines=[],
                 allowed_commands=[],
                 acl_tags_any=[],
@@ -86,7 +91,11 @@ def test_search_response_uses_runner_final_output_as_results(monkeypatch):
     qsd._snapshot_registry = None
 
     client = qsd.app.test_client()
-    res = client.post("/search/dev", json={"consultant": "rejewski", "query": "hi"})
+    res = client.post(
+        "/search",
+        json={"consultant": "rejewski", "query": "hi"},
+        headers={"Authorization": "Bearer dev-user:john_kowalski"},
+    )
 
     assert res.status_code == 200
     payload = res.get_json()
@@ -103,7 +112,7 @@ def test_search_returns_400_for_unknown_snapshot_set(monkeypatch):
             return UserAccessContext(
                 user_id=None,
                 is_anonymous=True,
-                group_ids=["authenticated"],
+                group_ids=["developers"],
                 allowed_pipelines=["rejewski"],
                 allowed_commands=[],
                 acl_tags_any=[],
@@ -122,7 +131,11 @@ def test_search_returns_400_for_unknown_snapshot_set(monkeypatch):
     qsd._snapshot_registry = _Registry()
 
     client = qsd.app.test_client()
-    res = client.post("/search/dev", json={"pipelineName": "rejewski", "consultant": "rejewski", "query": "hi"})
+    res = client.post(
+        "/search",
+        json={"pipelineName": "rejewski", "consultant": "rejewski", "query": "hi"},
+        headers={"Authorization": "Bearer dev-user:john_kowalski"},
+    )
 
     assert res.status_code == 400
     assert b"unknown snapshot_set_id" in res.data
@@ -136,7 +149,7 @@ def test_search_denies_snapshot_not_in_snapshot_set(monkeypatch):
             return UserAccessContext(
                 user_id=None,
                 is_anonymous=True,
-                group_ids=["authenticated"],
+                group_ids=["developers"],
                 allowed_pipelines=["rejewski"],
                 allowed_commands=[],
                 acl_tags_any=[],
@@ -155,7 +168,7 @@ def test_search_denies_snapshot_not_in_snapshot_set(monkeypatch):
 
     client = qsd.app.test_client()
     res = client.post(
-        "/search/dev",
+        "/search",
         json={
             "pipelineName": "rejewski",
             "consultant": "rejewski",
@@ -163,6 +176,7 @@ def test_search_denies_snapshot_not_in_snapshot_set(monkeypatch):
             "snapshot_set_id": "set1",
             "snapshot_id": "not-allowed",
         },
+        headers={"Authorization": "Bearer dev-user:john_kowalski"},
     )
 
     assert res.status_code == 400
@@ -177,7 +191,7 @@ def test_search_denies_snapshot_b_not_in_snapshot_set(monkeypatch):
             return UserAccessContext(
                 user_id=None,
                 is_anonymous=True,
-                group_ids=["authenticated"],
+                group_ids=["developers"],
                 allowed_pipelines=["rejewski"],
                 allowed_commands=[],
                 acl_tags_any=[],
@@ -196,7 +210,7 @@ def test_search_denies_snapshot_b_not_in_snapshot_set(monkeypatch):
 
     client = qsd.app.test_client()
     res = client.post(
-        "/search/dev",
+        "/search",
         json={
             "pipelineName": "rejewski",
             "consultant": "rejewski",
@@ -204,6 +218,7 @@ def test_search_denies_snapshot_b_not_in_snapshot_set(monkeypatch):
             "snapshot_set_id": "set1",
             "snapshots": ["allowed-1", "not-allowed-b"],
         },
+        headers={"Authorization": "Bearer dev-user:john_kowalski"},
     )
 
     assert res.status_code == 400

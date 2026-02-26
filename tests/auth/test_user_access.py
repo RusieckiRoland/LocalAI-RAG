@@ -3,8 +3,7 @@ from server.auth.user_access import DevUserAccessProvider, GroupPolicy
 
 def test_dev_user_access_merges_groups_and_commands():
     policies = {
-        "anonymous": GroupPolicy(acl_tags_any=[], allowed_pipelines=["ada"], allowed_commands=[], classification_labels_all=[]),
-        "authenticated": GroupPolicy(
+        "developers": GroupPolicy(
             acl_tags_any=["security"],
             classification_labels_all=["public", "tajne"],
             allowed_pipelines=["rejewski"],
@@ -18,9 +17,22 @@ def test_dev_user_access_merges_groups_and_commands():
         ),
     }
 
-    provider = DevUserAccessProvider(group_policies=policies)
+    provider = DevUserAccessProvider(
+        group_policies=policies,
+        claim_group_mappings=[
+            {
+                "claim": "groups",
+                "list_map": {"developer": "developers"},
+            }
+        ],
+    )
 
-    ctx = provider.resolve(user_id=None, token="Bearer dev-user:dev-user-1", session_id="s1")
+    ctx = provider.resolve(
+        user_id=None,
+        token="Bearer dev-user:dev-user-1",
+        session_id="s1",
+        claims={"groups": ["developer"]},
+    )
 
     assert ctx.is_anonymous is False
     assert ctx.user_id == "dev-user-1"
@@ -32,8 +44,7 @@ def test_dev_user_access_merges_groups_and_commands():
 
 def test_dev_user_access_anonymous_uses_anonymous_group_only():
     policies = {
-        "anonymous": GroupPolicy(acl_tags_any=[], allowed_pipelines=["ada"], allowed_commands=[], classification_labels_all=[]),
-        "authenticated": GroupPolicy(
+        "developers": GroupPolicy(
             acl_tags_any=["security"],
             allowed_pipelines=["rejewski"],
             allowed_commands=["showDiagram"],
@@ -45,16 +56,15 @@ def test_dev_user_access_anonymous_uses_anonymous_group_only():
     ctx = provider.resolve(user_id=None, token=None, session_id="s2")
 
     assert ctx.is_anonymous is True
-    assert ctx.allowed_pipelines == ["ada"]
+    assert ctx.allowed_pipelines == []
     assert ctx.allowed_commands == []
     assert ctx.acl_tags_any == []
     assert ctx.classification_labels_all == []
 
 
-def test_generic_bearer_is_treated_as_authenticated_group() -> None:
+def test_generic_bearer_is_treated_as_anonymous() -> None:
     policies = {
-        "anonymous": GroupPolicy(acl_tags_any=[], allowed_pipelines=["ada"], allowed_commands=[], classification_labels_all=[]),
-        "authenticated": GroupPolicy(
+        "developers": GroupPolicy(
             acl_tags_any=["security"],
             allowed_pipelines=["rejewski"],
             allowed_commands=["showDiagram"],
@@ -64,7 +74,7 @@ def test_generic_bearer_is_treated_as_authenticated_group() -> None:
     provider = DevUserAccessProvider(group_policies=policies)
     ctx = provider.resolve(user_id=None, token="Bearer some-prod-token", session_id="s3")
 
-    assert ctx.is_anonymous is False
-    assert ctx.group_ids == ["authenticated"]
-    assert ctx.allowed_pipelines == ["rejewski"]
-    assert ctx.acl_tags_any == ["security"]
+    assert ctx.is_anonymous is True
+    assert ctx.group_ids == []
+    assert ctx.allowed_pipelines == []
+    assert ctx.acl_tags_any == []

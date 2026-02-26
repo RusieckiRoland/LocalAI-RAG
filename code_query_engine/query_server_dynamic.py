@@ -6,13 +6,14 @@ import os
 import re
 import time
 import uuid
+import base64
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from threading import Lock
 from typing import Any, Dict, List, Optional, Tuple
 
-from flask import Flask, abort, jsonify, request, send_file, send_from_directory, g
+from flask import Flask, jsonify, request, send_file, send_from_directory, g, Response
 from flask_cors import CORS
 
 from common.logging_setup import LoggingConfig, configure_logging, logging_config_from_runtime_config
@@ -49,12 +50,14 @@ try:
     import jwt as _pyjwt  # type: ignore
     from jwt import PyJWKClient as _PyJWKClient  # type: ignore
     from jwt.exceptions import ExpiredSignatureError as _JwtExpiredSignatureError  # type: ignore
+    from jwt.exceptions import InvalidAudienceError as _JwtInvalidAudienceError  # type: ignore
     from jwt.exceptions import InvalidTokenError as _JwtInvalidTokenError  # type: ignore
     from jwt.exceptions import PyJWKClientError as _JwtPyJwkClientError  # type: ignore
 except Exception:
     _pyjwt = None
     _PyJWKClient = None
     _JwtExpiredSignatureError = Exception
+    _JwtInvalidAudienceError = Exception
     _JwtInvalidTokenError = Exception
     _JwtPyJwkClientError = Exception
 
@@ -69,6 +72,7 @@ PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 RUNTIME_CONFIG_DEFAULT_PATH = os.path.join(PROJECT_ROOT, "config.json")
 RUNTIME_CONFIG_DEV_PATH = os.path.join(PROJECT_ROOT, "config.dev.json")
 RUNTIME_CONFIG_PROD_PATH = os.path.join(PROJECT_ROOT, "config.prod.json")
+RUNTIME_CONFIG_TEST_PATH = os.path.join(PROJECT_ROOT, "config.test.json")
 FRONTEND_HTML_PATH = os.path.join(PROJECT_ROOT, "frontend", "production", "Rag.html")
 FRONTEND_ASSETS_DIR = os.path.join(PROJECT_ROOT, "frontend", "production", "assets")
 
@@ -129,25 +133,41 @@ def _parse_env_bool(raw: Optional[str]) -> Optional[bool]:
     return None
 
 
+def _resolve_app_profile() -> str:
+    raw = str(os.getenv("APP_PROFILE") or "").strip().lower()
+    if not raw:
+        return "prod"
+    if raw in ("production",):
+        return "prod"
+    if raw in ("development",):
+        return "dev"
+    if raw in ("dev", "prod", "test"):
+        return raw
+    raise ValueError("Invalid APP_PROFILE. Allowed values: dev, prod, test.")
+
+
+_app_profile = _resolve_app_profile()
+os.environ.setdefault("APP_PROFILE", _app_profile)
+
+_dev_allow_no_auth = _parse_env_bool(os.getenv("DEV_ALLOW_NO_AUTH")) is True
+if _app_profile == "prod" and _dev_allow_no_auth:
+    raise RuntimeError("DEV_ALLOW_NO_AUTH=true is forbidden when APP_PROFILE=prod.")
+
+_auth_required = not _dev_allow_no_auth
+
+
 def _resolve_runtime_config_path() -> str:
     explicit = str(os.getenv("APP_CONFIG_PATH") or "").strip()
     if explicit:
         return explicit if os.path.isabs(explicit) else os.path.join(PROJECT_ROOT, explicit)
 
-    profile = str(os.getenv("APP_CONFIG_PROFILE") or "").strip().lower()
-    if profile in ("dev", "development"):
+    # Default by APP_PROFILE.
+    if _app_profile == "dev" and os.path.exists(RUNTIME_CONFIG_DEV_PATH):
         return RUNTIME_CONFIG_DEV_PATH
-    if profile in ("prod", "production"):
+    if _app_profile == "prod" and os.path.exists(RUNTIME_CONFIG_PROD_PATH):
         return RUNTIME_CONFIG_PROD_PATH
-
-    env_dev = _parse_env_bool(os.getenv("APP_DEVELOPMENT"))
-    if env_dev is True:
-        return RUNTIME_CONFIG_DEV_PATH
-    if env_dev is False:
-        return RUNTIME_CONFIG_PROD_PATH
-
-    if os.path.exists(RUNTIME_CONFIG_DEV_PATH):
-        return RUNTIME_CONFIG_DEV_PATH
+    if _app_profile == "test" and os.path.exists(RUNTIME_CONFIG_TEST_PATH):
+        return RUNTIME_CONFIG_TEST_PATH
     return RUNTIME_CONFIG_DEFAULT_PATH
 
 
@@ -191,6 +211,31 @@ except Exception:
 _mock_sql_ttl_ms = int(max(0.0, _mock_sql_ttl_hours) * 3600 * 1000)
 if _mock_sql_raw and not _development_enabled:
     py_logger.warning("mockSqlServer is enabled in config, but development mode is off; mock SQL history is disabled.")
+
+
+def _load_fake_users(runtime_cfg: dict) -> dict[str, dict]:
+    raw = runtime_cfg.get("fake_users") or []
+    if not isinstance(raw, list):
+        return {}
+    out: dict[str, dict] = {}
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        uid = str(item.get("id") or "").strip()
+        if not uid:
+            continue
+        claims = item.get("claims") or {}
+        if not isinstance(claims, dict):
+            claims = {}
+        out[uid] = {
+            "id": uid,
+            "userName": str(item.get("userName") or uid).strip() or uid,
+            "claims": claims,
+        }
+    return out
+
+
+_fake_users_by_id: dict[str, dict] = _load_fake_users(_runtime_cfg)
 
 
 # ------------------------------------------------------------
@@ -332,6 +377,18 @@ class IdpAuthSettings:
 
 
 def _load_idp_auth_settings(runtime_cfg: Dict[str, Any]) -> IdpAuthSettings:
+    # New pattern: auth.oidc.resource_server (JWT validation for API).
+    auth = runtime_cfg.get("auth") or {}
+    if not isinstance(auth, dict):
+        auth = {}
+    oidc = auth.get("oidc") or {}
+    if not isinstance(oidc, dict):
+        oidc = {}
+    rs = oidc.get("resource_server") or {}
+    if not isinstance(rs, dict):
+        rs = {}
+
+    # Legacy fallback (deprecated): identity_provider.
     raw = runtime_cfg.get("identity_provider") or {}
     if not isinstance(raw, dict):
         raw = {}
@@ -342,19 +399,31 @@ def _load_idp_auth_settings(runtime_cfg: Dict[str, Any]) -> IdpAuthSettings:
     elif env_enabled in ("0", "false", "no", "off"):
         enabled = False
     else:
-        enabled = bool(raw.get("enabled", True))
+        enabled = bool(rs.get("enabled", oidc.get("enabled", raw.get("enabled", True))))
 
-    issuer = str(raw.get("issuer") or "").strip()
-    jwks_url = str(raw.get("jwks_url") or "").strip()
-    audience = str(raw.get("audience") or "").strip()
+    issuer = str(oidc.get("issuer") or rs.get("issuer") or raw.get("issuer") or "").strip()
+    jwks_url = str(rs.get("jwks_url") or raw.get("jwks_url") or "").strip()
+    audience = str(rs.get("audience") or raw.get("audience") or "").strip()
 
-    algorithms_raw = raw.get("algorithms") or ["RS256"]
+    algorithms_raw = rs.get("algorithms") or raw.get("algorithms") or ["RS256"]
     algorithms = tuple(str(x).strip() for x in algorithms_raw if str(x).strip())
     if not algorithms:
         algorithms = ("RS256",)
 
-    required_raw = raw.get("required_claims") or ["sub", "exp", "iss", "aud"]
+    required_raw = rs.get("required_claims") or raw.get("required_claims") or ["sub", "exp", "iss", "aud"]
     required_claims = tuple(str(x).strip() for x in required_raw if str(x).strip())
+
+    # If OIDC is enabled, require a complete and strict resource-server config.
+    if enabled:
+        missing = []
+        if not issuer:
+            missing.append("auth.oidc.issuer")
+        if not jwks_url:
+            missing.append("auth.oidc.resource_server.jwks_url")
+        if not audience:
+            missing.append("auth.oidc.resource_server.audience")
+        if missing:
+            raise RuntimeError("OIDC resource_server config is incomplete (missing: %s)" % ", ".join(missing))
 
     return IdpAuthSettings(
         enabled=enabled,
@@ -456,7 +525,9 @@ class _ReadOnlyMockSqlHistoryStore(IUserConversationStore):
         return out
 
 
-_durable_store: IUserConversationStore | None = _ReadOnlyMockSqlHistoryStore() if _mock_sql_enabled else None
+# Durable store is safe to always wire: it reads from the in-memory mock SQL structures.
+# When mock SQL is disabled, history endpoints won't persist data anyway, so reads return empty.
+_durable_store: IUserConversationStore | None = _ReadOnlyMockSqlHistoryStore()
 _conversation_history_service = build_conversation_history_service(
     session_backend=_history_backend,
     durable_store=_durable_store,
@@ -860,10 +931,6 @@ def _resolve_snapshot_id_from_set(*, snapshot_set_id: str, repository: str | Non
     return _snapshot_registry.resolve_snapshot_id(snapshot_set_id=snapshot_set_id, repository=repository)
 
 
-def _dev_endpoints_enabled() -> bool:
-    return _development_enabled
-
-
 def _log_security_abuse(
     *,
     reason: str,
@@ -902,6 +969,28 @@ def _extract_bearer_token(auth_header: str) -> str:
     return auth_header[len(prefix):].strip()
 
 
+def _extract_dev_user_id(auth_header: str) -> str:
+    token = _extract_bearer_token(auth_header)
+    if not token.startswith("dev-user:"):
+        return ""
+    return token[len("dev-user:") :].strip()
+
+def _decode_jwt_payload_unverified(token: str) -> dict[str, Any]:
+    # Debug-only helper: decode JWT payload without verifying signature.
+    # Never log the token itself.
+    try:
+        parts = (token or "").split(".")
+        if len(parts) < 2:
+            return {}
+        b64 = parts[1].replace("-", "+").replace("_", "/")
+        b64 += "=" * (-len(b64) % 4)
+        raw = base64.b64decode(b64.encode("ascii"))
+        obj = json.loads(raw.decode("utf-8"))
+        return obj if isinstance(obj, dict) else {}
+    except Exception:
+        return {}
+
+
 def _idp_auth_is_active() -> bool:
     s = _idp_auth_settings
     return bool(s.enabled and s.issuer and s.jwks_url and s.audience)
@@ -920,7 +1009,7 @@ def _validate_idp_bearer(auth_header: str):
     token = _extract_bearer_token(auth_header)
     if not token:
         _log_security_abuse(reason="missing_or_invalid_bearer", status_code=401)
-        return jsonify({"ok": False, "error": "unauthorized"}), 401
+        return jsonify({"ok": False, "error": "missing_or_invalid_bearer"}), 401
 
     if _pyjwt is None:
         return jsonify({"ok": False, "error": "idp auth dependency missing (install pyjwt[crypto])"}), 503
@@ -940,10 +1029,23 @@ def _validate_idp_bearer(auth_header: str):
         return None
     except _JwtExpiredSignatureError:
         _log_security_abuse(reason="expired_token", status_code=401)
-        return jsonify({"ok": False, "error": "token expired"}), 401
-    except _JwtInvalidTokenError:
+        return jsonify({"ok": False, "error": "expired_token"}), 401
+    except _JwtInvalidAudienceError:
+        _log_security_abuse(reason="invalid_audience", status_code=401)
+        return jsonify({"ok": False, "error": "invalid_audience"}), 401
+    except _JwtInvalidTokenError as ex:
         _log_security_abuse(reason="invalid_token", status_code=401)
-        return jsonify({"ok": False, "error": "unauthorized"}), 401
+        p = _decode_jwt_payload_unverified(token)
+        # Log only non-sensitive routing/validation hints.
+        py_logger.warning(
+            "idp invalid token: %s iss=%s aud=%s azp=%s typ=%s",
+            str(ex),
+            str(p.get("iss") or ""),
+            str(p.get("aud") or ""),
+            str(p.get("azp") or ""),
+            str(p.get("typ") or ""),
+        )
+        return jsonify({"ok": False, "error": "invalid_token"}), 401
     except _JwtPyJwkClientError as ex:
         _log_security_abuse(reason="jwks_unavailable", status_code=503)
         py_logger.warning("idp jwks error: %s", ex)
@@ -954,7 +1056,7 @@ def _validate_idp_bearer(auth_header: str):
         return jsonify({"ok": False, "error": "identity provider unavailable"}), 503
 
 
-def _require_prod_bearer(auth_header: str):
+def _require_bearer_strict(auth_header: str):
     if _idp_auth_is_active():
         return _validate_idp_bearer(auth_header)
 
@@ -968,15 +1070,107 @@ def _require_prod_bearer(auth_header: str):
     return None
 
 
+_require_prod_bearer = _require_bearer_strict  # backward-compatible alias
+
+
+def _require_bearer_if_needed(auth_header: str):
+    if _auth_required:
+        return _require_bearer_strict(auth_header)
+    # DEV_ALLOW_NO_AUTH mode still requires a fake login token.
+    dev_user_id = _extract_dev_user_id(auth_header)
+    if not dev_user_id:
+        _log_security_abuse(reason="login_required", status_code=401)
+        return jsonify({"ok": False, "error": "login_required"}), 401
+    if dev_user_id not in (_fake_users_by_id or {}):
+        _log_security_abuse(reason="unknown_fake_user", status_code=401)
+        return jsonify({"ok": False, "error": "login_required"}), 401
+    g.fake_user_id = dev_user_id
+    g.idp_claims = dict((_fake_users_by_id.get(dev_user_id) or {}).get("claims") or {})
+    return None
+
+
+def _build_public_bootstrap_config() -> dict[str, Any]:
+    fake_login_required = bool(_dev_allow_no_auth and _app_profile != "prod")
+    fake_users: list[dict[str, str]] = []
+    if fake_login_required:
+        fake_users = [{"id": u["id"], "userName": u["userName"]} for u in (_fake_users_by_id or {}).values()]
+        fake_users.sort(key=lambda x: x.get("userName") or x.get("id") or "")
+
+    # New pattern: auth.oidc.client (SPA login: Authorization Code + PKCE).
+    auth = _runtime_cfg.get("auth") or {}
+    if not isinstance(auth, dict):
+        auth = {}
+    oidc = auth.get("oidc") or {}
+    if not isinstance(oidc, dict):
+        oidc = {}
+    client = oidc.get("client") or {}
+    if not isinstance(client, dict):
+        client = {}
+
+    # Legacy fallback (deprecated): oidc at top-level.
+    raw_oidc = _runtime_cfg.get("oidc") or {}
+    if not isinstance(raw_oidc, dict):
+        raw_oidc = {}
+    if (not oidc) and raw_oidc:
+        oidc = raw_oidc
+        client = raw_oidc
+
+    scopes_raw = client.get("scopes") or ["openid", "profile", "email"]
+    scopes = [str(x).strip() for x in (scopes_raw if isinstance(scopes_raw, list) else []) if str(x).strip()]
+    if not scopes:
+        scopes = ["openid", "profile", "email"]
+
+    extra_auth_params = client.get("extra_auth_params") or {}
+    if not isinstance(extra_auth_params, dict):
+        extra_auth_params = {}
+    extra_token_params = client.get("extra_token_params") or {}
+    if not isinstance(extra_token_params, dict):
+        extra_token_params = {}
+
+    oidc_public = {
+        "enabled": bool(oidc.get("enabled", False)),
+        "issuer": str(oidc.get("issuer") or "").strip(),
+        "client": {
+            "client_id": str(client.get("client_id") or "").strip(),
+            "scopes": scopes,
+            "redirect_path": str(client.get("redirect_path") or "/").strip() or "/",
+            "post_logout_redirect_path": str(client.get("post_logout_redirect_path") or "/").strip() or "/",
+            "authorization_endpoint": str(client.get("authorization_endpoint") or "").strip(),
+            "token_endpoint": str(client.get("token_endpoint") or "").strip(),
+            "end_session_endpoint": str(client.get("end_session_endpoint") or "").strip(),
+            "extra_auth_params": {str(k): str(v) for k, v in extra_auth_params.items() if str(k).strip() and v is not None},
+            "extra_token_params": {str(k): str(v) for k, v in extra_token_params.items() if str(k).strip() and v is not None},
+        },
+    }
+
+    return {
+        "fake_login_required": bool(fake_login_required),
+        "fake_users": fake_users,
+        "app_profile": _app_profile,
+        "auth": {"oidc": oidc_public},
+    }
+
+
+def _render_ui_html() -> Response:
+    html = Path(FRONTEND_HTML_PATH).read_text(encoding="utf-8")
+    bootstrap_payload = _build_public_bootstrap_config()
+    bootstrap_script = (
+        "<script>"
+        f"window.__RAG_PUBLIC_CONFIG__ = {json.dumps(bootstrap_payload, ensure_ascii=False)};"
+        "</script>"
+    )
+    if "</head>" in html:
+        html = html.replace("</head>", f"{bootstrap_script}\n</head>", 1)
+    return Response(html, mimetype="text/html")
+
+
 register_work_callback_routes(
     app,
-    dev_enabled_fn=_dev_endpoints_enabled,
-    require_prod_bearer_fn=_require_prod_bearer,
+    require_bearer_fn=_require_bearer_if_needed,
 )
 register_cancel_routes(
     app,
-    dev_enabled_fn=_dev_endpoints_enabled,
-    require_prod_bearer_fn=_require_prod_bearer,
+    require_bearer_fn=_require_bearer_if_needed,
 )
 
 
@@ -995,7 +1189,7 @@ def health():
 def ui_index():
     if not os.path.isfile(FRONTEND_HTML_PATH):
         return jsonify({"ok": False, "error": "Frontend file not found.", "path": FRONTEND_HTML_PATH}), 404
-    return send_file(FRONTEND_HTML_PATH)
+    return _render_ui_html()
 
 
 @app.get("/assets/<path:filename>")
@@ -1193,24 +1387,16 @@ def _enforce_custom_access_policies(
 # UI templates + branches (Option A)
 # ------------------------------------------------------------
 
-@app.route("/app-config/dev", methods=["GET"])
-def app_config_dev():
-    if not _dev_endpoints_enabled():
-        abort(404)
-    return _handle_app_config_request(require_bearer_auth=False)
+@app.route("/app-config", methods=["GET"])
+def app_config():
+    return _handle_app_config_request()
 
 
-@app.route("/app-config/prod", methods=["GET"])
-def app_config_prod():
-    return _handle_app_config_request(require_bearer_auth=True)
-
-
-def _handle_app_config_request(*, require_bearer_auth: bool):
+def _handle_app_config_request():
     auth_header = (request.headers.get("Authorization") or "").strip()
-    if require_bearer_auth:
-        auth_error = _require_prod_bearer(auth_header)
-        if auth_error is not None:
-            return auth_error
+    auth_error = _require_bearer_if_needed(auth_header)
+    if auth_error is not None:
+        return auth_error
 
     session_id = _valid_session_id(request.headers.get("X-Session-ID") or "app-config")
     cfg = dict(_runtime_cfg)
@@ -1221,6 +1407,7 @@ def _handle_app_config_request(*, require_bearer_auth: bool):
             runtime_cfg=cfg,
             session_id=session_id,
             auth_header=auth_header,
+            claims=getattr(g, "idp_claims", {}) or {},
         )
     )
 
@@ -1230,12 +1417,11 @@ def _handle_app_config_request(*, require_bearer_auth: bool):
 # Backward-compat: still accept legacy branchA/branchB.
 # ------------------------------------------------------------
 
-def _handle_query_request(*, require_bearer_auth: bool):
+def _handle_query_request():
     auth_header = (request.headers.get("Authorization") or "").strip()
-    if require_bearer_auth:
-        auth_error = _require_prod_bearer(auth_header)
-        if auth_error is not None:
-            return auth_error
+    auth_error = _require_bearer_if_needed(auth_header)
+    if auth_error is not None:
+        return auth_error
 
     payload = request.get_json(silent=True) or {}
     ok, err = _ensure_limits(payload)
@@ -1511,27 +1697,21 @@ def _handle_query_request(*, require_bearer_auth: bool):
     return jsonify(out)
 
 
-@app.route("/query/dev", methods=["POST"])
-@app.route("/search/dev", methods=["POST"])
-def query_dev_explicit():
-    if not _dev_endpoints_enabled():
-        abort(404)
-    return _handle_query_request(require_bearer_auth=False)
+@app.route("/query", methods=["POST"])
+@app.route("/search", methods=["POST"])
+def query():
+    return _handle_query_request()
 
 
-@app.route("/query/prod", methods=["POST"])
-@app.route("/search/prod", methods=["POST"])
-def query_prod():
-    return _handle_query_request(require_bearer_auth=True)
-
-
-@app.route("/auth-check/prod", methods=["GET"])
-def auth_check_prod():
+@app.route("/auth-check", methods=["GET"])
+def auth_check():
     auth_header = (request.headers.get("Authorization") or "").strip()
-    auth_error = _require_prod_bearer(auth_header)
+    auth_error = _require_bearer_if_needed(auth_header)
     if auth_error is not None:
         return auth_error
-    return jsonify({"ok": True, "mode": "prod", "auth": "bearer"})
+    if _auth_required:
+        return jsonify({"ok": True, "profile": _app_profile, "auth": "bearer"})
+    return jsonify({"ok": True, "profile": _app_profile, "auth": "optional"})
 
 
 # ------------------------------------------------------------

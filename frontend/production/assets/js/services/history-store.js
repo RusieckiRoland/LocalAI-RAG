@@ -5,6 +5,9 @@
   const { API_BASE } = config;
 
   function buildAuthHeaders(fakeAuthEnabled, activeDevUserId) {
+    if (api && api.buildAuthHeaders) {
+      return api.buildAuthHeaders(fakeAuthEnabled, activeDevUserId);
+    }
     if (api && api.buildDevAuthHeaders) {
       return api.buildDevAuthHeaders(fakeAuthEnabled, activeDevUserId);
     }
