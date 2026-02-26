@@ -229,11 +229,11 @@ UserAccessContext(
 ### 5.3. Group policies provider (interface)
 There is an **interface** for group policies:
 - `server/auth/policies_provider.py`
-- default implementation reads `config/auth_policies.json`
+- default implementation reads `security_conf/auth_policies.json`
 
 ### 5.4. Group policies in JSON
 Policies are stored in a dedicated file:
-- `config/auth_policies.json`
+- `security_conf/auth_policies.json`
 
 Example (current):
 ```json
@@ -391,7 +391,7 @@ For `prod` endpoints, token validation follows this order:
 
 ## 8. Roadmap to PROD
 - `DevUserAccessProvider` will be replaced by a database-backed provider.
-- `config/auth_policies.json` will be removed.
+- `security_conf/auth_policies.json` will be removed.
 - The frontend will stop using fake login.
 - Permissions will be managed by admins or an IAM system.
 
@@ -401,7 +401,7 @@ The `UserAccessContext` interface remains stable between DEV and PROD.
 | Element | DEV | PROD (plan) |
 | --- | --- | --- |
 | Provider | `DevUserAccessProvider` | Database / IAM provider |
-| Policy source | `config/auth_policies.json` | DB / external IAM |
+| Policy source | `security_conf/auth_policies.json` | DB / external IAM |
 | Token format | `dev-user:<user_id>` | JWT / OAuth2 / OIDC |
 | Fake login | Yes | No |
 | Permissions changes | Manual JSON edits | Admin panel / API |
@@ -432,5 +432,5 @@ The `UserAccessContext` interface remains stable between DEV and PROD.
 
 ## 13. Risks and assumptions (DEV)
 - Fake login is not secure – functional testing only.
-- `config/auth_policies.json` is prone to manual errors (no schema validation).
+- `security_conf/auth_policies.json` is prone to manual errors (no schema validation).
 - Lack of caching can become a bottleneck under high traffic.

@@ -147,7 +147,7 @@ class Model:
         self,
         *,
         prompt: str,
-        history: Optional[list[tuple[str, str]]] = None,
+        history: Optional[list[Any]] = None,
         system_prompt: Optional[str] = None,
         max_tokens: Optional[int] = None,
         temperature: Optional[float] = None,
@@ -160,7 +160,9 @@ class Model:
         Chat mode:
         - `prompt` is the CURRENT user message content.
           If your pipeline does RAG, it can embed evidence/context inside this string.
-        - `history` is a list of (user_message, assistant_message) for previous turns.
+        - `history` can be either:
+          * list[tuple[user_message, assistant_message]] (legacy)
+          * Dialog: list[{"role": "user|assistant|system", "content": "..."}] (preferred by pipeline native_chat)
           The model does NOT remember history by itself; you must pass it every call.
         """
         if max_tokens is None:
@@ -177,9 +179,23 @@ class Model:
                 messages.append({"role": "system", "content": system_prompt})
 
             if history:
-                for user_msg, assistant_msg in history:
-                    messages.append({"role": "user", "content": user_msg})
-                    messages.append({"role": "assistant", "content": assistant_msg})
+                for item in history:
+                    if isinstance(item, tuple) and len(item) == 2:
+                        user_msg, assistant_msg = item
+                        messages.append({"role": "user", "content": str(user_msg)})
+                        messages.append({"role": "assistant", "content": str(assistant_msg)})
+                        continue
+                    if isinstance(item, dict):
+                        role = str(item.get("role") or "").strip()
+                        content = str(item.get("content") or "").strip()
+                        if not role or not content:
+                            continue
+                        if role == "system":
+                            continue
+                        if role in ("user", "assistant"):
+                            messages.append({"role": role, "content": content})
+                        continue
+                    # Unknown element shape: ignore (best-effort).
 
             messages.append({"role": "user", "content": prompt})
 

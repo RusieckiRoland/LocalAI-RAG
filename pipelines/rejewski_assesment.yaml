@@ -8,6 +8,7 @@ YAMLpipeline:
     model_language: en
     behavior_version: "0.2.0"
     compat_mode: locked
+    default_search_method: semantic
 
   # This pipeline currently reuses the base flow.
   steps: []

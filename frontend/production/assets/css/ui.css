@@ -1,1 +1,65 @@
-/* Intentionally minimal for now. */
+/* Small shared UI primitives. */
+
+.rag-toast {
+  position: fixed;
+  left: 50%;
+  bottom: 22px;
+  transform: translateX(-50%);
+  background: var(--surface-1);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 10px 12px;
+  font-size: 0.875rem;
+  line-height: 1.1rem;
+  max-width: min(640px, calc(100vw - 24px));
+  opacity: 0;
+  pointer-events: none;
+  z-index: 9999;
+  box-shadow: var(--shadow);
+  transition: opacity 160ms ease, transform 160ms ease;
+}
+
+body[data-theme="dark"] .rag-toast {
+  background: var(--info-bg);
+  border-color: var(--info-border);
+  color: var(--text);
+}
+
+.rag-toast.is-anchored {
+  bottom: auto;
+  transform: translate(-50%, -100%);
+}
+
+.rag-toast.is-visible {
+  opacity: 1;
+  transform: translateX(-50%) translateY(-4px);
+}
+
+.rag-toast.is-visible.is-anchored {
+  transform: translate(-50%, -100%) translateY(-4px);
+}
+
+.selection-balloon {
+  position: absolute;
+  z-index: 10000;
+  transform: translate(-50%, -100%);
+  pointer-events: auto;
+}
+
+.selection-balloon-btn {
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  background: rgba(30, 41, 59, 0.98);
+  color: #e2e8f0;
+  border-radius: 999px;
+  padding: 8px 10px;
+  font-size: 0.8rem;
+  line-height: 1;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  cursor: pointer;
+  user-select: none;
+}
+
+.selection-balloon-btn:hover {
+  background: rgba(51, 65, 85, 0.98);
+}

@@ -27,14 +27,6 @@ dotnet run --project .\RoslynIndexer.Net9\RoslynIndexer.Net9.csproj -- `
 
 ## Branch preparation guide
 
-1. **Create the output folder** defined in your `config.json` — e.g.:
-
-   ```json
-   {
-     "output_dir": "branches"
-   }
-   ```
-
-   Create this folder at the repository root (use the exact name from `output_dir`).
+1. Create the `branches/` folder at the repository root (used for exported branch bundles and artifacts).
 
 2. Follow the instructions in **[`HOW_TO_PREPARE_REPO.md`](../../HOW_TO_PREPARE_REPO.md)** located in the repository root. It explains how to index the repository and then build the retrieval store in Weaviate (BYOV) from the generated chunks.

@@ -203,7 +203,9 @@
         fakeAuthEnabled,
         activeDevUserId
       });
-      const sessions = Array.isArray(json.items) ? json.items : [];
+      const sessions = Array.isArray(json.items)
+        ? json.items.map((s) => (s && typeof s === "object" ? { ...s, _persisted: true } : s)).filter(Boolean)
+        : [];
       historyStore = { sessions };
     } catch (e) {
       historyBackendAvailable = false;
@@ -777,7 +779,7 @@
     setUserSessions(next);
   }
 
-  async function upsertHistorySession({ sessionId, consultantId, snapshotSetId, snapshots, question, answer }) {
+	  async function upsertHistorySession({ sessionId, consultantId, snapshotSetId, snapshots, question, answer }) {
     const now = Date.now();
     const sessions = getUserSessions();
     let existing = sessions.find((s) => s.sessionId === sessionId);
@@ -808,33 +810,61 @@
     activeHistorySessionId = sessionId;
     renderHistoryList();
 
-    if (!historyBackendAvailable) return;
-    try {
-      if (!existing._persisted) {
-        if (!historyApi || !historyApi.createSession) return;
-        const res = await historyApi.createSession({
-          sessionId,
-          title: existing.title || existing.firstQuestion || "New chat",
-          consultantId: consultantId || null,
-          fakeAuthEnabled,
-          activeDevUserId
-        });
-        if (res.ok) {
-          existing._persisted = true;
-        }
-      }
-      if (!historyApi || !historyApi.postMessage) return;
-      await historyApi.postMessage({
-        sessionId,
-        question,
-        answer,
-        fakeAuthEnabled,
-        activeDevUserId
-      });
-    } catch (e) {
-      historyBackendAvailable = false;
-    }
-  }
+	    if (!historyBackendAvailable) return;
+	    try {
+	      if (!existing._persisted) {
+	        if (!historyApi || !historyApi.createSession) return;
+	        const res = await historyApi.createSession({
+	          sessionId,
+	          title: existing.title || existing.firstQuestion || "New chat",
+	          consultantId: consultantId || null,
+	          fakeAuthEnabled,
+	          activeDevUserId
+	        });
+	        if (res.ok) {
+	          existing._persisted = true;
+	        }
+	      }
+	      if (!historyApi || !historyApi.postMessage) return;
+	      let resMsg = await historyApi.postMessage({
+	        sessionId,
+	        question,
+	        answer,
+	        fakeAuthEnabled,
+	        activeDevUserId
+	      });
+	      // If the session was not created (or was created under a legacy key), retry once by creating/updating it.
+	      if (resMsg && resMsg.ok === false) {
+	        const status = resMsg.status || 0;
+	        if (status === 404 || status === 409) {
+	          if (historyApi && historyApi.createSession) {
+	            const res2 = await historyApi.createSession({
+	              sessionId,
+	              title: existing.title || existing.firstQuestion || "New chat",
+	              consultantId: consultantId || null,
+	              fakeAuthEnabled,
+	              activeDevUserId
+	            });
+	            if (res2 && res2.ok) {
+	              existing._persisted = true;
+	            }
+	          }
+	          resMsg = await historyApi.postMessage({
+	            sessionId,
+	            question,
+	            answer,
+	            fakeAuthEnabled,
+	            activeDevUserId
+	          });
+	        }
+	      }
+	      if (resMsg && resMsg.ok === false) {
+	        throw new Error(`history postMessage failed (${resMsg.status})`);
+	      }
+	    } catch (e) {
+	      historyBackendAvailable = false;
+	    }
+	  }
 
   async function loadHistorySession(sessionId) {
     const sessions = getUserSessions();
@@ -845,39 +875,39 @@
     sessionId = selectedSessionId;
     localStorage.setItem("sessionId", selectedSessionId);
     responseDiv.innerHTML = "";
-    const lang = getCurrentLang();
-    const t = getTexts(lang);
-    let messages = session.messages || [];
-    if (historyBackendAvailable) {
-      try {
-        if (!historyApi || !historyApi.getMessages) {
-          throw new Error("History API not ready");
-        }
-        const json = await historyApi.getMessages({
-          sessionId: selectedSessionId,
-          limit: 200,
-          fakeAuthEnabled,
-          activeDevUserId
-        });
-        messages = Array.isArray(json.items) ? json.items : messages;
-      } catch (e) {
-        historyBackendAvailable = false;
-      }
-    }
-    messages.slice().reverse().forEach((msg) => {
-      const markdown = msg.a || t.noResponse;
-      const html = DOMPurify.sanitize(marked.parse(markdown));
-      const timestamp = new Date(msg.ts || Date.now()).toLocaleString(t.locale);
-      const questionHTML = `
-        <div class="bg-white p-4 rounded-xl shadow-sm border border-gray-100 response-entry">
-          <div class="text-sm text-gray-500 mb-2">
-            ${timestamp} ${t.ask}: <i>${escapeHtml(msg.q || "")}</i>
-          </div>
-          <div class="markdown-content text-gray-900">${html}</div>
-        </div>
-      `;
-      responseDiv.innerHTML = questionHTML + responseDiv.innerHTML;
-    });
+	    const lang = getCurrentLang();
+	    const t = getTexts(lang);
+	    let messages = session.messages || [];
+	    try {
+	      if (historyApi && historyApi.getMessages) {
+	        const json = await historyApi.getMessages({
+	          sessionId: selectedSessionId,
+	          limit: 200,
+	          fakeAuthEnabled,
+	          activeDevUserId
+	        });
+	        messages = Array.isArray(json.items) ? json.items : messages;
+	        historyBackendAvailable = true;
+	      }
+	    } catch (e) {
+	      historyBackendAvailable = false;
+	    }
+	    // Backend returns messages in chronological order (oldest → newest).
+	    // We render "newest on top" by prepending each entry in that order.
+	    messages.forEach((msg) => {
+	      const markdown = msg.a || t.noResponse;
+	      const html = DOMPurify.sanitize(marked.parse(markdown));
+	      const timestamp = new Date(msg.ts || Date.now()).toLocaleString(t.locale);
+	      const questionHTML = `
+	        <div class="bg-white p-4 rounded-xl shadow-sm border border-gray-100 response-entry">
+	          <div class="text-sm text-gray-500 mb-2">
+	            ${timestamp} ${t.ask}: <i>${escapeHtml(msg.q || "")}</i>
+	          </div>
+	          <div class="markdown-content text-gray-900">${html}</div>
+	        </div>
+	      `;
+	      responseDiv.innerHTML = questionHTML + responseDiv.innerHTML;
+	    });
     if (session.snapshotSetId) {
       conversationSnapshotSetId = session.snapshotSetId;
       localStorage.setItem("conversationSnapshotSetId", conversationSnapshotSetId);
@@ -955,10 +985,12 @@
         traceOpenDoc: "Otwórz dokument",
         traceDocTitle: "Dokument",
         traceDocPrev: "Poprzedni dokument",
-        traceDocNext: "Następny dokument",
-        traceDocCount: (idx, total) => `${idx}/${total}`,
-        findInDocs: "Szukaj w dok.",
-        historyTitle: "Twoje czaty",
+	        traceDocNext: "Następny dokument",
+	        traceDocCount: (idx, total) => `${idx}/${total}`,
+	        searchInRetrieval: "Szukaj w retrievalu",
+	        retrievalNoDocsToast: "Brak pobranych dokumentów (retrieval).",
+	        retrievalNoMatchToast: "Nie znaleziono tego fragmentu w pobranych dokumentach.",
+	        historyTitle: "Twoje czaty",
         historySearchPlaceholder: "Filtruj listę czatów",
         historySearchButton: "Szukaj w archiwum (Ctrl+K)",
         historySearchModalTitle: "Szukaj w archiwum",
@@ -1032,11 +1064,13 @@
         traceDocs: (count) => `Documents (${count})`,
       traceOpenDoc: "Open document",
       traceDocTitle: "Document",
-      traceDocPrev: "Previous document",
-      traceDocNext: "Next document",
-      traceDocCount: (idx, total) => `${idx}/${total}`,
-      findInDocs: "Search docs",
-      historyTitle: "Your chats",
+	      traceDocPrev: "Previous document",
+	      traceDocNext: "Next document",
+	      traceDocCount: (idx, total) => `${idx}/${total}`,
+	      searchInRetrieval: "Search retrieval",
+	      retrievalNoDocsToast: "No retrieved documents available.",
+	      retrievalNoMatchToast: "No matching fragment found in retrieved documents.",
+	      historyTitle: "Your chats",
       historySearchPlaceholder: "Search chats",
       historySearchButton: "Search (Ctrl+K)",
       historySearchModalTitle: "Search chats",
@@ -1149,7 +1183,6 @@
       document.body.classList.remove("trace-has-unread");
       document.body.classList.remove("trace-handle-boost");
     }
-    updateFindDocButtonsVisibility();
   }
 
   function setTraceAvailable(isAvailable) {
@@ -1212,7 +1245,6 @@
       if (traceDocFilterInput) traceDocFilterInput.value = "";
     }
     updateTraceFilterClearState();
-    updateFindDocButtonsVisibility();
   }
 
   function scoreFuzzyMatch(haystack, needle) {
@@ -1313,7 +1345,98 @@
     push(doc.path || doc.file_path || doc.filePath || doc.relative_path || doc.source_path || doc.sourcePath);
     push(doc.preview);
     push(doc.markdown);
-    return parts.join(" ").toLowerCase();
+    return parts.join(" ").toLowerCase().replace(/\s+/g, " ");
+  }
+
+  function hasAnyRetrievalDocMatch(query) {
+    if (!traceList) return false;
+    const q = String(query || "").trim().toLowerCase();
+    if (!q) return false;
+    const docs = traceList.querySelectorAll(".trace-doc-item");
+    for (const docItem of docs) {
+      const docText = String(docItem.dataset.docFilterText || "").toLowerCase();
+      if (docText.includes(q)) return true;
+    }
+    return false;
+  }
+
+  function expandVisibleTraceDocGroups() {
+    if (!traceList) return;
+    const items = traceList.querySelectorAll(".trace-item");
+    let first = null;
+    for (const item of items) {
+      if (item.style.display === "none") continue;
+      const details = item.querySelector("details.trace-docs");
+      if (!details) continue;
+      if (details.style.display === "none") continue;
+      details.open = true;
+      if (!first) first = item;
+    }
+    if (first && typeof first.scrollIntoView === "function") {
+      try { first.scrollIntoView({ block: "nearest", behavior: "smooth" }); } catch (e) {}
+    }
+  }
+
+  let toastEl = null;
+  let toastTimer = null;
+
+  function showToast(message, opts = {}) {
+    const msg = String(message || "").trim();
+    if (!msg) return;
+    if (!toastEl) {
+      toastEl = document.createElement("div");
+      toastEl.className = "rag-toast";
+      toastEl.setAttribute("role", "status");
+      toastEl.setAttribute("aria-live", "polite");
+      document.body.appendChild(toastEl);
+    }
+    toastEl.textContent = msg;
+
+    const anchorRect = opts && opts.anchorRect ? opts.anchorRect : null;
+    if (anchorRect && typeof anchorRect.left === "number" && typeof anchorRect.top === "number") {
+      const left = Math.max(12, Math.min(window.innerWidth - 12, anchorRect.left + (anchorRect.width || 0) / 2));
+      const top = Math.max(12, Math.min(window.innerHeight - 12, anchorRect.top - 10));
+      toastEl.classList.add("is-anchored");
+      toastEl.style.left = `${left}px`;
+      toastEl.style.top = `${top}px`;
+    } else {
+      toastEl.classList.remove("is-anchored");
+      toastEl.style.left = "";
+      toastEl.style.top = "";
+    }
+
+    toastEl.classList.add("is-visible");
+    if (toastTimer) clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => {
+      if (toastEl) toastEl.classList.remove("is-visible");
+      toastTimer = null;
+    }, 2400);
+  }
+
+  function searchInRetrieval(selectedText, opts = {}) {
+    const t = getTexts(getCurrentLang());
+    if (traceDocTotal <= 0) {
+      showToast(t.retrievalNoDocsToast, opts);
+      return;
+    }
+    const normalized = normalizeDocFilterQuery(selectedText);
+    if (!normalized) return;
+    if (!hasAnyRetrievalDocMatch(normalized)) {
+      showToast(t.retrievalNoMatchToast, opts);
+      return;
+    }
+
+    // Ensure doc search is not accidentally constrained by the stage filter.
+    traceFilterQuery = "";
+    if (traceFilterInput) traceFilterInput.value = "";
+
+    traceDocFilterQuery = normalized;
+    if (traceDocFilterInput) traceDocFilterInput.value = String(selectedText || "").trim();
+    applyTraceFilters();
+    updateTraceFilterClearState();
+    if (typeof setTraceAvailable === "function") setTraceAvailable(true);
+    if (typeof setTraceOpen === "function") setTraceOpen(true);
+    expandVisibleTraceDocGroups();
   }
 
   function applyTraceFilters() {
@@ -1415,6 +1538,8 @@
         runId,
         onEvent: handleTraceEvent,
         onError: () => setTraceStatusByKey("retry"),
+        fakeAuthEnabled,
+        activeDevUserId,
       });
     } else {
       const url = `${API_BASE}${TRACE_STREAM_PATH}?run_id=${encodeURIComponent(runId)}`;
@@ -1581,6 +1706,7 @@
   }
 
   function openTraceDocModalByKey(key, keys = null) {
+    hideSelectionBalloon();
     const doc = traceDocsByKey[key];
     if (!doc) return;
     if (Array.isArray(keys) && keys.length) {
@@ -1607,6 +1733,7 @@
   }
 
   function closeTraceDocModal() {
+    hideSelectionBalloon();
     if (traceDocModalBackdrop) traceDocModalBackdrop.style.display = "none";
     if (traceDocModalBody) traceDocModalBody.innerHTML = "";
     traceDocModalKeys = [];
@@ -2207,13 +2334,6 @@
     });
   }
 
-  function refreshFindButtonsText(lang) {
-    const t = getTexts(lang);
-    document.querySelectorAll(".find-doc-btn").forEach(btn => {
-      btn.textContent = t.findInDocs;
-    });
-  }
-
   function applyLang(lang) {
     const effectiveLang = isMultilingualProject ? getSupportedUiLang(lang) : neutralLanguageCode;
     renderLanguageSelector(effectiveLang);
@@ -2302,13 +2422,12 @@
     renderWelcomeMessage(effectiveLang);
     renderBranchControls();
 
-    // Fix: existing copy buttons must update when language changes.
-    refreshCopyButtonsText(effectiveLang);
-    refreshFindButtonsText(effectiveLang);
-    setTraceStatusByKey(traceStatusKey, traceStatusArg);
-    applyTraceFilters();
-    renderHistoryList();
-  }
+	    // Fix: existing copy buttons must update when language changes.
+	    refreshCopyButtonsText(effectiveLang);
+	    setTraceStatusByKey(traceStatusKey, traceStatusArg);
+	    applyTraceFilters();
+	    renderHistoryList();
+	  }
 
   function selectConsultant(id) {
     if (isQueryInProgress) return;
@@ -2427,24 +2546,102 @@
     }
   }
 
-  function getSelectionTextInPre(pre) {
-    if (!pre) return "";
-    const sel = window.getSelection ? window.getSelection() : null;
-    if (!sel || sel.isCollapsed || sel.rangeCount === 0) return "";
-    const range = sel.getRangeAt(0);
-    const node = range.commonAncestorContainer;
-    if (!pre.contains(node)) return "";
-    return String(sel.toString() || "").trim();
+  let selectionBalloonEl = null;
+  let selectionBalloonBtn = null;
+  let selectionBalloonText = "";
+  let selectionBalloonRaf = null;
+
+  function ensureSelectionBalloon() {
+    if (selectionBalloonEl) return;
+    selectionBalloonEl = document.createElement("div");
+    selectionBalloonEl.className = "selection-balloon";
+    selectionBalloonEl.style.display = "none";
+
+    selectionBalloonBtn = document.createElement("button");
+    selectionBalloonBtn.type = "button";
+    selectionBalloonBtn.className = "selection-balloon-btn";
+    selectionBalloonBtn.addEventListener("mousedown", (e) => e.preventDefault());
+    selectionBalloonBtn.addEventListener("click", (e) => {
+      e.preventDefault();
+      const text = selectionBalloonText;
+      const anchorRect = selectionBalloonEl && selectionBalloonEl.getBoundingClientRect
+        ? selectionBalloonEl.getBoundingClientRect()
+        : null;
+      if (text) searchInRetrieval(text, { anchorRect });
+    });
+
+    selectionBalloonEl.appendChild(selectionBalloonBtn);
+    document.body.appendChild(selectionBalloonEl);
   }
 
-  function updateFindDocButtonsVisibility() {
-    const traceOpen = document.body.classList.contains("trace-open");
-    document.querySelectorAll("pre").forEach(pre => {
-      const btn = pre.querySelector(".find-doc-btn");
-      if (!btn) return;
-      const selected = getSelectionTextInPre(pre);
-      const shouldShow = traceOpen && traceDocTotal > 0 && Boolean(selected);
-      btn.classList.toggle("hidden", !shouldShow);
+  function hideSelectionBalloon() {
+    if (!selectionBalloonEl) return;
+    selectionBalloonEl.style.display = "none";
+    selectionBalloonText = "";
+  }
+
+  function getSelectionTextInResponse() {
+    if (!responseDiv) return "";
+    const selection = window.getSelection && window.getSelection();
+    if (!selection || selection.isCollapsed) return "";
+    const anchor = selection.anchorNode;
+    const focus = selection.focusNode;
+    if (!anchor || !focus) return "";
+    if (!responseDiv.contains(anchor) || !responseDiv.contains(focus)) return "";
+    const text = String(selection.toString() || "").replace(/\s+/g, " ").trim();
+    if (!text) return "";
+    return text.length > 200 ? text.slice(0, 200) : text;
+  }
+
+  function getSelectionRect() {
+    const selection = window.getSelection && window.getSelection();
+    if (!selection || selection.isCollapsed) return null;
+    try {
+      if (!selection.rangeCount) return null;
+      const range = selection.getRangeAt(0);
+      const rect = range.getBoundingClientRect();
+      if (!rect || (!rect.width && !rect.height)) return null;
+      return rect;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function updateSelectionBalloon() {
+    if (selectionBalloonRaf) return;
+    selectionBalloonRaf = requestAnimationFrame(() => {
+      selectionBalloonRaf = null;
+      if (!traceList) {
+        hideSelectionBalloon();
+        return;
+      }
+      // If there is no retrieval/pipeline data for the current view (e.g. loaded from history),
+      // the "Search in retrieval" action cannot work, so don't show the balloon.
+      if (traceDocTotal <= 0) {
+        hideSelectionBalloon();
+        return;
+      }
+      const text = getSelectionTextInResponse();
+      if (!text) {
+        hideSelectionBalloon();
+        return;
+      }
+      const rect = getSelectionRect();
+      if (!rect) {
+        hideSelectionBalloon();
+        return;
+      }
+      ensureSelectionBalloon();
+      const t = getTexts(getCurrentLang());
+      selectionBalloonBtn.textContent = t.searchInRetrieval;
+      selectionBalloonBtn.setAttribute("aria-label", t.searchInRetrieval);
+
+      selectionBalloonText = text;
+      const left = Math.max(12, Math.min(window.innerWidth - 12, rect.left + rect.width / 2));
+      const top = Math.max(12, rect.top - 10);
+      selectionBalloonEl.style.left = `${left + window.scrollX}px`;
+      selectionBalloonEl.style.top = `${top + window.scrollY}px`;
+      selectionBalloonEl.style.display = "block";
     });
   }
 
@@ -2581,25 +2778,7 @@
       });
 
       pre.appendChild(button);
-
-      const findBtn = document.createElement("button");
-      findBtn.className = "find-doc-btn hidden";
-      findBtn.textContent = t.findInDocs;
-      findBtn.addEventListener("click", (e) => {
-        e.preventDefault();
-        if (!document.body.classList.contains("trace-open")) return;
-        if (traceDocTotal <= 0) return;
-        const selected = getSelectionTextInPre(pre);
-        if (!selected) return;
-        traceDocFilterQuery = normalizeDocFilterQuery(selected);
-        if (traceDocFilterInput) traceDocFilterInput.value = selected;
-        applyTraceFilters();
-        updateTraceFilterClearState();
-        if (typeof setTraceOpen === "function") setTraceOpen(true);
-      });
-      pre.appendChild(findBtn);
     });
-    updateFindDocButtonsVisibility();
   }
 
   function scrollToLatestResponse() {
@@ -2805,15 +2984,27 @@
       return;
     }
 
-    await loadHistoryStore();
-    historyCollapsed = localStorage.getItem("historyCollapsed") === "1";
-    setHistoryCollapsed(historyCollapsed);
-    updateHistoryOverlayMode();
-    activeHistorySessionId = localStorage.getItem("sessionId") || null;
-    renderHistoryList();
-    if (!historyBackendAvailable) {
-      showUiError("Brak uruchomionego serwera persystencji historii (chat-history).");
-    }
+	    await loadHistoryStore();
+	    historyCollapsed = localStorage.getItem("historyCollapsed") === "1";
+	    setHistoryCollapsed(historyCollapsed);
+	    updateHistoryOverlayMode();
+	    // sessionId is stored in localStorage; make sure it belongs to the current user.
+	    // Otherwise we could accidentally reuse another user's conversation context.
+	    const storedSessionId = localStorage.getItem("sessionId") || null;
+	    const sessionsNow = getUserSessions();
+	    const storedBelongsToUser = storedSessionId && sessionsNow.some((s) => s && s.sessionId === storedSessionId);
+	    if (storedBelongsToUser) {
+	      activeHistorySessionId = storedSessionId;
+	      sessionId = storedSessionId;
+	    } else {
+	      activeHistorySessionId = null;
+	      sessionId = null;
+	      try { localStorage.removeItem("sessionId"); } catch (e) {}
+	    }
+	    renderHistoryList();
+	    if (!historyBackendAvailable) {
+	      showUiError("Brak uruchomionego serwera persystencji historii (chat-history).");
+	    }
 
     let startupIssue = null;
     let fetchedConfig = null;
@@ -2839,11 +3030,21 @@
           return;
         }
 
+        // If the user explicitly logged out, allow a single automatic redirect to login after returning
+        // from the IdP logout page, even if the normal loop guard would pause auto-redirect.
+        let forceLoginTs = 0;
+        try { forceLoginTs = Number(sessionStorage.getItem("oidc_force_login_ts") || "0") || 0; } catch (_) {}
+        const forceLoginActive = forceLoginTs > 0 && (Date.now() - forceLoginTs) < 120_000;
+        if (forceLoginActive) {
+          try { sessionStorage.removeItem("oidc_force_login_ts"); } catch (_) {}
+          try { sessionStorage.removeItem("oidc_auto_login_ts"); } catch (_) {}
+        }
+
         // Guard against accidental redirect loops.
         let last = 0;
         try { last = Number(sessionStorage.getItem("oidc_auto_login_ts") || "0") || 0; } catch (_) {}
         const now = Date.now();
-        if (now - last < 30_000) {
+        if (!forceLoginActive && now - last < 30_000) {
           showUiError("Login required (401). Auto-redirect is paused to avoid a loop. Click Login.");
           return;
         }
@@ -3049,6 +3250,8 @@
         localStorage.setItem("fakeAuthEnabled", "1");
         updateAuthUi();
         showFakeLoginModal(false);
+        // Switching identity should never reuse previous user's conversation/sessionId.
+        newChat();
         bootstrapUi();
       });
     }
@@ -3241,13 +3444,17 @@
       if (document.body.classList.contains("trace-open")) {
         setTraceOpen(false);
       }
-    });
-
-    document.addEventListener("selectionchange", () => {
-      updateFindDocButtonsVisibility();
-    });
-
-    resetTracePanel();
+	    });
+	
+	    document.addEventListener("selectionchange", () => {
+	      updateSelectionBalloon();
+	    });
+	    document.addEventListener("mouseup", () => updateSelectionBalloon());
+	    document.addEventListener("keyup", () => updateSelectionBalloon());
+	    window.addEventListener("scroll", () => hideSelectionBalloon(), { passive: true });
+	    window.addEventListener("resize", () => hideSelectionBalloon(), { passive: true });
+	
+	    resetTracePanel();
     setTraceAvailable(false);
     setTraceOpen(false);
     setTraceStatusByKey("idle");

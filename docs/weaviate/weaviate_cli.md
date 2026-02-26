@@ -50,7 +50,7 @@ Connection settings are resolved in this order:
 
 1) CLI flags (if provided)  
 2) Environment variables (e.g., `WEAVIATE_API_KEY`)  
-3) `config.json` (`weaviate.host/http_port/grpc_port/ready_timeout_seconds`)  
+3) `config.json` (`weaviate.host/http_port/grpc_port`)  
 4) Defaults (`localhost / 18080 / 15005`)  
 
 ### 2.2 `.env` loading (`--env`)

@@ -10,6 +10,17 @@
     return fakeAuthEnabled ? { "Authorization": `Bearer dev-user:${activeDevUserId}` } : {};
   }
 
+  async function maybeRefreshOidcIfAvailable() {
+    try {
+      const oidc = (App.services && App.services.oidc) || null;
+      if (oidc && typeof oidc.refresh === "function") {
+        await oidc.refresh();
+        return true;
+      }
+    } catch (e) {}
+    return false;
+  }
+
   // Minimal SSE parser for fetch streams.
   async function _consumeSseStream(res, onEvent, onError, abortSignal) {
     try {
@@ -51,34 +62,63 @@
 
   function startTraceStream({ runId, onEvent, onError, fakeAuthEnabled, activeDevUserId }) {
     if (!runId) return null;
-    const headers = buildAuthHeaders(fakeAuthEnabled, activeDevUserId);
-    const hasAuth = !!headers.Authorization;
     const url = `${API_BASE}${TRACE_STREAM_PATH}?run_id=${encodeURIComponent(runId)}`;
 
-    // In unauthenticated mode we keep EventSource (lighter, reconnects).
-    if (!hasAuth) {
-      const source = new EventSource(url);
-      source.onmessage = (evt) => {
-        if (!evt || !evt.data) return;
-        try {
-          const payload = JSON.parse(evt.data);
-          if (typeof onEvent === "function") onEvent(payload);
-        } catch (e) {}
-      };
-      source.onerror = (evt) => {
-        if (typeof onError === "function") onError(evt);
-      };
-      return source;
+    // Fetch streaming supports Authorization headers (EventSource can't send headers).
+    const ctrl = new AbortController();
+    let retryTimer = null;
+    let closed = false;
+    let doneReceived = false;
+    let attempt = 0;
+
+    const onEventWrapped = (payload) => {
+      try {
+        if (payload && typeof payload === "object" && payload.type === "done") doneReceived = true;
+      } catch (e) {}
+      if (typeof onEvent === "function") onEvent(payload);
+    };
+
+    async function _connect() {
+      if (closed || (ctrl.signal && ctrl.signal.aborted) || doneReceived) return;
+      const headers1 = buildAuthHeaders(fakeAuthEnabled, activeDevUserId);
+      let res = null;
+      try {
+        res = await fetch(url, { method: "GET", headers: headers1, signal: ctrl.signal });
+        if (res.status === 401 && !fakeAuthEnabled) {
+          const refreshed = await maybeRefreshOidcIfAvailable();
+          if (refreshed && !closed && !(ctrl.signal && ctrl.signal.aborted)) {
+            const headers2 = buildAuthHeaders(fakeAuthEnabled, activeDevUserId);
+            res = await fetch(url, { method: "GET", headers: headers2, signal: ctrl.signal });
+          }
+        }
+        if (!res.ok) {
+          const err = new Error(`trace stream failed: ${res.status}`);
+          err.status = res.status;
+          throw err;
+        }
+        attempt = 0;
+        await _consumeSseStream(res, onEventWrapped, onError, ctrl.signal);
+      } catch (e) {
+        if (closed || (ctrl.signal && ctrl.signal.aborted) || doneReceived) return;
+        if (typeof onError === "function") onError(e);
+        attempt += 1;
+        const delay = Math.min(5000, 500 * Math.pow(1.6, Math.max(0, attempt - 1)));
+        retryTimer = setTimeout(_connect, delay);
+      }
     }
 
-    // With auth headers we use fetch streaming (EventSource can't send headers).
-    const ctrl = new AbortController();
-    fetch(url, {
-      method: "GET",
-      headers,
-      signal: ctrl.signal,
-    }).then((res) => _consumeSseStream(res, onEvent, onError, ctrl.signal));
-    return { close: () => { try { ctrl.abort(); } catch (e) {} } };
+    _connect();
+
+    return {
+      close: () => {
+        closed = true;
+        try {
+          if (retryTimer) clearTimeout(retryTimer);
+        } catch (e) {}
+        retryTimer = null;
+        try { ctrl.abort(); } catch (e) {}
+      },
+    };
   }
 
   function stopTraceStream(source) {
@@ -92,4 +132,3 @@
     stopTraceStream,
   };
 })();
-

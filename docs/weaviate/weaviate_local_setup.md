@@ -159,8 +159,7 @@ Weaviate connection **non-secrets** live in `config.json` under a `weaviate` sec
   "weaviate": {
     "host": "localhost",
     "http_port": 18080,
-    "grpc_port": 15005,
-    "ready_timeout_seconds": 30
+    "grpc_port": 15005
   }
 }
 ```
@@ -490,4 +489,3 @@ python tools/weaviate/snapshot_sets.py --env add \
 ```bash
 python tools/weaviate/snapshot_sets.py --env delete --id nopCommerce_4-60_4-90
 ```
-

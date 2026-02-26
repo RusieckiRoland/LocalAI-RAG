@@ -12,6 +12,7 @@ YAMLpipeline:
     max_turn_loops: 3
     native_chat: true
     stages_visibility: explicit
+    default_search_method: semantic
 
   steps:
     - id: translate_in

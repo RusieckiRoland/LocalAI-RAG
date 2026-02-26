@@ -376,6 +376,11 @@
     const idToken = safeSessionGet(STORAGE.idToken) || "";
     const postLogout = `${window.location.origin}${String(cfg.post_logout_redirect_path || "/")}`;
     clearTokens();
+    // UX: after logout the app will land back on "/", then bootstrap will hit /app-config and may receive 401.
+    // Allow exactly one automatic redirect to the IdP login after returning from logout, without triggering
+    // the "auto-redirect paused" loop guard.
+    try { sessionStorage.removeItem("oidc_auto_login_ts"); } catch (e) {}
+    try { sessionStorage.setItem("oidc_force_login_ts", String(Date.now())); } catch (e) {}
     if (disco.end_session_endpoint) {
       const params = new URLSearchParams();
       if (idToken) params.set("id_token_hint", idToken);

@@ -95,7 +95,7 @@ It intentionally excludes `UC-FILE-*` style file inventory entries.
 ## SECURITY
 
 ### UC-SEC-V1-001 — UserAccess resolution
-- Code: `server/auth/user_access.py`, `server/auth/policies_provider.py`, `config/auth_policies.json`
+- Code: `server/auth/user_access.py`, `server/auth/policies_provider.py`, `security_conf/auth_policies.json`
 - Tests: `tests/auth/test_user_access.py`
 
 ### UC-SEC-V1-002 — pipeline/snapshot access constraints

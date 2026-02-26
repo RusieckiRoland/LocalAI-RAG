@@ -186,28 +186,22 @@ Ensure `config.json["model_path_analysis"]` points to the GGUF you downloaded.
 
 ```json
 {
-  "output_dir": "branches",
   "model_path_embd": "models/embedding/e5-base-v2",
   "model_path_analysis": "models/code_analysis/qwenCoder/qwen2.5-coder-32b-instruct-q4_k_m.gguf",
   "model_translation_en_pl": "models/translation/en_pl/Helsinki_NLPopus_mt_en_pl",
   "model_translation_pl_en": "models/translation/pl_en/Helsinki_NLPopus_mt_pl_en",
-  "log_path": "log/ai_interaction.log",
   "use_gpu": true,
-  "plantuml_server": "http://localhost:8080",
-  "branch": "master"
+  "plantuml_server": "http://localhost:8080"
 }
 ```
 
 **Description:**
 
-* `output_dir` — directory where branch outputs and analysis results are written.
 * `model_path_embd` — local path to the embedding model directory (e.g., E5-base-v2).
 * `model_path_analysis` — path to the main code-analysis LLaMA model (GGUF).
 * `model_translation_en_pl` / `model_translation_pl_en` — MarianMT model folders for EN→PL and PL→EN translation.
-* `log_path` — file path for AI interaction logs.
 * `use_gpu` — enables GPU acceleration for LLaMA and local embedding computation when `true`.
 * `plantuml_server` — optional local PlantUML server endpoint.
-* `branch` — default Git branch analyzed by the pipeline.
 
 > Keep secrets out of `config.json`. If needed, commit `config.json.example` and create a local `config.json` from it.
 
@@ -240,9 +234,9 @@ WEAVIATE_API_KEY=your-weaviate-api-key-here
 
 **Description:**
 
-* `APP_SECRET_KEY` — Flask session secret; use a long random string in production.
+* `APP_SECRET_KEY` — currently unused by the backend (no Flask `secret_key` is configured).
 * `API_TOKEN` — internal API token for service-to-service calls.
-* `APP_HOST` / `APP_PORT` — bind address and port of the Flask app.
+* `APP_HOST` / `APP_PORT` — currently unused (the dev entrypoint binds `0.0.0.0:5000`).
 * `ALLOWED_ORIGINS` — comma-separated list of allowed CORS origins.
 * `APP_MAX_QUERY_LEN` / `APP_MAX_FIELD_LEN` — optional server-side limits for incoming requests.
 * `RAG_PIPELINE_TRACE_FILE` / `RAG_PIPELINE_TRACE_DIR` — optional per-query trace output (debug only).

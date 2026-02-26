@@ -120,8 +120,10 @@ class IConversationHistoryService(Protocol):
         *,
         session_id: str,
         limit: int,
-    ) -> dict[str, str]:
+    ) -> list[tuple[str, str]]:
         """
-        Returns ordered mapping (insertion-ordered dict) of question_neutral -> answer_neutral.
+        Returns recent finalized turns as (question_neutral, answer_neutral) pairs in chronological order (oldest → newest).
+
+        NOTE: This is intentionally a list (not a dict) to preserve duplicates and ordering.
         """
         ...

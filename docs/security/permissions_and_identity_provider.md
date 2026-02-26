@@ -28,7 +28,7 @@ The `permissions` section in `config.json` defines global security behavior:
 ## Access Context Derivation
 User access context is derived from:
 - JWT claims (via identity provider)
-- Optional `auth_policies.json` (group/role mappings)
+- Optional `security_conf/auth_policies.json` (group/role mappings)
 
 The resulting access context drives retrieval filters:
 - `acl_tags_any`

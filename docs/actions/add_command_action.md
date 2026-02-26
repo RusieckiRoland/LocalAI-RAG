@@ -80,7 +80,7 @@ Pipelines should keep the `add_command_action` step immediately before
 ## Permission model
 
 Commands are gated by `PipelineState.allowed_commands`.
-This list is built from group policies (DEV: `config/auth_policies.json`).
+This list is built from group policies (DEV: `security_conf/auth_policies.json`).
 
 Example:
 - `showDiagram` requires `allowed_commands` to contain `showDiagram`.

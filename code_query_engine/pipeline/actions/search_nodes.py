@@ -485,6 +485,31 @@ class SearchNodesAction(PipelineActionBase):
                 lp = str(getattr(state, "last_prefix", "") or "").strip().lower()
                 if lp in ("semantic", "bm25", "hybrid"):
                     search_type = lp
+            # 3) from step default (optional)
+            if search_type == "auto":
+                default_step = str(raw.get("default_search_type") or raw.get("default_search_method") or "").strip().lower()
+                if default_step:
+                    if default_step not in _ALLOWED_SEARCH_TYPES:
+                        raise ValueError(
+                            "search_nodes: invalid default_search_type/default_search_method="
+                            f"'{default_step}'. Allowed: {sorted(_ALLOWED_SEARCH_TYPES)}"
+                        )
+                    search_type = default_step
+            # 4) from pipeline settings default (optional)
+            if search_type == "auto":
+                # Keep backward-compatible alias (typo): default_serach_method
+                default_pipe = str(
+                    settings.get("default_search_method")
+                    or settings.get("default_serach_method")
+                    or ""
+                ).strip().lower()
+                if default_pipe:
+                    if default_pipe not in _ALLOWED_SEARCH_TYPES:
+                        raise ValueError(
+                            "search_nodes: invalid pipeline.settings.default_search_method/default_serach_method="
+                            f"'{default_pipe}'. Allowed: {sorted(_ALLOWED_SEARCH_TYPES)}"
+                        )
+                    search_type = default_pipe
             # 3) no explicit source -> fail fast (contract)
             if search_type == "auto":
                 raise ValueError("search_nodes: requires explicit search_type when search_type='auto'.")

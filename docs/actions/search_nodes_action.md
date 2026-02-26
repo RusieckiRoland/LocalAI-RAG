@@ -84,6 +84,17 @@ This is useful when a router/model emits a “JSON-ish” payload.
 ### Supported payload metadata (JSON-ish)
 When using `JsonishQueryParser`, the model can include optional *top-level* metadata keys:
 - `search_type` / `mode`: `semantic | bm25 | hybrid`
+
+### `search_type: auto`
+
+If `search_type` is set to `auto`, the action resolves the effective method in this order:
+1) from payload JSON (`search_type` / `mode`) when using a JSON-ish query parser
+2) from `prefix_router` kind (`state.last_prefix` = `semantic|bm25|hybrid`)
+3) from step default (`default_search_type` or `default_search_method`)
+4) from pipeline settings default (`pipeline.settings.default_search_method`)
+   - legacy typo alias is also accepted: `pipeline.settings.default_serach_method`
+
+If none of the above are present, the action fails fast.
 - `top_k`: integer (used only if `allow_top_k_from_payload: true`)
 - `rrf_k`: integer (used only if `allow_rrf_k_from_payload: true` and resolved search is `hybrid`)
 - `match_operator`: `and | or` (applied only when resolved search is `bm25`)
@@ -162,12 +173,16 @@ Optional:
 - id: <step_id>
   action: search_nodes
 
-  search_type: semantic | bm25 | hybrid
+  search_type: semantic | bm25 | hybrid | auto
 
   top_k: <int>                             # required (or set in pipeline settings)
   query_parser: <string>                   # optional (e.g. jsonish_v1)
   rerank: none | keyword_rerank | codebert_rerank   # optional; semantic-only
   snapshot_source: primary | secondary               # optional; default: primary
+
+  # Optional defaults (used only when search_type: auto and no explicit source is present)
+  default_search_type: semantic | bm25 | hybrid      # step-level default (preferred over pipeline default)
+  default_search_method: semantic | bm25 | hybrid    # step-level alias
 
   # optional (backend-dependent):
   rrf_k: <int>                             # typically hybrid-only (e.g. default 60)
@@ -183,7 +198,8 @@ Runtime error if:
 - `repository` is missing/empty
 - `snapshot_source` is invalid
 - `snapshot_source=secondary` and `snapshot_id_b` is missing
-- `search_type` is not one of `semantic | bm25 | hybrid`
+- `search_type` is not one of `semantic | bm25 | hybrid | auto`
+- `search_type=auto` and cannot be resolved (no payload search_type/mode, no prefix, no defaults)
 - `top_k` missing in step **and** pipeline settings
 - `top_k < 1`
 - query becomes empty after parsing/normalization

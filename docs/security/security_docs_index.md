@@ -4,13 +4,16 @@
 1. `external_llm_servers_security_policy.md`  
    External LLM server selection policy, security checks, override/no-server notices, and local fallback rules.
 
-2. `retrieval_access_control_policy.md`  
+2. `external_llm_endpoints_operational_security.md`  
+   Operational controls for calling external LLM endpoints (TLS, secrets, allowlists, throttling, logging/redaction).
+
+3. `retrieval_access_control_policy.md`  
    ACL/classification/doc-level semantics and enforcement points across retrieval and graph expansion.
 
-3. `permissions_and_identity_provider.md`  
+4. `permissions_and_identity_provider.md`  
    Identity provider, permissions config, and access-context derivation used to build retrieval filters.
 
-4. `before_production_checklist.md`  
+5. `before_production_checklist.md`  
    Includes trace/logging policy and pre-deploy security safeguards.
 
 ---

@@ -137,13 +137,13 @@ class ConversationHistoryService(IConversationHistoryService):
                 meta=meta,
             )
 
-    def get_recent_qa_neutral(self, *, session_id: str, limit: int) -> dict[str, str]:
+    def get_recent_qa_neutral(self, *, session_id: str, limit: int) -> list[tuple[str, str]]:
         sid = str(session_id or "").strip()
         lim = int(limit or 0)
         if lim <= 0:
             lim = 20
         if not sid:
-            return {}
+            return []
 
         turns = self._session_store.list_recent_finalized_turns(session_id=sid, limit=lim)
         if not turns and self._durable_store is not None:
@@ -151,11 +151,11 @@ class ConversationHistoryService(IConversationHistoryService):
                 turns = self._durable_store.list_recent_finalized_turns_by_session(session_id=sid, limit=lim)
             except Exception:
                 turns = turns or []
-        out: dict[str, str] = {}
+        out: list[tuple[str, str]] = []
         for t in turns:
             q = (t.question_neutral or "").strip()
             a = (t.answer_neutral or "").strip() if isinstance(t.answer_neutral, str) else ""
             if not q or not a:
                 continue
-            out[q] = a
+            out.append((q, a))
         return out

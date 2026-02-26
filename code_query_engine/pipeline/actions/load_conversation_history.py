@@ -49,16 +49,16 @@ class LoadConversationHistoryAction(PipelineActionBase):
         get_recent = getattr(svc, "get_recent_qa_neutral", None) if svc is not None else None
         if callable(get_recent):
             try:
-                qa = get_recent(session_id=state.session_id, limit=limit_i) or {}
-                if not isinstance(qa, dict):
-                    qa = {}
+                qa = get_recent(session_id=state.session_id, limit=limit_i) or []
+                if not isinstance(qa, list):
+                    qa = []
 
                 state.history_qa_neutral = qa
 
                 # Dialog form is used by call_model native_chat mode (state.history_dialog).
                 dialog: list[dict[str, str]] = []
                 blocks: list[str] = []
-                for q, a in qa.items():
+                for q, a in qa:
                     q_s = str(q or "").strip()
                     a_s = str(a or "").strip()
                     if not q_s or not a_s:
@@ -73,7 +73,7 @@ class LoadConversationHistoryAction(PipelineActionBase):
                 return None
             except Exception:
                 # History must never break the main flow
-                state.history_qa_neutral = {}
+                state.history_qa_neutral = []
                 state.history_dialog = []
                 state.history_blocks = []
                 return None

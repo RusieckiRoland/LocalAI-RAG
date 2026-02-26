@@ -192,7 +192,15 @@ The action MUST reset these fields (set to empty values):
     - `parsed_filters`
 
 - `step.raw.search_type` **(required)**
+  - Allowed values: `semantic` | `bm25` | `hybrid` | `auto`
+
+- `step.raw.default_search_type` / `step.raw.default_search_method` **(optional)**
+  - Used only when `step.raw.search_type=auto` and the router/prefix did not provide an explicit method.
   - Allowed values: `semantic` | `bm25` | `hybrid`
+
+- `pipeline.settings.default_search_method` **(optional)**
+  - Pipeline-level default used when `search_type=auto` and no step-level default is set.
+  - Legacy typo alias may exist in older pipelines: `pipeline.settings.default_serach_method`.
 
  `step.raw.top_k` *(optional)*  
  - If present → use it.  

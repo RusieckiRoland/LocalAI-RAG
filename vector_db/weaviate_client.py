@@ -24,7 +24,6 @@ class WeaviateConnSettings:
     http_port: int = 18080
     grpc_port: int = 15005
     api_key: str = ""
-    ready_timeout_seconds: int = 30
 
 
 def load_dotenv(dotenv_path: Path, *, override: bool = False) -> bool:
@@ -141,12 +140,11 @@ def get_settings(
 ) -> WeaviateConnSettings:
     cfg = load_config(project_root=project_root, config_path=config_path)
 
-    # config supports: weaviate.host/http_port/grpc_port/api_key/ready_timeout_seconds
+    # config supports: weaviate.host/http_port/grpc_port/api_key
     host = _pick_str("WEAVIATE_HOST", cfg, ("weaviate", "host"), "localhost")
     http_port = _pick_int("WEAVIATE_HTTP_PORT", cfg, ("weaviate", "http_port"), 18080)
     grpc_port = _pick_int("WEAVIATE_GRPC_PORT", cfg, ("weaviate", "grpc_port"), 15005)
     api_key = _pick_str("WEAVIATE_API_KEY", cfg, ("weaviate", "api_key"), "")
-    ready_timeout = _pick_int("WEAVIATE_READY_TIMEOUT", cfg, ("weaviate", "ready_timeout_seconds"), 30)
 
     ov = overrides or {}
     if ov.get("host"):
@@ -163,7 +161,6 @@ def get_settings(
         http_port=http_port,
         grpc_port=grpc_port,
         api_key=api_key,
-        ready_timeout_seconds=ready_timeout,
     )
 
 

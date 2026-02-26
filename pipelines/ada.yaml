@@ -10,6 +10,7 @@ YAMLpipeline:
     max_history_tokens: 800
     native_chat: true
     stages_visibility: explicit
+    default_search_method: semantic
 
   steps:
     - id: maybe_translate_in

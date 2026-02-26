@@ -53,7 +53,8 @@ class PipelineState:
     # Context
     history_dialog: Dialog = field(default_factory=list)
     history_blocks: List[str] = field(default_factory=list)
-    history_qa_neutral: Dict[str, str] = field(default_factory=dict)
+    # Recent finalized turns as (question, answer) pairs (chronological: oldest → newest).
+    history_qa_neutral: list[tuple[str, str]] = field(default_factory=list)
     context_blocks: List[str] = field(default_factory=list)
 
     # Model outputs

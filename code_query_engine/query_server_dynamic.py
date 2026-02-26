@@ -496,7 +496,29 @@ class _ReadOnlyMockSqlHistoryStore(IUserConversationStore):
         if lim <= 0:
             lim = 20
 
-        msgs = [m for m in (_history_messages.get(sid) or []) if not m.get("deletedAt")]
+        # Messages are keyed per (tenant, user, session) to prevent cross-user collisions.
+        # During request handling we can resolve the key precisely; outside request context
+        # we fall back to the legacy session_id bucket.
+        msgs_src: list[dict] = []
+        try:
+            from flask import has_request_context  # type: ignore
+        except Exception:
+            has_request_context = None  # type: ignore
+        if has_request_context and has_request_context():
+            try:
+                tenant_id = _history_tenant_id()
+                user_id = _history_user_id()
+                k = _history_resolve_session_key(tenant_id=tenant_id, user_id=user_id, session_id=sid)
+                if k:
+                    msgs_src = _history_messages.get(k) or []
+                else:
+                    msgs_src = _history_messages.get(_history_key(tenant_id=tenant_id, user_id=user_id, session_id=sid)) or []
+            except Exception:
+                msgs_src = _history_messages.get(sid) or []
+        else:
+            msgs_src = _history_messages.get(sid) or []
+
+        msgs = [m for m in msgs_src if not m.get("deletedAt")]
         if not msgs:
             return []
         msgs.sort(key=lambda m: m.get("ts") or 0)
@@ -873,14 +895,130 @@ def _history_unavailable():
 
 
 def _history_user_id() -> str:
+    # Preferred: authenticated identity (fake user or IdP claims).
+    try:
+        fake_uid = getattr(g, "fake_user_id", None)
+        if fake_uid:
+            v = _safe_id_component(fake_uid)
+            return v or "anon"
+    except Exception:
+        pass
+
+    try:
+        claims = getattr(g, "idp_claims", None)
+        if isinstance(claims, dict) and claims:
+            # Prefer human/stable identifiers when available.
+            for key in ("preferred_username", "sub", "email"):
+                v = _safe_id_component(claims.get(key))
+                if v:
+                    return v
+    except Exception:
+        pass
+
+    # Backward-compatible dev token parsing (when routes are called without auth helpers).
     auth = (request.headers.get("Authorization") or "").strip()
     if auth.lower().startswith("bearer dev-user:"):
-        return auth.split(":", 1)[1].strip() or "anon"
-    return (request.headers.get("X-User-ID") or "anon").strip() or "anon"
+        v = _safe_id_component(auth.split(":", 1)[1])
+        return v or "anon"
+
+    # Legacy fallback for older internal callers/tests.
+    v = _safe_id_component(request.headers.get("X-User-ID") or "")
+    return v or "anon"
 
 
 def _history_tenant_id() -> str:
     return (request.headers.get("X-Tenant-ID") or "tenant-default").strip() or "tenant-default"
+
+
+def _history_key(*, tenant_id: str, user_id: str, session_id: str) -> str:
+    # Composite key prevents collisions when different users reuse the same sessionId
+    # (the UI stores sessionId in localStorage).
+    t = (tenant_id or "").strip() or "tenant-default"
+    u = (user_id or "").strip() or "anon"
+    s = (session_id or "").strip()
+    return f"{t}::{u}::{s}"
+
+
+def _history_resolve_session_key(*, tenant_id: str, user_id: str, session_id: str) -> str | None:
+    """
+    Resolve in-memory key for a (tenant, user, sessionId).
+
+    Backward-compatible with the older in-memory layout where the dicts were keyed by sessionId only.
+    If a legacy entry is found and matches the same tenant/user, it is migrated.
+    """
+    sid = (session_id or "").strip()
+    if not sid:
+        return None
+    internal = _history_key(tenant_id=tenant_id, user_id=user_id, session_id=sid)
+    if internal in _history_sessions:
+        # If a legacy entry also exists for the same sessionId (old dict layout keyed by sessionId only),
+        # merge messages and remove the legacy bucket. This prevents "empty history" after migrations.
+        legacy_session = _history_sessions.get(sid)
+        if legacy_session and str(legacy_session.get("tenantId") or "") == str(tenant_id or "") and str(legacy_session.get("userId") or "") == str(user_id or ""):
+            internal_msgs = list(_history_messages.get(internal) or [])
+            legacy_msgs = list(_history_messages.get(sid) or [])
+            if legacy_msgs:
+                if internal_msgs:
+                    seen_ids = {str(m.get("messageId") or "") for m in internal_msgs if isinstance(m, dict)}
+                    for m in legacy_msgs:
+                        if not isinstance(m, dict):
+                            continue
+                        mid = str(m.get("messageId") or "")
+                        if mid and mid in seen_ids:
+                            continue
+                        internal_msgs.append(m)
+                    internal_msgs.sort(key=lambda m: int((m or {}).get("ts") or 0))
+                else:
+                    internal_msgs = legacy_msgs
+                _history_messages[internal] = internal_msgs
+                _history_messages.pop(sid, None)
+                try:
+                    s = _history_sessions.get(internal) or {}
+                    s["messageCount"] = len([m for m in internal_msgs if isinstance(m, dict) and not m.get("deletedAt")])
+                    s["updatedAt"] = max(int(s.get("updatedAt") or 0), int(legacy_session.get("updatedAt") or 0), int((internal_msgs[-1] or {}).get("ts") or 0))
+                    if s.get("createdAt") is None:
+                        s["createdAt"] = legacy_session.get("createdAt")
+                except Exception:
+                    pass
+            _history_sessions.pop(sid, None)
+        return internal
+
+    # Pipeline session ids are namespaced per user: "u_<userId>__<clientSessionId>".
+    # Chat-history endpoints keep the client-visible sessionId, so here we map pipeline session ids
+    # back to the client session id when possible.
+    if "__" in sid and sid.startswith("u_"):
+        prefix, client_sid = sid.split("__", 1)
+        expected_prefix = f"u_{(user_id or '').strip()}"
+        if prefix == expected_prefix and client_sid:
+            # Try resolving the underlying client session id.
+            internal2 = _history_key(tenant_id=tenant_id, user_id=user_id, session_id=client_sid)
+            if internal2 in _history_sessions:
+                return internal2
+            legacy2 = _history_sessions.get(client_sid)
+            if legacy2 and str(legacy2.get("tenantId") or "") == str(tenant_id or "") and str(legacy2.get("userId") or "") == str(user_id or ""):
+                _history_sessions[internal2] = legacy2
+                _history_messages[internal2] = _history_messages.get(client_sid) or []
+                _history_sessions.pop(client_sid, None)
+                _history_messages.pop(client_sid, None)
+                return internal2
+
+    legacy = sid
+    legacy_session = _history_sessions.get(legacy)
+    if not legacy_session:
+        return None
+    if str(legacy_session.get("tenantId") or "") != str(tenant_id or ""):
+        return None
+    if str(legacy_session.get("userId") or "") != str(user_id or ""):
+        return None
+
+    # Migrate legacy bucket into the internal key.
+    if internal not in _history_sessions:
+        _history_sessions[internal] = legacy_session
+        legacy_msgs = _history_messages.get(legacy) or []
+        _history_messages[internal] = legacy_msgs
+    _history_sessions.pop(legacy, None)
+    _history_messages.pop(legacy, None)
+    return internal
 
 
 def _history_now_ms() -> int:
@@ -893,6 +1031,19 @@ def _history_is_anon(user_id: str) -> bool:
 
 def _history_list_sessions(*, tenant_id: str, user_id: str, limit: int, cursor: str | None, q: str | None) -> dict:
     _history_prune()
+    # Migrate any legacy (sessionId-keyed) sessions for this tenant/user to prevent duplicates and message loss.
+    try:
+        candidate_sids = {
+            str(s.get("sessionId") or "").strip()
+            for s in _history_sessions.values()
+            if s.get("tenantId") == tenant_id and s.get("userId") == user_id and not s.get("deletedAt") and not s.get("softDeletedAt")
+        }
+        for sid in list(candidate_sids):
+            if sid:
+                _history_resolve_session_key(tenant_id=tenant_id, user_id=user_id, session_id=sid)
+    except Exception:
+        pass
+
     sessions = [
         s for s in _history_sessions.values()
         if s.get("tenantId") == tenant_id and s.get("userId") == user_id and not s.get("deletedAt") and not s.get("softDeletedAt")
@@ -919,10 +1070,10 @@ def _history_prune() -> None:
     if _mock_sql_ttl_ms <= 0:
         return
     cutoff = _history_now_ms() - _mock_sql_ttl_ms
-    expired = [sid for sid, s in _history_sessions.items() if (s.get("updatedAt") or 0) < cutoff]
-    for sid in expired:
-        _history_sessions.pop(sid, None)
-        _history_messages.pop(sid, None)
+    expired = [k for k, s in _history_sessions.items() if (s.get("updatedAt") or 0) < cutoff]
+    for k in expired:
+        _history_sessions.pop(k, None)
+        _history_messages.pop(k, None)
 
 
 def _resolve_snapshot_id_from_set(*, snapshot_set_id: str, repository: str | None) -> str:
@@ -1278,6 +1429,105 @@ def _valid_user_id(value: Optional[str]) -> Optional[str]:
     return v
 
 
+def _safe_id_component(value: object, *, max_len: int = 64) -> str:
+    """
+    Convert an arbitrary identifier into a stable, safe component used in keys.
+    Keeps only [a-zA-Z0-9_-], collapses everything else to '_'.
+    """
+    s = str(value or "").strip()
+    if not s:
+        return ""
+    out = []
+    for ch in s:
+        if ch.isalnum() or ch in ("_", "-"):
+            out.append(ch)
+        else:
+            out.append("_")
+    safe = "".join(out).strip("_")
+    safe = safe[: int(max_len or 64)]
+    return safe
+
+
+def _migrate_conversation_kv_for_namespaced_session(
+    *,
+    backend: Any,
+    src_session_id: str,
+    dst_session_id: str,
+    user_id: Optional[str],
+) -> None:
+    """
+    Best-effort migration for the session-scoped KV history used by:
+    - HistoryManager (keys: "<sid>" and "<sid>:meta")
+    - ConversationHistoryService session store (key: "conv_hist:<sid>")
+
+    We only migrate when we can prove the source belongs to the same user_id,
+    to avoid cross-user leaks from older deployments that keyed by session_id only.
+    """
+    try:
+        src = str(src_session_id or "").strip()
+        dst = str(dst_session_id or "").strip()
+        uid = str(user_id or "").strip()
+        if not src or not dst or src == dst or not uid:
+            return
+        if not hasattr(backend, "get") or not hasattr(backend, "set"):
+            return
+    except Exception:
+        return
+
+    # 1) Migrate HistoryManager history only when meta.user_id matches.
+    try:
+        meta_src_key = f"{src}:meta"
+        meta_dst_key = f"{dst}:meta"
+        meta_src_raw = backend.get(meta_src_key)
+        if meta_src_raw and not backend.get(meta_dst_key):
+            try:
+                meta_obj = json.loads(meta_src_raw)
+            except Exception:
+                meta_obj = None
+            meta_uid = ""
+            if isinstance(meta_obj, dict):
+                meta_uid = str(meta_obj.get("user_id") or "").strip()
+            if meta_uid == uid:
+                backend.set(meta_dst_key, meta_src_raw)
+                hist_src_raw = backend.get(src)
+                if hist_src_raw and not backend.get(dst):
+                    backend.set(dst, hist_src_raw)
+    except Exception:
+        pass
+
+    # 2) Migrate session conversation turns (conv_hist) filtered by identity_id.
+    try:
+        conv_src_key = f"conv_hist:{src}"
+        conv_dst_key = f"conv_hist:{dst}"
+        if backend.get(conv_dst_key):
+            return
+        conv_src_raw = backend.get(conv_src_key)
+        if not conv_src_raw:
+            return
+        try:
+            obj = json.loads(conv_src_raw)
+        except Exception:
+            return
+        if not isinstance(obj, dict):
+            return
+        turns = obj.get("turns")
+        if not isinstance(turns, list) or not turns:
+            return
+        filtered: list[dict[str, Any]] = []
+        for t in turns:
+            if not isinstance(t, dict):
+                continue
+            tid = str(t.get("identity_id") or "").strip()
+            if tid and tid == uid:
+                filtered.append(t)
+        if not filtered:
+            return
+        payload = {"by_request": {}, "turns": filtered}
+        backend.set(conv_dst_key, json.dumps(payload, ensure_ascii=False))
+    except Exception:
+        pass
+
+
 def _get_str_field(payload: Dict[str, Any], key: str, default: str = "") -> str:
     v = payload.get(key, default)
     if v is None:
@@ -1565,17 +1815,41 @@ def _handle_query_request():
         except Exception:
             py_logger.exception("soft-failure: resolve snapshot friendly names")
 
-    session_id = _valid_session_id(request.headers.get("X-Session-ID") or _get_str_field(payload, "session_id", ""))
+    client_session_id = _valid_session_id(request.headers.get("X-Session-ID") or _get_str_field(payload, "session_id", ""))
 
     # Resolve access context (dev-only auth for now).
     raw_user_id = _valid_user_id(_get_str_field(payload, "user_id", ""))
     access_ctx: UserAccessContext = _user_access_provider.resolve(
         user_id=raw_user_id,
         token=auth_header,
-        session_id=session_id,
+        session_id=client_session_id,
         claims=getattr(g, "idp_claims", {}) or {},
     )
     user_id = _valid_user_id(access_ctx.user_id)
+
+    # IMPORTANT: isolate conversational context per user even if the frontend reuses the same sessionId
+    # across identities (sessionId is stored in localStorage).
+    # We keep the client-visible session_id unchanged in responses and in chat-history endpoints,
+    # but internally namespace the pipeline session_id to avoid cross-user context leaks.
+    ns_user_id = user_id or "anon"
+    try:
+        # For IdP/OIDC tokens prefer stable `sub` for the namespace (user_id may vary by claim mapping).
+        if not auth_header.lower().startswith("bearer dev-user:"):
+            claims = getattr(g, "idp_claims", {}) or {}
+            if isinstance(claims, dict):
+                sub_raw = str(claims.get("sub") or "").strip()
+                if sub_raw:
+                    ns_user_id = _safe_id_component(sub_raw) or ns_user_id
+    except Exception:
+        pass
+
+    session_id = _valid_session_id(f"u_{ns_user_id}__{client_session_id}")
+    _migrate_conversation_kv_for_namespaced_session(
+        backend=_history_backend,
+        src_session_id=client_session_id,
+        dst_session_id=session_id,
+        user_id=user_id,
+    )
 
     trace_run_id = client_trace_run_id
     if effective_trace_enabled and not trace_run_id:
@@ -1674,7 +1948,7 @@ def _handle_query_request():
         out["pipeline_run_id"] = trace_run_id
 
     out["ok"] = True
-    out["session_id"] = session_id
+    out["session_id"] = client_session_id
     out["consultant"] = consultant_id
     out["trace_enabled"] = bool(effective_trace_enabled)
     if pipeline_name:
@@ -1722,6 +1996,10 @@ def auth_check():
 def chat_history_sessions():
     if not _mock_sql_enabled:
         return _history_unavailable()
+    auth_header = (request.headers.get("Authorization") or "").strip()
+    auth_error = _require_bearer_if_needed(auth_header)
+    if auth_error is not None:
+        return auth_error
 
     if request.method == "GET":
         _history_prune()
@@ -1745,7 +2023,30 @@ def chat_history_sessions():
     tenant_id = _history_tenant_id()
     user_id = _history_user_id()
     now = _history_now_ms()
-    session_id = str(payload.get("sessionId") or payload.get("session_id") or uuid.uuid4().hex)
+    session_id = _valid_session_id(str(payload.get("sessionId") or payload.get("session_id") or uuid.uuid4().hex))
+
+    # Idempotent create: the frontend may call createSession again after reload
+    # (loaded sessions do not carry the local `_persisted` marker). Never wipe messages.
+    if not _history_is_anon(user_id):
+        # Ensure legacy (sessionId-keyed) entries are migrated/merged before we check existence.
+        key = _history_resolve_session_key(tenant_id=tenant_id, user_id=user_id, session_id=session_id) or _history_key(
+            tenant_id=tenant_id, user_id=user_id, session_id=session_id
+        )
+        existing = _history_sessions.get(key)
+        if isinstance(existing, dict) and not existing.get("deletedAt") and not existing.get("softDeletedAt"):
+            title_new = str(payload.get("title") or payload.get("firstQuestion") or "").strip()
+            if title_new:
+                title_old = str(existing.get("title") or "").strip()
+                if (not title_old) or (title_old.lower() in ("new chat", "nowy czat")):
+                    existing["title"] = title_new
+            consultant_new = str(payload.get("consultantId") or payload.get("consultant") or "").strip()
+            if consultant_new and not str(existing.get("consultantId") or "").strip():
+                existing["consultantId"] = consultant_new
+            existing["updatedAt"] = now
+            if key not in _history_messages:
+                _history_messages[key] = []
+            return jsonify(existing)
+
     session = {
         "sessionId": session_id,
         "tenantId": tenant_id,
@@ -1760,8 +2061,10 @@ def chat_history_sessions():
         "status": "active",
     }
     if not _history_is_anon(user_id):
-        _history_sessions[session_id] = session
-        _history_messages[session_id] = []
+        key = _history_key(tenant_id=tenant_id, user_id=user_id, session_id=session_id)
+        _history_sessions[key] = session
+        if key not in _history_messages:
+            _history_messages[key] = []
     return jsonify(session)
 
 
@@ -1769,13 +2072,20 @@ def chat_history_sessions():
 def chat_history_session(session_id: str):
     if not _mock_sql_enabled:
         return _history_unavailable()
+    auth_header = (request.headers.get("Authorization") or "").strip()
+    auth_error = _require_bearer_if_needed(auth_header)
+    if auth_error is not None:
+        return auth_error
 
     _history_prune()
     tenant_id = _history_tenant_id()
     user_id = _history_user_id()
     if _history_is_anon(user_id):
         return jsonify({"error": "not_found"}), 404
-    session = _history_sessions.get(session_id)
+    key = _history_resolve_session_key(tenant_id=tenant_id, user_id=user_id, session_id=session_id)
+    if not key:
+        return jsonify({"error": "not_found"}), 404
+    session = _history_sessions.get(key)
     if not session or session.get("tenantId") != tenant_id or session.get("userId") != user_id or session.get("deletedAt") or session.get("softDeletedAt"):
         return jsonify({"error": "not_found"}), 404
 
@@ -1811,10 +2121,15 @@ def chat_history_session(session_id: str):
 def chat_history_messages(session_id: str):
     if not _mock_sql_enabled:
         return _history_unavailable()
+    auth_header = (request.headers.get("Authorization") or "").strip()
+    auth_error = _require_bearer_if_needed(auth_header)
+    if auth_error is not None:
+        return auth_error
 
     _history_prune()
     tenant_id = _history_tenant_id()
     user_id = _history_user_id()
+    session_id = _valid_session_id(session_id)
     if _history_is_anon(user_id):
         if request.method == "GET":
             return jsonify({"items": [], "next_cursor": None})
@@ -1829,7 +2144,29 @@ def chat_history_messages(session_id: str):
             "deletedAt": None,
         }
         return jsonify(msg)
-    session = _history_sessions.get(session_id)
+    key = _history_resolve_session_key(tenant_id=tenant_id, user_id=user_id, session_id=session_id)
+    if not key:
+        if request.method == "GET":
+            return jsonify({"error": "not_found"}), 404
+        # Fallback: auto-create session on first message if the client did not create it in time.
+        now = _history_now_ms()
+        key = _history_key(tenant_id=tenant_id, user_id=user_id, session_id=session_id)
+        _history_sessions[key] = {
+            "sessionId": session_id,
+            "tenantId": tenant_id,
+            "userId": user_id,
+            "title": "New chat",
+            "consultantId": "",
+            "createdAt": now,
+            "updatedAt": now,
+            "messageCount": 0,
+            "deletedAt": None,
+            "softDeletedAt": None,
+            "status": "active",
+        }
+        _history_messages.setdefault(key, [])
+
+    session = _history_sessions.get(key)
     if not session or session.get("tenantId") != tenant_id or session.get("userId") != user_id or session.get("deletedAt"):
         return jsonify({"error": "not_found"}), 404
 
@@ -1838,7 +2175,7 @@ def chat_history_messages(session_id: str):
         limit = max(1, min(200, limit))
         before = request.args.get("before")
         before_ts = int(before) if before else None
-        all_msgs = [m for m in _history_messages.get(session_id, []) if not m.get("deletedAt")]
+        all_msgs = [m for m in _history_messages.get(key, []) if not m.get("deletedAt")]
         if before_ts:
             all_msgs = [m for m in all_msgs if int(m.get("ts") or 0) < before_ts]
         items = all_msgs[-limit:]
@@ -1856,9 +2193,18 @@ def chat_history_messages(session_id: str):
         "meta": payload.get("meta"),
         "deletedAt": None,
     }
-    msgs = _history_messages.get(session_id, [])
+    msgs = _history_messages.get(key, [])
     msgs.append(msg)
-    _history_messages[session_id] = msgs
+    _history_messages[key] = msgs
     session["updatedAt"] = now
     session["messageCount"] = len(msgs)
+    # Use the first question as the session title when the session still has the default title.
+    try:
+        title = str(session.get("title") or "").strip()
+        if (not title) or title.lower() in ("new chat", "nowy czat"):
+            q0 = str(msg.get("q") or "").strip()
+            if q0:
+                session["title"] = q0.replace("\n", " ").strip()[:64]
+    except Exception:
+        pass
     return jsonify(msg)

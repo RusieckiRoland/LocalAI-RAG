@@ -1,5 +1,4 @@
 {
-  "output_dir": "branches",
   "model_path_embd": "models/embedding/e5-base-v2",
   "model_path_analysis": "models/code_analysis/Codestral/Codestral-22B-v0.1-Q6_K.gguf",
   "enable_model_path_analysis": true,
@@ -8,11 +7,9 @@
   "model_context_window": 8192,
   "model_translation_en_pl": "models/translation/en_pl/Helsinki_NLPopus_mt_en_pl",
   "model_translation_pl_en": "models/translation/pl_en/Helsinki_NLPopus_mt_pl_en",
-  "log_path": "log/ai_interaction.log",
   "logging": {
     "dir": "log",
     "level": "INFO",
-    "interactions_level": "TRACE",
     "when": "midnight",
     "interval": 1,
     "backup_count": 14,
@@ -22,10 +19,7 @@
     "ai_interaction": {
       "capture_jsonl": true,
       "human_log": true,
-      "human_file": "ai_interaction.log",
-      "lang": "en",
-      "locale_dir": "locales/ai_interaction",
-      "emit_app_log_pointers": true
+      "human_file": "ai_interaction.log"
     }
   },
   "history_groups": [
@@ -71,8 +65,7 @@
   "weaviate": {
     "host": "localhost",
     "http_port": 18080,
-    "grpc_port": 15005,
-    "ready_timeout_seconds": 30
+    "grpc_port": 15005
   },
   "auth": {
     "oidc": {
@@ -109,7 +102,6 @@
       }
     }
   },
-  "vector_indexes_root": "repositories/nopCommerce/indexes",
   "repo_name": "nopCommerce",
   "callback": "allowed",
   "stages_visibility": "pipeline_driven",

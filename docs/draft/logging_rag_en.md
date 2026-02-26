@@ -20,7 +20,6 @@ Example:
   "logging": {
     "dir": "log",
     "level": "INFO",
-    "interactions_level": "TRACE",
     "when": "midnight",
     "interval": 1,
     "backup_count": 14,
@@ -30,10 +29,7 @@ Example:
     "ai_interaction": {
       "capture_jsonl": true,
       "human_log": true,
-      "human_file": "ai_interaction.log",
-      "lang": "en",
-      "locale_dir": "locales/ai_interaction",
-      "emit_app_log_pointers": true
+      "human_file": "ai_interaction.log"
     }
   }
 }
@@ -47,8 +43,6 @@ Example:
 - `logging.app_file`
   Application log file name, e.g. `app.log`.
 
-- `logging.interactions_level`
-  Level for the `localai.interactions` logger. Typically `TRACE` (most detailed).
 - `logging.interactions_file`
   JSONL interaction log file name, e.g. `ai_interactions.jsonl`.
 
@@ -66,13 +60,6 @@ Example:
   Enables human-readable interaction logging (`ai_interaction.log`).
 - `human_file`
   Human-readable log file name.
-- `lang` and `locale_dir`
-  Localization for labels in human log (e.g. `Timestamp`, `Final answer`).
-  If the locale file is missing or broken → fallback to EN and a warning in `app.log`.
-- `emit_app_log_pointers`
-  If `true`, `app.log` contains short pointers such as:
-  - “AI interaction captured (details in …/ai_interactions.jsonl)”
-  - “AI interaction human log written (details in …/ai_interaction.log)”
 
 ## 2. Regular application logging (`app.log`)
 
@@ -97,7 +84,6 @@ The system uses standard Python levels:
 - Index loading / searcher errors.
 - Exceptions in endpoints (`/search`, `/query`).
 - Fallback warnings (e.g. missing locale).
-- Pointers to interaction log files (if enabled).
 
 ## 3. AI interaction logging – two streams
 
@@ -182,8 +168,8 @@ Example record:
 Recommended loggers:
 - Root logger → `app.log`
 - `localai` → application info (pointers, warnings)
-- `localai.interactions` → JSONL (typically `TRACE`)
-- `localai.ai_interaction.human` → human log
+- `localai.interactions` → JSONL
+- `localai.interactions.human` → human log
 
 Important: enabling/disabling JSONL and human logs is controlled by `capture_jsonl` / `human_log`, not by the log `level` alone.
 
@@ -195,18 +181,12 @@ Check:
 2) Is `logging.ai_interaction.human_log == true` (for `ai_interaction.log`)?
 3) Is `logging.ai_interaction.capture_jsonl == true` (for `ai_interactions.jsonl`)?
 4) Does the pipeline reach the turn-finalization step (if it crashes earlier, the interaction may not be written)?
-5) Does `app.log` include pointers (if `emit_app_log_pointers == true`)?
 
 ### 5.2. “Interaction log fields are empty”
 Most common cause:
 - The frontend sends the question under a different field name (`query` vs `question`), and the backend maps it incorrectly → resulting in `original_question == ""`.
 
 Rule: the backend should clearly map request fields to `original_question` and reject empty queries with `400`.
-
-### 5.3. “Label localization in ai_interaction.log does not work”
-- Ensure the file exists:
-  - `logging.ai_interaction.locale_dir/<lang>.json`
-- If missing → fallback to EN and a warning in `app.log`.
 
 ## 6. Minimal quality requirements (logging contract)
 
@@ -238,4 +218,3 @@ Yes:
 - [ ] `app.log` is created and rotated
 - [ ] `ai_interactions.jsonl` is created when `capture_jsonl=true`
 - [ ] `ai_interaction.log` is created when `human_log=true`
-- [ ] If `emit_app_log_pointers=true`, `app.log` includes pointers to the interaction logs

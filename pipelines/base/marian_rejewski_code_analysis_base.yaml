@@ -44,6 +44,11 @@ YAMLpipeline:
       - bm25
       - hybrid
 
+    # Default retrieval mode used when a retrieval step is configured with search_type: auto
+    # but no explicit search_type is provided by the router/prefix.
+    # NOTE: legacy typo alias is also accepted by the backend: default_serach_method
+    default_search_method: semantic
+
     # Callback visibility policy for this pipeline (global config has higher priority)
     callback: allowed
     stages_visibility: explicit

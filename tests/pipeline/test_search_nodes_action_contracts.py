@@ -497,6 +497,36 @@ def test_search_nodes_auto_search_type_without_explicit_source_fails() -> None:
         SearchNodesAction().execute(step, state, rt)
 
 
+def test_search_nodes_auto_search_type_uses_pipeline_default() -> None:
+    backend = _BackendStub(hits=[SearchHit(id="A", score=1.0, rank=1)])
+    rt = _runtime_with_backend(backend, settings={"repository": "Fake", "top_k": 5, "default_search_method": "hybrid"})
+    state = _state_with_query(
+        json.dumps(
+            {
+                "query": "class Category",
+            }
+        )
+    )
+
+    step = StepDef(
+        id="search",
+        action="search_nodes",
+        raw={
+            "id": "search",
+            "action": "search_nodes",
+            "search_type": "auto",
+            "top_k": 5,
+            "query_parser": "jsonish_v1",
+        },
+    )
+
+    SearchNodesAction().execute(step, state, rt)
+
+    assert backend.last_request is not None
+    assert backend.last_request.search_type == "hybrid"
+    assert state.search_type == "hybrid"
+
+
 def test_search_nodes_allow_rrf_k_from_payload() -> None:
     backend = _BackendStub(hits=[SearchHit(id="A", score=1.0, rank=1)])
     rt = _runtime_with_backend(backend, settings={"repository": "Fake", "top_k": 5})

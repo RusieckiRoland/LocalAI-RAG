@@ -5,7 +5,7 @@ This document lists what must be completed before moving to production. It focus
 ## 1. Authentication and Authorization
 **DEV state**
 1. `DevUserAccessProvider` assigns `authenticated` group to any token `Bearer dev-user:<id>`.
-2. Policies are in `config/auth_policies.json`.
+2. Policies are in `security_conf/auth_policies.json`.
 
 **Required before production**
 1. Integrate a real identity provider (OpenID Connect (OIDC), e.g. Keycloak) and use Authorization Code Flow with PKCE for the browser UI.
@@ -16,7 +16,7 @@ This document lists what must be completed before moving to production. It focus
 
 **Related files**
 1. `server/auth/user_access.py`
-2. `config/auth_policies.json`
+2. `security_conf/auth_policies.json`
 3. `frontend/Rag.html`
 
 ## 2. Permission Policies (pipelines / commands)

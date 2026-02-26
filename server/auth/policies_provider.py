@@ -79,7 +79,7 @@ class JsonAuthPoliciesProvider:
 
 def default_json_provider() -> JsonAuthPoliciesProvider:
     project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-    default_path = os.path.join(project_root, "config", "auth_policies.json")
+    default_path = os.path.join(project_root, "security_conf", "auth_policies.json")
     path = os.getenv("AUTH_POLICIES_PATH") or default_path
     return JsonAuthPoliciesProvider(path=path)
 
