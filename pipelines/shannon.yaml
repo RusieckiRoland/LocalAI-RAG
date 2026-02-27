@@ -161,6 +161,13 @@ YAMLpipeline:
       action: translate_out_if_needed
       use_main_model: true
       translate_prompt_key: "utility/translate_md_en_pl"
+      next: add_commands
+
+    - id: add_commands
+      action: add_command_action
+      commands:
+        - type: "showDiagram"
+        - type: "ea_export"
       next: finalize
 
     - id: finalize

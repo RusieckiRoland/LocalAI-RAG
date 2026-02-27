@@ -43,7 +43,7 @@ def test_add_command_action_appends_multiple_links(monkeypatch):
     assert "command-links" in out
     assert "showDiagram" not in out  # not raw type
     assert "plantuml.test" in out
-    assert "data:application/xml" in out
+    assert "data-xmi-b64" in out
 
 
 def test_add_command_action_respects_permissions(monkeypatch):

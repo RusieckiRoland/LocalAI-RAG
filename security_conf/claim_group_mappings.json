@@ -11,5 +11,44 @@
       "/analyst": "analyst",
       "/analysts": "analyst"
     }
+  },
+  {
+    "claim": "realm_access.roles",
+    "list_map": {
+      "developer": "developers",
+      "developers": "developers",
+      "deweloper": "developers",
+      "deweloperzy": "developers",
+      "analyst": "analyst",
+      "analysts": "analyst",
+      "analityk": "analyst",
+      "analitycy": "analyst"
+    }
+  },
+  {
+    "claim": "resource_access.*.roles",
+    "list_map": {
+      "developer": "developers",
+      "developers": "developers",
+      "deweloper": "developers",
+      "deweloperzy": "developers",
+      "analyst": "analyst",
+      "analysts": "analyst",
+      "analityk": "analyst",
+      "analitycy": "analyst"
+    }
+  },
+  {
+    "claim": "roles",
+    "list_map": {
+      "developer": "developers",
+      "developers": "developers",
+      "deweloper": "developers",
+      "deweloperzy": "developers",
+      "analyst": "analyst",
+      "analysts": "analyst",
+      "analityk": "analyst",
+      "analitycy": "analyst"
+    }
   }
 ]

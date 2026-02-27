@@ -39,9 +39,23 @@ class AppConfigService:
         repos = self._list_repositories(runtime_cfg)
         repo_name = str(runtime_cfg.get("repo_name") or "").strip() or (repos[0] if repos else "")
 
+        # Fail-closed for authenticated users:
+        # when no pipeline policy is resolved, return no consultants instead of all.
+        allowed_pipelines = list(getattr(access_ctx, "allowed_pipelines", []) or [])
+        if bool(getattr(access_ctx, "is_anonymous", False)):
+            allowed_for_ui: Optional[List[str]] = None
+        else:
+            allowed_for_ui = allowed_pipelines
+
         consultants, default_consultant_id = self.pipeline_access.filter_consultants(
             templates,
-            allowed_pipelines=access_ctx.allowed_pipelines,
+            allowed_pipelines=allowed_for_ui,
+        )
+
+        consultants, default_consultant_id = self._filter_consultants_for_groups(
+            consultants,
+            default_consultant_id=default_consultant_id,
+            group_ids=list(getattr(access_ctx, "group_ids", []) or []),
         )
 
         consultants = self._attach_snapshots(consultants, repository=repo_name)
@@ -60,6 +74,45 @@ class AppConfigService:
             "historyGroups": runtime_cfg.get("history_groups") or [],
             "historyImportant": runtime_cfg.get("history_important") or {},
         }
+
+    def _filter_consultants_for_groups(
+        self,
+        consultants: List[Dict[str, Any]],
+        *,
+        default_consultant_id: str,
+        group_ids: List[str],
+    ) -> tuple[List[Dict[str, Any]], str]:
+        """
+        Additional UI-level visibility rules based on group membership.
+
+        - Analysts should see only Rejewski + Ada.
+        - Developers should see everything.
+
+        Pipeline execution is still protected by `allowed_pipelines` checks server-side.
+        """
+        gids = [str(x or "").strip() for x in (group_ids or []) if str(x or "").strip()]
+        if not gids or not consultants:
+            return consultants, default_consultant_id
+
+        # Developers see everything (no further UI filtering).
+        if "developers" in gids:
+            return consultants, default_consultant_id
+
+        # Analysts: allow-list by consultant id (more stable than pipelineName).
+        if "analyst" in gids:
+            allowed_ids = {"rejewski", "ada"}
+            filtered = [
+                c for c in consultants
+                if isinstance(c, dict) and str(c.get("id") or "").strip().lower() in allowed_ids
+            ]
+            next_default = str(default_consultant_id or "")
+            if next_default and not any(str(c.get("id") or "") == next_default for c in filtered):
+                next_default = ""
+            if not next_default and filtered:
+                next_default = str(filtered[0].get("id") or "")
+            return filtered, next_default
+
+        return consultants, default_consultant_id
 
     def _list_repositories(self, cfg: Dict[str, Any]) -> List[str]:
         import os

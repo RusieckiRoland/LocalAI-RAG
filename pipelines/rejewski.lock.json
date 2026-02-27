@@ -1,5 +1,19 @@
 {
   "actions": {
+    "add_command_action": {
+      "allowed_keys": [
+        "action",
+        "callback_caption",
+        "callback_caption_translated",
+        "commands",
+        "end",
+        "id",
+        "next",
+        "stages_visible"
+      ],
+      "behavior": "0.2.0",
+      "defaults": {}
+    },
     "call_model": {
       "allowed_keys": [
         "action",

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 
 @dataclass(frozen=True)
@@ -14,7 +14,7 @@ class PipelineAccessService:
         self,
         templates: Dict[str, Any],
         *,
-        allowed_pipelines: List[str],
+        allowed_pipelines: Optional[List[str]],
     ) -> Tuple[List[Dict[str, Any]], str]:
         consultants = []
         default_consultant_id = ""
@@ -22,7 +22,9 @@ class PipelineAccessService:
         if isinstance(templates, dict):
             consultants = templates.get("consultants") or []
 
-            if allowed_pipelines:
+            # None => no restriction (legacy/default-all mode)
+            # []   => explicit deny-all (fail-closed)
+            if allowed_pipelines is not None:
                 allowed = set(allowed_pipelines)
                 consultants = [
                     c

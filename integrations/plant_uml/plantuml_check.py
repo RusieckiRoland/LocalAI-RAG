@@ -11,18 +11,51 @@ from constants import UML_CONSULTANT
 # Config loading
 # ---------------------------------------------------------------------------
 
-# Repo root is assumed to be three levels up from this file.
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-CONFIG_PATH = os.path.join(BASE_DIR, "config.json")
 
-if os.path.exists(CONFIG_PATH):
-    with open(CONFIG_PATH, "r", encoding="utf-8") as f:
-        _cfg = json.load(f)
-else:
-    _cfg = {}
 
-# If missing in config.json, PLANTUML_SERVER will be None.
-PLANTUML_SERVER: str | None = (_cfg.get("plantuml_server") or None)
+def _resolve_runtime_config_path() -> str:
+    explicit = str(os.getenv("APP_CONFIG_PATH") or "").strip()
+    if explicit:
+        return explicit if os.path.isabs(explicit) else os.path.join(BASE_DIR, explicit)
+
+    profile = str(os.getenv("APP_PROFILE") or "prod").strip().lower() or "prod"
+    if profile in ("development",):
+        profile = "dev"
+    if profile in ("production",):
+        profile = "prod"
+
+    if profile == "dev":
+        p = os.path.join(BASE_DIR, "config.dev.json")
+        if os.path.exists(p):
+            return p
+    if profile == "test":
+        p = os.path.join(BASE_DIR, "config.test.json")
+        if os.path.exists(p):
+            return p
+    if profile == "prod":
+        p = os.path.join(BASE_DIR, "config.prod.json")
+        if os.path.exists(p):
+            return p
+    return os.path.join(BASE_DIR, "config.json")
+
+
+def _load_runtime_cfg() -> dict:
+    path = _resolve_runtime_config_path()
+    try:
+        if os.path.exists(path):
+            with open(path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                return data if isinstance(data, dict) else {}
+    except Exception:
+        return {}
+    return {}
+
+
+_cfg = _load_runtime_cfg()
+
+# If missing in runtime config, PLANTUML_SERVER will be None. Env override supported.
+PLANTUML_SERVER: str | None = (os.getenv("PLANTUML_SERVER") or _cfg.get("plantuml_server") or None)
 
 
 # ---------------------------------------------------------------------------

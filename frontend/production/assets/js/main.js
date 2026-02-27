@@ -896,7 +896,7 @@
 	    // We render "newest on top" by prepending each entry in that order.
 	    messages.forEach((msg) => {
 	      const markdown = msg.a || t.noResponse;
-	      const html = DOMPurify.sanitize(marked.parse(markdown));
+	      const html = DOMPurify.sanitize(marked.parse(markdown), { ADD_ATTR: ["data-xmi-b64", "data-filename"] });
 	      const timestamp = new Date(msg.ts || Date.now()).toLocaleString(t.locale);
 	      const questionHTML = `
 	        <div class="bg-white p-4 rounded-xl shadow-sm border border-gray-100 response-entry">
@@ -915,10 +915,11 @@
     if (session.consultantId) {
       proceedSelectConsultant(session.consultantId);
     }
-    updateFormPosition();
-    addCopyButtons();
-    renderHistoryList();
-  }
+	    updateFormPosition();
+	    addCopyButtons();
+	    addCommandLinkHandlers();
+	    renderHistoryList();
+	  }
 
   function generateTraceRunId() {
     const ts = Date.now();
@@ -1017,8 +1018,9 @@
       authLogout: "Wyloguj",
         historyEmpty: "Brak historii",
         historyNewChat: "Nowy czat",
-        queryProgressText: "Zapytanie w toku",
-        consultantLocked: "Nie można zmienić konsultanta w trakcie odpowiedzi."
+      queryProgressText: "Zapytanie w toku",
+        consultantLocked: "Nie można zmienić konsultanta w trakcie odpowiedzi.",
+        consultantUnavailable: "Brak dostępnego konsultanta. Odśwież stronę lub zaloguj się ponownie."
 	    },
     en: {
       send: "Send",
@@ -1098,7 +1100,8 @@
       historyEmpty: "No history",
       historyNewChat: "New chat",
         queryProgressText: "Query in progress",
-        consultantLocked: "You cannot change the consultant while a reply is in progress."
+        consultantLocked: "You cannot change the consultant while a reply is in progress.",
+        consultantUnavailable: "No consultant is available. Refresh the page or sign in again."
 	    }
 	  };
 
@@ -1725,7 +1728,7 @@
     }
     if (traceDocModalTitle) traceDocModalTitle.textContent = title;
     if (traceDocModalBody) {
-      traceDocModalBody.innerHTML = DOMPurify.sanitize(marked.parse(markdown || " "));
+      traceDocModalBody.innerHTML = DOMPurify.sanitize(marked.parse(markdown || " "), { ADD_ATTR: ["data-xmi-b64", "data-filename"] });
       addCopyButtons();
     }
     if (traceDocModalBackdrop) traceDocModalBackdrop.style.display = "flex";
@@ -1834,15 +1837,6 @@
       // Ignore cache errors (private mode, quota, etc.)
     }
     return data;
-  }
-
-  function loadCachedAppConfig() {
-    try {
-      const raw = localStorage.getItem("lastAppConfig");
-      return raw ? JSON.parse(raw) : null;
-    } catch (e) {
-      return null;
-    }
   }
 
   function rebuildConsultantsIndex() {
@@ -2703,6 +2697,12 @@
       return;
     }
 
+    if (!selectedConsultant || !c) {
+      submitButton.disabled = true;
+      submitButton.title = t.consultantUnavailable || t.error;
+      return;
+    }
+
     if (mode !== "compare") return;
 
     // Compare mode: must have 2 different snapshots.
@@ -2797,6 +2797,55 @@
       return hljs.highlightAuto(code).value;
     }
   });
+
+  function tryDownloadBase64({ base64Text, filename, mimeType }) {
+    const b64 = String(base64Text || "").trim();
+    if (!b64) return false;
+    const name = String(filename || "download.bin").trim() || "download.bin";
+    const type = String(mimeType || "application/octet-stream").trim() || "application/octet-stream";
+    try {
+      const bin = atob(b64);
+      const bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      const blob = new Blob([bytes], { type });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = name;
+      a.rel = "noopener";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => {
+        try { URL.revokeObjectURL(url); } catch (e) {}
+      }, 2000);
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  function addCommandLinkHandlers() {
+    if (!responseDiv) return;
+    const links = responseDiv.querySelectorAll(".command-ea-export[data-xmi-b64]");
+    links.forEach((el) => {
+      if (!el) return;
+      try {
+        if (el.dataset && el.dataset.bound === "1") return;
+        if (el.dataset) el.dataset.bound = "1";
+      } catch (e) {}
+      el.addEventListener("click", (e) => {
+        e.preventDefault();
+        const b64 = el.getAttribute("data-xmi-b64") || "";
+        const filename = el.getAttribute("data-filename") || "diagram.xmi";
+        const ok = tryDownloadBase64({ base64Text: b64, filename, mimeType: "application/xml;charset=utf-8" });
+        if (!ok) {
+          const t = getTexts(getCurrentLang());
+          showToast(t.historyExportFailed || "Nie udało się przygotować pliku do pobrania.");
+        }
+      });
+    });
+  }
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -2896,7 +2945,7 @@
       }
 
       const markdown = json.results || t.noResponse;
-      const html = DOMPurify.sanitize(marked.parse(markdown));
+      const html = DOMPurify.sanitize(marked.parse(markdown), { ADD_ATTR: ["data-xmi-b64", "data-filename"] });
       const timestamp = new Date().toLocaleString(t.locale);
 
       const questionHTML = `
@@ -2926,6 +2975,7 @@
       queryInput.value = "";
       if (typeof resetQueryInputHeight === "function") resetQueryInputHeight();
       addCopyButtons();
+      addCommandLinkHandlers();
       scrollToLatestResponse();
     } catch (error) {
       if (error && error.name === "AbortError") {
@@ -3061,14 +3111,11 @@
     if (hasConsultants(fetchedConfig)) {
       appConfig = fetchedConfig;
     } else {
-      const cached = loadCachedAppConfig();
-      if (hasConsultants(cached)) {
-        appConfig = cached;
-        if (!startupIssue) startupIssue = new Error("No consultants in app-config response, using cached config.");
-      } else {
-        appConfig = cloneDefaultAppConfig();
-        if (!startupIssue) startupIssue = new Error("No consultants in app-config response, using built-in config.");
-      }
+      const fallback = cloneDefaultAppConfig();
+      fallback.consultants = [];
+      fallback.defaultConsultantId = null;
+      appConfig = fallback;
+      if (!startupIssue) startupIssue = new Error("No consultants in /app-config response.");
     }
 
     configureLanguageSettings(appConfig);
@@ -3092,9 +3139,10 @@
     updateSendButtonState();
 
     if (startupIssue) {
-      showUiError(
-        `Brak połączenia z ${API_BASE}${APP_CONFIG_PATH}. Używam konfiguracji awaryjnej konsultantów.`
-      );
+      const status = startupIssue && typeof startupIssue === "object" && startupIssue.status
+        ? ` (${startupIssue.status})`
+        : "";
+      showUiError(`Nie udało się pobrać konfiguracji konsultantów z ${API_BASE}${APP_CONFIG_PATH}${status}. Zaloguj się ponownie lub odśwież stronę.`);
     }
   }
 

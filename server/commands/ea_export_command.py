@@ -1,7 +1,7 @@
 from __future__ import annotations
 
+import base64
 import re
-import urllib.parse
 
 from integrations.ea.converter import puml_to_xmi
 
@@ -27,8 +27,9 @@ class EaExportCommand(BaseCommand):
         except Exception:
             return None
 
-        data = urllib.parse.quote(xmi)
-        href = f"data:application/xml;charset=utf-8,{data}"
+        # Do NOT emit a data: URI (sanitizers often strip it). Instead, embed the payload
+        # as base64 in a data-* attribute and let the UI generate a downloadable Blob.
+        xmi_b64 = base64.b64encode(xmi.encode("utf-8")).decode("ascii")
 
         lang = self._lang(state)
         if lang == "pl":
@@ -37,6 +38,6 @@ class EaExportCommand(BaseCommand):
             label = "Export to EA (XMI)"
 
         return (
-            '<a class="command-link" '
-            f'href="{href}" download="diagram.xmi">{label}</a>'
+            '<a class="command-link command-ea-export" href="#" '
+            f'data-xmi-b64="{xmi_b64}" data-filename="diagram.xmi">{label}</a>'
         )

@@ -248,8 +248,7 @@ Example (current):
       ],
       "allowed_commands": [
         "showDiagram",
-        "saveDiagram",
-        "ea_export"
+        "saveDiagram"
       ],
       "acl_tags_any": [
         "security",

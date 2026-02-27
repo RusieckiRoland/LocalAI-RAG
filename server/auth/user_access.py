@@ -59,11 +59,13 @@ class DevUserAccessProvider(UserAccessProvider):
         group_policies: Optional[Dict[str, GroupPolicy]] = None,
         claim_group_mappings: Optional[List[Dict[str, object]]] = None,
         user_extra_groups: Optional[Dict[str, List[str]]] = None,
+        auto_reload_policies: bool = False,
     ) -> None:
         self._user_group_prefix = user_group_prefix
         self._group_policies = group_policies or {}
         self._claim_group_mappings = claim_group_mappings or []
         self._user_extra_groups = user_extra_groups or {}
+        self._auto_reload_policies = bool(auto_reload_policies)
 
     def resolve(
         self,
@@ -73,6 +75,16 @@ class DevUserAccessProvider(UserAccessProvider):
         session_id: str,
         claims: Optional[Dict[str, object]] = None,
     ) -> UserAccessContext:
+        if self._auto_reload_policies:
+            try:
+                provider = default_json_provider()
+                group_policies, claim_group_mappings = provider.load()
+                self._group_policies = group_policies or {}
+                self._claim_group_mappings = claim_group_mappings or []
+            except Exception:
+                # Keep last good policies in memory.
+                pass
+
         claims = claims or {}
         resolved_user_id = self._parse_dev_token(token) or user_id or self._derive_user_id_from_claims(claims)
 
@@ -208,6 +220,99 @@ class DevUserAccessProvider(UserAccessProvider):
         return max(levels)
 
     def _map_claims_to_groups(self, claims: Dict[str, object]) -> List[str]:
+        def _get_claim_value(obj: object, path: str) -> object | None:
+            """
+            Best-effort nested claim extraction.
+
+            Supports dotted paths like "realm_access.roles" and wildcard paths
+            like "resource_access.*.roles".
+            """
+            parts = [str(p or "").strip() for p in (path or "").split(".") if str(p or "").strip()]
+            if not parts:
+                return None
+
+            def _walk(cur: object, idx: int) -> List[object]:
+                if idx >= len(parts):
+                    return [cur]
+                part = parts[idx]
+                if part == "*":
+                    if not isinstance(cur, dict):
+                        return []
+                    out_vals: List[object] = []
+                    for v in cur.values():
+                        out_vals.extend(_walk(v, idx + 1))
+                    return out_vals
+                if not isinstance(cur, dict) or part not in cur:
+                    return []
+                return _walk(cur.get(part), idx + 1)
+
+            values = _walk(obj, 0)
+            if not values:
+                return None
+            if len(values) == 1:
+                return values[0]
+
+            # Flatten wildcard outputs to a single list.
+            merged: List[object] = []
+            for v in values:
+                if isinstance(v, (list, tuple, set)):
+                    merged.extend(list(v))
+                else:
+                    merged.append(v)
+            return merged
+
+        def _resolve_map_entry(map_obj: object, raw_key: object) -> Optional[str]:
+            if not isinstance(map_obj, dict):
+                return None
+            key = str(raw_key or "").strip()
+            if not key:
+                return None
+
+            # Exact hit first.
+            if key in map_obj and map_obj.get(key):
+                return str(map_obj.get(key))
+
+            # Case-insensitive / slash-insensitive fallback.
+            key_norm = key.lstrip("/").lower()
+            for mk, mv in map_obj.items():
+                map_key_norm = str(mk or "").strip().lstrip("/").lower()
+                if map_key_norm == key_norm and mv:
+                    return str(mv)
+            return None
+
+        def _extract_candidates(obj: object, depth: int = 0) -> List[object]:
+            if depth > 8:
+                return []
+            if obj is None:
+                return []
+            if isinstance(obj, (str, int, float, bool)):
+                return [obj]
+            if isinstance(obj, (list, tuple, set)):
+                out_vals: List[object] = []
+                for item in obj:
+                    out_vals.extend(_extract_candidates(item, depth + 1))
+                return out_vals
+            if isinstance(obj, dict):
+                out_vals: List[object] = []
+                # Common IdP object shapes: {"name":"analyst"}, {"value":"developer"}, etc.
+                for key in ("name", "value", "role", "group", "groups", "id"):
+                    if key in obj:
+                        out_vals.extend(_extract_candidates(obj.get(key), depth + 1))
+                for v in obj.values():
+                    out_vals.extend(_extract_candidates(v, depth + 1))
+                return out_vals
+            return []
+
+        def _normalize_alias(raw: object) -> str:
+            s = str(raw or "").strip().lstrip("/").lower()
+            if not s:
+                return ""
+            # Common role prefixes found in IdP payloads.
+            for prefix in ("role:", "role_", "roles:", "roles_", "realm:", "group:", "groups:"):
+                if s.startswith(prefix):
+                    s = s[len(prefix):]
+            return s.strip()
+
         out: List[str] = []
         for rule in self._claim_group_mappings:
             if not isinstance(rule, dict):
@@ -215,22 +320,61 @@ class DevUserAccessProvider(UserAccessProvider):
             claim = str(rule.get("claim") or "").strip()
             if not claim:
                 continue
-            value = claims.get(claim)
+            value = _get_claim_value(claims, claim)
             if value is None:
                 continue
             value_map = rule.get("value_map") or {}
             list_map = rule.get("list_map") or {}
-            if isinstance(value, (list, tuple, set)):
-                for v in value:
-                    key = str(v)
-                    group = list_map.get(key)
-                    if group:
-                        out.append(str(group))
+            candidates = _extract_candidates(value)
+            if not candidates:
                 continue
-            key = str(value)
-            group = value_map.get(key)
-            if group:
-                out.append(str(group))
+            for candidate in candidates:
+                group = _resolve_map_entry(list_map, candidate)
+                if group:
+                    out.append(group)
+                    continue
+                group = _resolve_map_entry(value_map, candidate)
+                if group:
+                    out.append(group)
+
+        # Fallback: if explicit claim paths didn't match, scan all token claims for known aliases.
+        if out:
+            return _unique_preserve_order(out)
+
+        alias_map: Dict[str, str] = {}
+        for rule in self._claim_group_mappings:
+            if not isinstance(rule, dict):
+                continue
+            for map_obj_name in ("list_map", "value_map"):
+                map_obj = rule.get(map_obj_name) or {}
+                if not isinstance(map_obj, dict):
+                    continue
+                for raw_key, raw_group in map_obj.items():
+                    group = str(raw_group or "").strip()
+                    alias = _normalize_alias(raw_key)
+                    if alias and group:
+                        alias_map[alias] = group
+        if not alias_map:
+            return []
+
+        for candidate in _extract_candidates(claims):
+            normalized = _normalize_alias(candidate)
+            if not normalized:
+                continue
+            direct = alias_map.get(normalized)
+            if direct:
+                out.append(direct)
+                continue
+            # Tokenize strings like "ROLE_ANALYST,offline_access".
+            parts = [
+                p.strip()
+                for p in str(candidate).replace(";", ",").replace("|", ",").replace(" ", ",").split(",")
+                if p and p.strip()
+            ]
+            for part in parts:
+                group = alias_map.get(_normalize_alias(part))
+                if group:
+                    out.append(group)
         return out
 
 
@@ -260,11 +404,14 @@ def get_default_user_access_provider() -> UserAccessProvider:
         if os.getenv("PYTEST_CURRENT_TEST"):
             group_policies = {}
             claim_group_mappings: List[Dict[str, object]] = []
+            auto_reload = False
         else:
             provider = default_json_provider()
             group_policies, claim_group_mappings = provider.load()
+            auto_reload = True
         _default_provider = DevUserAccessProvider(
             group_policies=group_policies,
             claim_group_mappings=claim_group_mappings,
+            auto_reload_policies=auto_reload,
         )
     return _default_provider

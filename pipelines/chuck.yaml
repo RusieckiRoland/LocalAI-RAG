@@ -44,6 +44,13 @@ YAMLpipeline:
           from: last_model_response
         - set: answer_translated
           value: null
+      next: add_commands
+
+    - id: add_commands
+      action: add_command_action
+      commands:
+        - type: "showDiagram"
+        - type: "ea_export"
       next: finalize
 
     - id: finalize

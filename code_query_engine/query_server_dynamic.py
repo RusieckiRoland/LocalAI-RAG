@@ -1652,14 +1652,32 @@ def _handle_app_config_request():
     cfg = dict(_runtime_cfg)
     cfg["project_root"] = PROJECT_ROOT
     cfg["repositories_root"] = REPOSITORIES_ROOT
-    return jsonify(
-        _app_config_service.build_app_config(
-            runtime_cfg=cfg,
-            session_id=session_id,
-            auth_header=auth_header,
-            claims=getattr(g, "idp_claims", {}) or {},
-        )
+    claims = getattr(g, "idp_claims", {}) or {}
+    app_cfg = _app_config_service.build_app_config(
+        runtime_cfg=cfg,
+        session_id=session_id,
+        auth_header=auth_header,
+        claims=claims,
     )
+    try:
+        consultants = app_cfg.get("consultants") or []
+        if not consultants:
+            access_ctx = _user_access_provider.resolve(
+                user_id=None,
+                token=auth_header,
+                session_id=session_id,
+                claims=claims if isinstance(claims, dict) else {},
+            )
+            py_logger.warning(
+                "app-config empty consultants: user_id=%s groups=%s allowed_pipelines=%s claims_keys=%s",
+                str(getattr(access_ctx, "user_id", "") or ""),
+                list(getattr(access_ctx, "group_ids", []) or []),
+                list(getattr(access_ctx, "allowed_pipelines", []) or []),
+                sorted([str(k) for k in (claims or {}).keys()]) if isinstance(claims, dict) else [],
+            )
+    except Exception:
+        pass
+    return jsonify(app_cfg)
 
 
 # ------------------------------------------------------------

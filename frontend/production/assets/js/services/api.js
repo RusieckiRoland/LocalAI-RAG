@@ -37,11 +37,7 @@
   }
 
   async function fetchAppConfig({ fakeAuthEnabled, activeDevUserId } = {}) {
-    const authHeaders = buildAuthHeaders(fakeAuthEnabled, activeDevUserId);
-    const res = await fetch(`${API_BASE}${APP_CONFIG_PATH}`, {
-      headers: { ...authHeaders },
-    });
-    if (!res.ok) {
+    const readErrorDetail = async (res) => {
       let detail = "";
       try {
         const ct = String(res.headers.get("content-type") || "");
@@ -54,6 +50,25 @@
           detail = String(await res.text() || "");
         }
       } catch (e) {}
+      return detail;
+    };
+
+    let authHeaders = buildAuthHeaders(fakeAuthEnabled, activeDevUserId);
+    let res = await fetch(`${API_BASE}${APP_CONFIG_PATH}`, {
+      headers: { ...authHeaders },
+    });
+    if (res.status === 401 && !fakeAuthEnabled) {
+      const oidc = (App.services && App.services.oidc) || null;
+      if (oidc && typeof oidc.refresh === "function") {
+        try { await oidc.refresh(); } catch (e) {}
+        authHeaders = buildAuthHeaders(fakeAuthEnabled, activeDevUserId);
+        res = await fetch(`${API_BASE}${APP_CONFIG_PATH}`, {
+          headers: { ...authHeaders },
+        });
+      }
+    }
+    if (!res.ok) {
+      const detail = await readErrorDetail(res);
       const err = new Error(`GET ${APP_CONFIG_PATH} failed: ${res.status}${detail ? ` (${detail})` : ""}`);
       err.status = res.status;
       err.detail = detail;

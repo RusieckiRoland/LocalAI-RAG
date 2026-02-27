@@ -21,7 +21,7 @@ class FakeAccessProvider:
     def resolve(self, *, user_id, token, session_id, claims=None):
         return UserAccessContext(
             user_id=None,
-            is_anonymous=True,
+            is_anonymous=False,
             group_ids=[],
             allowed_pipelines=self._allowed_pipelines,
             allowed_commands=[],
