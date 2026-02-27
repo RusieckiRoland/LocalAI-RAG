@@ -15,7 +15,9 @@ def _stub_module(monkeypatch: pytest.MonkeyPatch, module_name: str, attrs: dict)
 def _import_server(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("APP_USE_REDIS", "false")
     monkeypatch.setenv("IDP_AUTH_ENABLED", "0")
+    monkeypatch.setenv("APP_PROFILE", "dev")
     monkeypatch.setenv("APP_DEVELOPMENT", "1")
+    monkeypatch.setenv("DEV_ALLOW_NO_AUTH", "true")
 
     _stub_module(monkeypatch, "common.markdown_translator_en_pl", {"MarkdownTranslator": lambda *a, **k: object()})
     _stub_module(monkeypatch, "common.translator_pl_en", {"TranslatorPlEn": lambda *a, **k: object(), "Translator": lambda *a, **k: object()})
@@ -36,7 +38,7 @@ def _import_server(monkeypatch: pytest.MonkeyPatch):
     return importlib.import_module("code_query_engine.query_server_dynamic")
 
 
-def _auth_headers(user: str = "dev-user-1") -> dict:
+def _auth_headers(user: str = "john_kowalski") -> dict:
     return {"Authorization": f"Bearer dev-user:{user}"}
 
 
@@ -81,11 +83,12 @@ def test_chat_history_mock_endpoints_roundtrip(monkeypatch: pytest.MonkeyPatch) 
 
     # History should be readable by pipeline service (durable fallback).
     svc = qsd._conversation_history_service
-    out = svc.get_recent_qa_neutral(session_id=session_id, limit=10)
-    assert out == {"Q1": "A1"}
+    with qsd.app.test_request_context(headers=_auth_headers()):
+        out = svc.get_recent_qa_neutral(session_id=session_id, limit=10)
+    assert out == [("Q1", "A1")]
 
     # Different user should not see it
-    resp = client.get("/chat-history/sessions?limit=50", headers=_auth_headers("dev-user-2"))
+    resp = client.get("/chat-history/sessions?limit=50", headers=_auth_headers("anna_nowak"))
     assert resp.status_code == 200
     assert resp.get_json()["items"] == []
 

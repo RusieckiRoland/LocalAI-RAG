@@ -1,0 +1,26 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: localai-rag-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-localai_rag}
+      POSTGRES_USER: ${POSTGRES_USER:-localai}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-localai}
+      TZ: ${POSTGRES_TZ:-UTC}
+      PGTZ: ${POSTGRES_TZ:-UTC}
+    ports:
+      - "${POSTGRES_PORT_BIND:-127.0.0.1:15432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ../docs/sqldb/chat_history_schema_postgres.sql:/docker-entrypoint-initdb.d/10_chat_history_schema.sql:ro
+      - ../docs/sqldb/security_schema_postgres.sql:/docker-entrypoint-initdb.d/20_security_schema.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-localai} -d ${POSTGRES_DB:-localai_rag}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+volumes:
+  postgres_data:

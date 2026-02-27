@@ -34,7 +34,7 @@ def test_conversation_history_service_roundtrip_neutral_qa() -> None:
     )
 
     qa = svc.get_recent_qa_neutral(session_id="s1", limit=10)
-    assert qa == {"Q_EN": "A_EN"}
+    assert qa == [("Q_EN", "A_EN")]
 
 
 def test_session_store_start_turn_is_idempotent() -> None:
@@ -80,4 +80,4 @@ def test_on_request_finalized_without_turn_id_raises() -> None:
 
     turns = session_store.list_recent_finalized_turns(session_id="s1", limit=10)
     assert len(turns) == 0
-    assert svc.get_recent_qa_neutral(session_id="s1", limit=10) == {}
+    assert svc.get_recent_qa_neutral(session_id="s1", limit=10) == []

@@ -22,6 +22,9 @@ def test_server_import_does_not_import_torch(monkeypatch: pytest.MonkeyPatch):
     """
     monkeypatch.setenv("APP_USE_REDIS", "false")
     monkeypatch.setenv("API_TOKEN", "")
+    monkeypatch.setenv("APP_PROFILE", "dev")
+    monkeypatch.setenv("IDP_AUTH_ENABLED", "0")
+    monkeypatch.setenv("WEAVIATE_SKIP_INIT", "1")
 
     # Ensure clean state for the assertion
     sys.modules.pop("torch", None)
@@ -37,8 +40,6 @@ def test_server_import_does_not_import_torch(monkeypatch: pytest.MonkeyPatch):
 
     _stub_module(monkeypatch, "common.markdown_translator_en_pl", {"MarkdownTranslator": _DummyMarkdownTranslator})
     _stub_module(monkeypatch, "common.translator_pl_en", {"TranslatorPlEn": _DummyTranslatorPlEn, "Translator": _DummyTranslatorPlEn})
-
-    
 
     # Stub model/logger to avoid heavyweight init
     _stub_module(monkeypatch, "code_query_engine.model", {"Model": lambda *a, **k: object()})

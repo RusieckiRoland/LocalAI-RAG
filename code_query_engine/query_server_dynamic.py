@@ -133,6 +133,16 @@ def _parse_env_bool(raw: Optional[str]) -> Optional[bool]:
     return None
 
 
+_env_subst_pattern = re.compile(r"\$\{([A-Z0-9_]+)\}")
+
+
+def _expand_env_placeholders(raw: str) -> str:
+    text = str(raw or "")
+    if not text:
+        return ""
+    return _env_subst_pattern.sub(lambda m: str(os.getenv(m.group(1)) or ""), text).strip()
+
+
 def _resolve_app_profile() -> str:
     raw = str(os.getenv("APP_PROFILE") or "").strip().lower()
     if not raw:
@@ -211,6 +221,170 @@ except Exception:
 _mock_sql_ttl_ms = int(max(0.0, _mock_sql_ttl_hours) * 3600 * 1000)
 if _mock_sql_raw and not _development_enabled:
     py_logger.warning("mockSqlServer is enabled in config, but development mode is off; mock SQL history is disabled.")
+
+
+def _resolve_sql_runtime_cfg(runtime_cfg: dict) -> dict:
+    sql_cfg = runtime_cfg.get("sql") or {}
+    if not isinstance(sql_cfg, dict):
+        sql_cfg = {}
+
+    history_cfg = sql_cfg.get("history") or {}
+    security_cfg = sql_cfg.get("security") or {}
+    if not isinstance(history_cfg, dict):
+        history_cfg = {}
+    if not isinstance(security_cfg, dict):
+        security_cfg = {}
+
+    database_type = str(sql_cfg.get("database_type") or sql_cfg.get("type") or "").strip().lower()
+    history_url = _expand_env_placeholders(str(history_cfg.get("connection_url") or history_cfg.get("url") or ""))
+    security_url = _expand_env_placeholders(str(security_cfg.get("connection_url") or security_cfg.get("url") or ""))
+    enabled_raw = sql_cfg.get("enabled")
+    enabled = bool(enabled_raw) if isinstance(enabled_raw, bool) else False
+
+    if (history_url or security_url or database_type) and not enabled:
+        enabled = True
+
+    timeout_raw = sql_cfg.get("connect_timeout_seconds")
+    try:
+        connect_timeout_seconds = int(timeout_raw if timeout_raw is not None else 5)
+    except Exception:
+        connect_timeout_seconds = 5
+    connect_timeout_seconds = max(1, min(120, connect_timeout_seconds))
+
+    return {
+        "enabled": enabled,
+        "database_type": database_type,
+        "history_url": history_url,
+        "security_url": security_url,
+        "connect_timeout_seconds": connect_timeout_seconds,
+    }
+
+
+def _sql_connect_args(database_type: str, timeout_seconds: int) -> dict:
+    db_type = str(database_type or "").strip().lower()
+    if db_type == "postgres":
+        return {"connect_timeout": int(timeout_seconds)}
+    if db_type == "mysql":
+        return {"connect_timeout": int(timeout_seconds)}
+    if db_type == "mssql":
+        return {"timeout": int(timeout_seconds)}
+    return {}
+
+
+def _verify_sql_connection(*, database_type: str, url: str, timeout_seconds: int, role: str) -> None:
+    db_type = str(database_type or "").strip().lower()
+    if db_type not in ("postgres", "mysql", "mssql"):
+        raise RuntimeError("sql.database_type must be one of: postgres, mysql, mssql")
+    if not str(url or "").strip():
+        raise RuntimeError(f"sql.{role}.connection_url is required when SQL mode is enabled")
+
+    try:
+        from sqlalchemy import create_engine, text  # type: ignore
+    except Exception as ex:
+        raise RuntimeError(f"SQLAlchemy is required for SQL connectivity checks ({role}): {ex}") from ex
+
+    connect_args = _sql_connect_args(db_type, timeout_seconds)
+    engine = create_engine(url, pool_pre_ping=True, connect_args=connect_args)
+    try:
+        with engine.connect() as conn:
+            conn.execute(text("SELECT 1"))
+            if role == "history":
+                if db_type == "postgres":
+                    exists = conn.execute(text("SELECT to_regclass('chat_sessions') IS NOT NULL")).scalar()
+                elif db_type == "mysql":
+                    exists = conn.execute(
+                        text(
+                            "SELECT COUNT(*) FROM information_schema.tables "
+                            "WHERE table_schema = DATABASE() AND table_name = 'chat_sessions'"
+                        )
+                    ).scalar()
+                    exists = bool(int(exists or 0) > 0)
+                else:
+                    exists = conn.execute(
+                        text(
+                            "SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES "
+                            "WHERE TABLE_NAME = 'chat_sessions'"
+                        )
+                    ).scalar()
+                    exists = bool(int(exists or 0) > 0)
+                if not bool(exists):
+                    raise RuntimeError("SQL history schema missing required table: chat_sessions")
+
+            if role == "security":
+                if db_type == "postgres":
+                    groups_exists = conn.execute(text("SELECT to_regclass('security.groups') IS NOT NULL")).scalar()
+                    cfg_exists = conn.execute(text("SELECT to_regclass('security.configuration_versions') IS NOT NULL")).scalar()
+                elif db_type == "mysql":
+                    groups_exists = conn.execute(
+                        text(
+                            "SELECT COUNT(*) FROM information_schema.tables "
+                            "WHERE table_schema = DATABASE() AND table_name = 'security_groups'"
+                        )
+                    ).scalar()
+                    cfg_exists = conn.execute(
+                        text(
+                            "SELECT COUNT(*) FROM information_schema.tables "
+                            "WHERE table_schema = DATABASE() AND table_name = 'security_configuration_versions'"
+                        )
+                    ).scalar()
+                    groups_exists = bool(int(groups_exists or 0) > 0)
+                    cfg_exists = bool(int(cfg_exists or 0) > 0)
+                else:
+                    groups_exists = conn.execute(
+                        text(
+                            "SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES "
+                            "WHERE TABLE_SCHEMA = 'security' AND TABLE_NAME = 'groups'"
+                        )
+                    ).scalar()
+                    cfg_exists = conn.execute(
+                        text(
+                            "SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES "
+                            "WHERE TABLE_SCHEMA = 'security' AND TABLE_NAME = 'configuration_versions'"
+                        )
+                    ).scalar()
+                    groups_exists = bool(int(groups_exists or 0) > 0)
+                    cfg_exists = bool(int(cfg_exists or 0) > 0)
+                if not bool(groups_exists):
+                    raise RuntimeError("SQL security schema missing required table for groups")
+                if not bool(cfg_exists):
+                    raise RuntimeError("SQL security schema missing required table: configuration_versions")
+    finally:
+        try:
+            engine.dispose()
+        except Exception:
+            pass
+
+
+def _enforce_sql_connectivity_or_fallback(runtime_cfg: dict) -> tuple[bool, dict]:
+    sql_state = _resolve_sql_runtime_cfg(runtime_cfg)
+    sql_enabled = bool(sql_state.get("enabled"))
+
+    if _app_profile == "prod":
+        if not sql_enabled:
+            raise RuntimeError("APP_PROFILE=prod requires SQL configuration in config (sql.enabled=true)")
+    elif not sql_enabled:
+        # dev/test: no SQL configured => keep current mock behavior
+        return False, sql_state
+
+    database_type = str(sql_state.get("database_type") or "").strip().lower()
+    history_url = str(sql_state.get("history_url") or "").strip()
+    security_url = str(sql_state.get("security_url") or "").strip()
+    timeout_seconds = int(sql_state.get("connect_timeout_seconds") or 5)
+
+    if not database_type:
+        raise RuntimeError("sql.database_type is required when SQL mode is enabled")
+    if not history_url:
+        raise RuntimeError("sql.history.connection_url is required when SQL mode is enabled")
+    if not security_url:
+        raise RuntimeError("sql.security.connection_url is required when SQL mode is enabled")
+
+    _verify_sql_connection(database_type=database_type, url=history_url, timeout_seconds=timeout_seconds, role="history")
+    _verify_sql_connection(database_type=database_type, url=security_url, timeout_seconds=timeout_seconds, role="security")
+    py_logger.info("SQL connectivity check passed (database_type=%s).", database_type)
+    return True, sql_state
+
+
+_sql_enabled, _sql_runtime = _enforce_sql_connectivity_or_fallback(_runtime_cfg)
 
 
 def _load_fake_users(runtime_cfg: dict) -> dict[str, dict]:
@@ -576,15 +750,8 @@ def _resolve_cfg_path(p: str) -> str:
         return v
     return os.path.join(PROJECT_ROOT, v)
 
-_env_var_pattern = re.compile(r"^\s*\$\{([A-Z0-9_]+)\}\s*$")
-
 def _resolve_env_var(raw: str) -> str:
-    if not raw:
-        return ""
-    m = _env_var_pattern.match(raw)
-    if not m:
-        return raw
-    return (os.getenv(m.group(1)) or "").strip()
+    return _expand_env_placeholders(raw)
 
 
 _server_llm_enabled = bool(_runtime_cfg.get("serverLLM"))
@@ -890,7 +1057,7 @@ CORS(app, origins=ALLOWED_ORIGINS)
 def _history_unavailable():
     return jsonify({
         "error": "history_persistence_unavailable",
-        "message": "History persistence is not available. Enable development mode and mockSqlServer in config.",
+        "message": "History persistence is not available. In dev/test set mockSqlServer=true or configure SQL in config.sql.",
     }), 503
 
 

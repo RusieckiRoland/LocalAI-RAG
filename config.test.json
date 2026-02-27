@@ -140,5 +140,16 @@
         "user_level": 20
       }
     }
-  ]
+  ],
+  "sql": {
+    "enabled": false,
+    "database_type": "",
+    "connect_timeout_seconds": 5,
+    "history": {
+      "connection_url": ""
+    },
+    "security": {
+      "connection_url": ""
+    }
+  }
 }

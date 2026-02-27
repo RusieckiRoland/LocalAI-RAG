@@ -119,5 +119,16 @@
         "allow_missing_doc_level": false
       }
     }
+  },
+  "sql": {
+    "enabled": true,
+    "database_type": "postgres",
+    "connect_timeout_seconds": 5,
+    "history": {
+      "connection_url": "${CHAT_HISTORY_DB_URL}"
+    },
+    "security": {
+      "connection_url": "${SECURITY_DB_URL}"
+    }
   }
 }

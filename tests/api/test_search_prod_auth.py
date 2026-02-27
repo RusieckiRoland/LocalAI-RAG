@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib
+import os
 import sys
 import types
 from typing import Any, Dict
@@ -18,6 +19,8 @@ def _stub_module(monkeypatch: pytest.MonkeyPatch, module_name: str, attrs: Dict[
 def _import_query_server_dynamic(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("APP_USE_REDIS", "false")
     monkeypatch.setenv("IDP_AUTH_ENABLED", "0")
+    if not os.getenv("APP_PROFILE"):
+        monkeypatch.setenv("APP_PROFILE", "dev")
 
     _stub_module(monkeypatch, "common.markdown_translator_en_pl", {"MarkdownTranslator": lambda *a, **k: object()})
     _stub_module(monkeypatch, "common.translator_pl_en", {"TranslatorPlEn": lambda *a, **k: object(), "Translator": lambda *a, **k: object()})
