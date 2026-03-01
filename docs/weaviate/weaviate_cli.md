@@ -1,4 +1,6 @@
 # Weaviate CLI (import + snapshot browsing + SnapshotSets)
+Wiki: [Home](../../wiki/Home.md)
+
 
 This document describes the **CLI tools** used to:
 - **import** repository bundles (snapshots) into Weaviate

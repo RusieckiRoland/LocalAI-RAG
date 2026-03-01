@@ -1,4 +1,6 @@
 # External LLM Servers Security Policy
+Wiki: [Home](../../wiki/Home.md)
+
 
 This document defines the security rules for selecting an external LLM server (from `ServersLLM.json`) before each request.
 

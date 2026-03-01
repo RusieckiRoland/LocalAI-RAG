@@ -1,4 +1,6 @@
 # Logging in LocalAI-RAG
+Wiki: [Home](../../wiki/Home.md)
+
 
 This document describes the **target, consistent** logging model in LocalAI-RAG:
 - **regular application logging** (levels, `app.log`),

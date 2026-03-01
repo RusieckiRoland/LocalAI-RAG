@@ -1,4 +1,6 @@
 # Weaviate – recommended starter commands (test repos)
+Wiki: [Home](../../wiki/Home.md)
+
 
 This document shows the **typical command flow** for working with Weaviate in this repo, using the **test bundles** (fake snapshots) that are committed for future tests.
 

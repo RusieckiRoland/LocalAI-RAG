@@ -1,4 +1,6 @@
 # ADR-0007: Static pipeline config with controlled dynamic runtime directives via `inbox_dispatcher`
+Wiki: [Home](../../wiki/Home.md)
+
 
 - **Status:** Accepted  
 - **Date:** 2026-02-15  

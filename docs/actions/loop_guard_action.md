@@ -1,4 +1,6 @@
 # `loop_guard`
+Wiki: [Home](../../wiki/Home.md)
+
 
 ## Purpose
 `loop_guard` limits how many times the pipeline can loop through follow-up/retrieval cycles in a single run.

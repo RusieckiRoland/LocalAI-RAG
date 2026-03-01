@@ -1,5 +1,7 @@
 # 🧠 GPU-Accelerated RAG with Weaviate (BYOV) + LLaMA
 
+Wiki: [Home](wiki/Home.md)
+
 **Security-aware, local-oriented RAG for code repositories (Weaviate BYOV + LLM via llama.cpp).**
 
 This is a **full-featured RAG server** (retrieval + generation) that can use **external LLMs like any other RAG** — but it is designed to **enforce security policies** and **reduce the risk of accidental data leakage** when working with **classified or restricted content**.

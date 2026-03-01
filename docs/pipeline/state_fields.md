@@ -1,4 +1,6 @@
 # PipelineState — field purpose and meaning
+Wiki: [Home](../../wiki/Home.md)
+
 
 This document explains what `PipelineState` is and how to interpret its fields.
 

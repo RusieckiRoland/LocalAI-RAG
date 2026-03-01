@@ -1,4 +1,6 @@
 # Fork + Parallel + Merge Contract
+Wiki: [Home](../../wiki/Home.md)
+
 
 This document defines the snapshot-based comparison flow using:
 - `fork_action`

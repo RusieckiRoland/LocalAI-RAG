@@ -1,4 +1,6 @@
 # Retrieval contract coverage checklist
+Wiki: [Home](../../wiki/Home.md)
+
 
 This document compares requirements from `docs/contracts/retrieval_contract.md` with the integration tests described in `docs/tests/retrieval_integration_tests.md`.
 It summarizes coverage gaps and missing tests.

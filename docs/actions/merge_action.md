@@ -1,4 +1,6 @@
 # `merge_action`
+Wiki: [Home](../../wiki/Home.md)
+
 
 ## Purpose
 Collects retrieval results per snapshot, clears retrieval state, and builds a comparison context.

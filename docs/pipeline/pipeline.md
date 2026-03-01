@@ -1,4 +1,6 @@
 # Pipeline settings, inheritance, and overrides
+Wiki: [Home](../../wiki/Home.md)
+
 
 This document focuses on **pipeline-level settings**, **inheritance**, and **override rules**.  
 It intentionally does not describe action-specific fields.

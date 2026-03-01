@@ -1,4 +1,6 @@
 # Flagi i tryby uruchomieniowe (`prod` / `dev` / `test`)
+Wiki: [Home](../../wiki/Home.md)
+
 
 Dokument opisuje, które **flagi/parametry** sterują zachowaniem aplikacji LocalAI‑RAG, skąd są wczytywane (ENV vs `config*.json`) i jak różnią się w profilach `prod|dev|test`.
 

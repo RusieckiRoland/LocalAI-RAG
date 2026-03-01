@@ -1,4 +1,6 @@
 # pipeline_to_puml – Expansion Plan (DRAFT / NOTES)
+Wiki: [Home](../../wiki/Home.md)
+
 
 Location: `code_query_engine/tools/pipeline_to_puml.py`  
 Status: **VERY EARLY DRAFT – NOT IMPLEMENTED, NOT TESTED**

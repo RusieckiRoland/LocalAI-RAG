@@ -1,4 +1,6 @@
 # Dynamic Dispatcher Contract (Pipeline Inbox Messaging)
+Wiki: [Home](../../wiki/Home.md)
+
 
 **Version:** 1.0  
 **Date:** 2026-02-15  

@@ -1,4 +1,6 @@
 # Permissions and Identity Provider Policy
+Wiki: [Home](../../wiki/Home.md)
+
 
 This document describes how identity, permissions, and access control are connected in the application.
 

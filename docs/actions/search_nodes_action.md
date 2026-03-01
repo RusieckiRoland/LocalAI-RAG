@@ -1,4 +1,6 @@
 # `search_nodes` action
+Wiki: [Home](../../wiki/Home.md)
+
 
 This document explains how to use the **`search_nodes`** action in a YAML pipeline.
 

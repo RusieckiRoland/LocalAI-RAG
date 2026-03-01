@@ -1,4 +1,6 @@
 # `fetch_node_texts` 
+Wiki: [Home](../../wiki/Home.md)
+
 
 ## Purpose
 

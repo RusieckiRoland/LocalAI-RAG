@@ -1,4 +1,6 @@
 # ADR-0004: Replace FAISS-based retrieval with Weaviate
+Wiki: [Home](../../wiki/Home.md)
+
 
 - **Status:** Accepted  
 - **Date:** 2026-02-01  

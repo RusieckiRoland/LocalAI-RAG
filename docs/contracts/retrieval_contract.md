@@ -1,4 +1,6 @@
 # Data Contract for `PipelineState` (Retrieval + Graph + Rerank)
+Wiki: [Home](../../wiki/Home.md)
+
 
 This document defines the **data contract** between three retrieval-pipeline actions:
 

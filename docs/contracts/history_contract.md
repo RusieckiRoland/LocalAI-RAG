@@ -1,4 +1,6 @@
 # History Contract
+Wiki: [Home](../../wiki/Home.md)
+
 
 This document defines the current rules for conversation history storage, trimming, and usage.
 It is split into production rules (expected long-term behavior) and development rules (mock-only).

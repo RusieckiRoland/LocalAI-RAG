@@ -1,4 +1,6 @@
 # TranslateInIfNeededAction --- contract and usage (translate_in_if_needed)
+Wiki: [Home](../../wiki/Home.md)
+
 
 Updated: 2026-02-03
 

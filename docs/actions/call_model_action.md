@@ -1,4 +1,6 @@
 # `call_model` (EN)
+Wiki: [Home](../../wiki/Home.md)
+
 
 ## Purpose
 `call_model` is a pipeline action that **invokes the LLM**.

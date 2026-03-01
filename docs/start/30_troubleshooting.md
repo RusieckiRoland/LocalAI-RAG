@@ -1,4 +1,6 @@
 # Troubleshooting
+Wiki: [Home](../../wiki/Home.md)
+
 
 * **`llama-cpp-python` runs on CPU**: You likely installed the CPU wheel. Reinstall a **CUDA** wheel matching your CUDA (e.g., `cu121`). Ensure `verbose=True` and check logs.
 * **`nvidia-smi` not found in WSL**: Update WSL and Windows NVIDIA drivers; reboot and retry.

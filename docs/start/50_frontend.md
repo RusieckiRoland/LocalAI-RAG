@@ -1,4 +1,6 @@
 # Frontend development notes
+Wiki: [Home](../../wiki/Home.md)
+
 
 The frontend (`frontend/RAG.html`) is currently a **single-file implementation** for ease of development and testing. It includes inline CSS, JavaScript, and dependencies loaded via CDNs (e.g., TailwindCSS, Highlight.js, Marked.js). This setup allows quick iteration and local testing without build tools, but it is **not production-ready**. For deployment in a production environment, perform the following steps to optimize, secure, and maintain the code:
 

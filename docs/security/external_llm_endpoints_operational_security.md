@@ -1,4 +1,6 @@
 # External LLM endpoints — operational security controls
+Wiki: [Home](../../wiki/Home.md)
+
 
 ## Purpose and scope
 

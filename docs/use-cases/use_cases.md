@@ -1,4 +1,6 @@
 # LocalAI-RAG — Verified Runtime Use Cases
+Wiki: [Home](../../wiki/Home.md)
+
 
 Date: 2026-02-22
 

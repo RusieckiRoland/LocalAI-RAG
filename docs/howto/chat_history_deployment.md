@@ -1,4 +1,6 @@
 # Chat History Deployment
+Wiki: [Home](../../wiki/Home.md)
+
 
 This document describes how to deploy the SQL-backed chat history subsystem (tenant + soft-delete + tagging).
 

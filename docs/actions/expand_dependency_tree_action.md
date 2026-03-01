@@ -1,4 +1,6 @@
 # `expand_dependency_tree`
+Wiki: [Home](../../wiki/Home.md)
+
 
 ## Purpose
 `expand_dependency_tree` takes **seed node IDs** from `state.retrieval_seed_nodes` and asks the configured

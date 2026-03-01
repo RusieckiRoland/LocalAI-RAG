@@ -1,4 +1,6 @@
 # RepeatQueryGuardAction — contract and usage (anti-repeat retrieval query)
+Wiki: [Home](../../wiki/Home.md)
+
 
 Updated: 2026-02-15
 

@@ -1,4 +1,6 @@
 # Mock server (Node.js) — running it
+Wiki: [Home](../../wiki/Home.md)
+
 
 This mock pretends to be a backend for `page.html`:
 - returns `/app-config` (consultants + branch picker mode),

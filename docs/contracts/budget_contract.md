@@ -1,4 +1,6 @@
 # Budget Contract (Pipeline + Model Limits)
+Wiki: [Home](../../wiki/Home.md)
+
 
 This document defines the **token budget contract** between:
 - model configuration (`config.json`),

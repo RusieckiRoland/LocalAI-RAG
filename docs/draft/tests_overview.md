@@ -1,4 +1,6 @@
 # Test Structure and Failure Map
+Wiki: [Home](../../wiki/Home.md)
+
 
 This document describes how tests in the repository are organized, what each group is responsible for, and which tests are expected to fail when specific parts of the pipeline contract change.
 

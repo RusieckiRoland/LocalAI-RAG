@@ -1,4 +1,6 @@
 # Conversation History Service — Contract (EN)
+Wiki: [Home](../../wiki/Home.md)
+
 
 ## Goal
 Provide a professional, scalable way to persist and replay conversation history with two scopes:

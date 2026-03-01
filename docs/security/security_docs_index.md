@@ -1,4 +1,6 @@
 # Security Documentation Index
+Wiki: [Home](../../wiki/Home.md)
+
 
 ## Core Documents (this folder)
 1. `external_llm_servers_security_policy.md`  

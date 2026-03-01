@@ -1,4 +1,6 @@
 # HistoryManager – Design & Implementation Plan
+Wiki: [Home](../../wiki/Home.md)
+
 
 ## 1. Problem Statement
 

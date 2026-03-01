@@ -1,4 +1,6 @@
 # ADR-0006: Multi-tenancy in Weaviate via `snapshot_id` (tenant) and `snapshot_set` (comparison set)
+Wiki: [Home](../../wiki/Home.md)
+
 
 - **Status:** Accepted  
 - **Date:** 2026-02-09  

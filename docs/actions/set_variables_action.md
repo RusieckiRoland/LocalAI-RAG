@@ -1,4 +1,6 @@
 # SetVariablesAction --- contract and usage (set_variables)
+Wiki: [Home](../../wiki/Home.md)
+
 
 Updated: 2026-01-13
 

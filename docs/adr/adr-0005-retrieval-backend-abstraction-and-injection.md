@@ -1,4 +1,6 @@
 # ADR-0005: Pluggable Retrieval Backend via `IRetrievalBackend` (Weaviate default)
+Wiki: [Home](../../wiki/Home.md)
+
 
 - **Status:** Accepted  
 - **Date:** 2026-02-02  

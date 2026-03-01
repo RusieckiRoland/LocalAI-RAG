@@ -1,4 +1,6 @@
 # ADR-0002: Design by Contract for YAML pipelines and model-output routing
+Wiki: [Home](../../wiki/Home.md)
+
 
 - **Status:** Proposed  
 - **Date:** 2025-12-22  

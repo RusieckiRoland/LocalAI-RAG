@@ -1,4 +1,6 @@
 # JsonDecisionRouterAction — contract and usage (JSON decision-based)
+Wiki: [Home](../../wiki/Home.md)
+
 
 Updated: 2026-02-14
 

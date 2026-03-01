@@ -1,4 +1,6 @@
 # .NET indexing and branch preparation
+Wiki: [Home](../../wiki/Home.md)
+
 
 ## To index your .NET solution
 

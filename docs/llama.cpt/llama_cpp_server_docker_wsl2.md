@@ -1,4 +1,6 @@
 # llama.cpp Server (CUDA) on WSL2 + Docker — Step-by-step
+Wiki: [Home](../../wiki/Home.md)
+
 
 This guide describes how to run **llama.cpp HTTP server** (the `llama-server` binary) in Docker on **WSL2 Ubuntu 22.04** with **NVIDIA GPU** acceleration.
 

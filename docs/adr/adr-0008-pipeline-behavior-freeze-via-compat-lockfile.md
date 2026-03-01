@@ -1,4 +1,6 @@
 # ADR-0008: Pipeline behavior freeze via compat lockfile
+Wiki: [Home](../../wiki/Home.md)
+
 
 - **Status:** Accepted  
 - **Date:** 2026-02-22  

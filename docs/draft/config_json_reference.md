@@ -1,4 +1,6 @@
 # LocalAI-RAG — config.json reference
+Wiki: [Home](../../wiki/Home.md)
+
 
 This document explains the fields in `config.json` used by LocalAI-RAG.  
 Goal: quickly understand **what each field means**, where logs go, and how logging (including AI logs) is configured.

@@ -1,4 +1,6 @@
 # PrefixRouterAction — contract and usage (routes-based)
+Wiki: [Home](../../wiki/Home.md)
+
 
 Updated: 2026-01-13
 

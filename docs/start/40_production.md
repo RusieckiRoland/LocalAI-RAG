@@ -1,4 +1,6 @@
 # Notes for production
+Wiki: [Home](../../wiki/Home.md)
+
 
 * Use a **production WSGI server** (e.g., Gunicorn/uWSGI) instead of the Flask dev server (`flask run`). Disable debug, load environment variables via `python-dotenv` if needed, and place a reverse proxy (Nginx/Traefik) in front for TLS and compression.
 * **Model integrity (checksums):** always verify the SHA‑256 of downloaded weights before startup.

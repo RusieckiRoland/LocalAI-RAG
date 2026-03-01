@@ -1,4 +1,6 @@
 # BM25 `match_operator` (AND/OR) in this pipeline
+Wiki: [Home](../../wiki/Home.md)
+
 
 ## What it is
 For `search_type: "bm25"` the pipeline supports an optional request parameter:

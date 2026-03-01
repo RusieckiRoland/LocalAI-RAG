@@ -1,4 +1,6 @@
 # `load_conversation_history`
+Wiki: [Home](../../wiki/Home.md)
+
 
 ## Purpose
 `load_conversation_history` loads previous conversation history and prepares it for prompt injection.

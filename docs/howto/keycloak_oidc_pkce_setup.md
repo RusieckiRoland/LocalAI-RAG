@@ -1,4 +1,6 @@
 # Keycloak OIDC (PKCE) Setup for LocalAI-RAG
+Wiki: [Home](../../wiki/Home.md)
+
 
 This guide explains how to configure Keycloak so that:
 - the browser UI can log in using **OIDC Authorization Code Flow with PKCE**, and

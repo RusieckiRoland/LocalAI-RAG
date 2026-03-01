@@ -1,4 +1,6 @@
 # Retrieval Integration Test Specification (Implementation-Oriented)
+Wiki: [Home](../../wiki/Home.md)
+
 
 ## 1) Overview
 This document specifies an implementation-oriented integration test suite for the retrieval subsystem backed by Weaviate. It is designed to be directly usable for implementing or validating tests in this repository.

@@ -1,4 +1,6 @@
 # Conversation history — switching from mock to real stores
+Wiki: [Home](../../wiki/Home.md)
+
 
 This project supports conversation history with two scopes and two mocks:
 

@@ -1,4 +1,6 @@
 # AddCommandAction --- contract and usage (add_command_action)
+Wiki: [Home](../../wiki/Home.md)
+
 
 Updated: 2026-02-03
 

@@ -1,4 +1,6 @@
 # ADR-0003: Retrieval Model and Multi-Stage Retrieval Pipeline
+Wiki: [Home](../../wiki/Home.md)
+
 
 - **Status:** Proposed
 - **Date:** 2026-01-15

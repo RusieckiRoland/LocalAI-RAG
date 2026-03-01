@@ -1,4 +1,6 @@
 # Frontend Integration Contract (HTTP + UI)
+Wiki: [Home](../../wiki/Home.md)
+
 
 ## 1. Purpose
 This document defines the complete contract needed to build any web frontend that works with this server:

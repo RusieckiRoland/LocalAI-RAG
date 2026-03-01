@@ -1,4 +1,6 @@
 # ADR-0001: Canonical node identity (chunk_id/node_key) as the seed for graph-augmented retrieval
+Wiki: [Home](../../wiki/Home.md)
+
 
 - **Status:** Accepted  
 - **Date:** 2025-12-21  

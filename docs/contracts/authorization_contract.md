@@ -1,4 +1,6 @@
 # Authorization Contract (DEV → PROD)
+Wiki: [Home](../../wiki/Home.md)
+
 
 **Version:** 0.7  
 **Date:** 2026-02-03  

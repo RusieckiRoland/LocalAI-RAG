@@ -1,4 +1,6 @@
 # Retrieval Integration Test Expectations (Fake Snapshot)
+Wiki: [Home](../../wiki/Home.md)
+
 
 This document defines **expected outcomes** for the integration suite under:
 - `tests/integration/retrival/test_bootstrap.py`

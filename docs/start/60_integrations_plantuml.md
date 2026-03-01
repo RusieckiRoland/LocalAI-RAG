@@ -1,4 +1,6 @@
 # Integration: PlantUML (UML Diagrams)
+Wiki: [Home](../../wiki/Home.md)
+
 
 * **Run the local server (Docker):**
 

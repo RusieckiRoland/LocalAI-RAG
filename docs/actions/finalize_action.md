@@ -1,4 +1,6 @@
 # `finalize`
+Wiki: [Home](../../wiki/Home.md)
+
 
 ## Purpose
 `finalize` materializes the user-visible answer into `state.final_answer` and optionally persists/logs the turn.

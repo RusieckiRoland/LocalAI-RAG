@@ -1,4 +1,6 @@
 # `inbox_dispatcher` action
+Wiki: [Home](../../wiki/Home.md)
+
 
 ## Purpose
 `inbox_dispatcher` enables **dynamic, model-suggested configuration** for downstream pipeline steps using the built-in per-run inbox/queue (`PipelineState.inbox`).

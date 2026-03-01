@@ -1,4 +1,6 @@
 # Weaviate Local Setup (Weaviate-only / BYOV)
+Wiki: [Home](../../wiki/Home.md)
+
 
 This repository uses **Weaviate as the only retrieval backend**.
 
