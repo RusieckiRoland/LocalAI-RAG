@@ -61,6 +61,23 @@ If you see a warning about `sacremoses`, install it (needed for some MarianMT mo
 pip install sacremoses
 ```
 
+### VS Code interpreter selection
+
+If you run or debug the server from VS Code, select the Python interpreter for the current workspace
+after creating or updating the Conda environment:
+
+1. Open the repository folder in VS Code.
+2. Run `Python: Select Interpreter`.
+3. Choose the Conda environment you want to use for this workspace.
+   - If you created the environment from `environment.yml`, that is typically `rag-weaviate`.
+   - If you intentionally reuse another environment name, such as `rag-faiss2`, select that one instead.
+4. Reload the VS Code window after changing the interpreter.
+
+Important:
+- the selected VS Code interpreter is what Run/Debug uses;
+- `launch.json` does not choose the interpreter by itself;
+- activating an environment in a regular terminal does not automatically change the interpreter already selected for the workspace.
+
 ### `environment.yml` (reference)
 
 ```yaml
@@ -96,13 +113,20 @@ dependencies:
       - jinja2            # ✅ Dependency also needed by llama-cpp-python
       - typing-extensions # ✅ Safe for PyTorch and llama-cpp-python
       - python-dotenv
+      - sqlalchemy
+      - psycopg[binary]
       - weaviate-client
+      - pyjwt[crypto]
 ```
 
 > ⚙️ **Note:**  
 > The `environment.yml` shown above is **for reference only**.  
 > It is meant to illustrate the key dependencies but may become outdated as the project evolves.  
 > Always use and update the **actual `environment.yml` file** in the repository when creating or updating your Conda environment.
+
+For PostgreSQL-backed history/security, the project environment includes `psycopg[binary]`.
+This matches the configured SQLAlchemy URLs (`postgresql+psycopg://...`) and avoids requiring
+manual installation of `libpq` or PostgreSQL build tooling on supported platforms.
 
 ---
 

@@ -30,12 +30,22 @@ The `permissions` section in `config.json` defines global security behavior:
 ## Access Context Derivation
 User access context is derived from:
 - JWT claims (via identity provider)
-- Optional `security_conf/auth_policies.json` (group/role mappings)
+- SQL security tables when the `security` schema/database is present and populated
+- Fallback `security_conf/auth_policies.json` + `security_conf/claim_group_mappings.json`
+  when SQL security is intentionally absent or unavailable in non-production profiles
 
 The resulting access context drives retrieval filters:
 - `acl_tags_any`
 - `classification_labels_all`
 - clearance level (if configured)
+
+## SQL Security Source
+When `config.sql` is enabled:
+- the server always uses SQL for chat history,
+- the server tries to use SQL for security policies,
+- if the SQL security schema exists but is empty, it is bootstrapped from `security_conf/*`,
+- if the SQL security schema is missing entirely, the server falls back to `security_conf/*`,
+- in `APP_PROFILE=prod`, a partially populated or broken SQL security schema is a hard startup error.
 
 ## Enforcement
 The access context is enforced in:

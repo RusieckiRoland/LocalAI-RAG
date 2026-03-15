@@ -1,5 +1,157 @@
+-- Microsoft SQL Server DDL for LocalAI-RAG durable history + security.
+-- Creates two schemas in a single database:
+--   - history
+--   - security
+
+IF NOT EXISTS (SELECT 1 FROM sys.schemas WHERE name = N'history')
+  EXEC(N'CREATE SCHEMA history AUTHORIZATION dbo;');
+
 IF NOT EXISTS (SELECT 1 FROM sys.schemas WHERE name = N'security')
   EXEC(N'CREATE SCHEMA security AUTHORIZATION dbo;');
+
+-- ------------------------------------------------------------------
+-- History schema
+-- ------------------------------------------------------------------
+
+IF OBJECT_ID(N'history.chat_tenants', N'U') IS NULL
+BEGIN
+  CREATE TABLE history.chat_tenants (
+    id NVARCHAR(36) NOT NULL PRIMARY KEY,
+    name NVARCHAR(200) NOT NULL,
+    created_at DATETIME2 NOT NULL CONSTRAINT df_history_chat_tenants_created_at DEFAULT SYSUTCDATETIME()
+  );
+END;
+
+IF OBJECT_ID(N'history.chat_sessions', N'U') IS NULL
+BEGIN
+  CREATE TABLE history.chat_sessions (
+    id NVARCHAR(36) NOT NULL PRIMARY KEY,
+    tenant_id NVARCHAR(36) NOT NULL,
+    user_id NVARCHAR(80) NOT NULL,
+    title NVARCHAR(200) NULL,
+    consultant_id NVARCHAR(80) NULL,
+    message_count INT NOT NULL CONSTRAINT df_history_chat_sessions_message_count DEFAULT 0,
+    created_at DATETIME2 NOT NULL CONSTRAINT df_history_chat_sessions_created_at DEFAULT SYSUTCDATETIME(),
+    updated_at DATETIME2 NOT NULL CONSTRAINT df_history_chat_sessions_updated_at DEFAULT SYSUTCDATETIME(),
+    deleted_at DATETIME2 NULL,
+    deleted_by NVARCHAR(80) NULL,
+    CONSTRAINT fk_history_chat_sessions_tenant FOREIGN KEY (tenant_id) REFERENCES history.chat_tenants(id)
+  );
+END;
+
+IF NOT EXISTS (
+  SELECT 1
+  FROM sys.indexes
+  WHERE object_id = OBJECT_ID(N'history.chat_sessions')
+    AND name = N'ix_chat_sessions_tenant_user_updated'
+)
+BEGIN
+  CREATE INDEX ix_chat_sessions_tenant_user_updated
+    ON history.chat_sessions (tenant_id, user_id, updated_at);
+END;
+
+IF NOT EXISTS (
+  SELECT 1
+  FROM sys.indexes
+  WHERE object_id = OBJECT_ID(N'history.chat_sessions')
+    AND name = N'ix_chat_sessions_tenant_deleted'
+)
+BEGIN
+  CREATE INDEX ix_chat_sessions_tenant_deleted
+    ON history.chat_sessions (tenant_id, deleted_at);
+END;
+
+IF OBJECT_ID(N'history.chat_messages', N'U') IS NULL
+BEGIN
+  CREATE TABLE history.chat_messages (
+    id NVARCHAR(36) NOT NULL PRIMARY KEY,
+    session_id NVARCHAR(36) NOT NULL,
+    tenant_id NVARCHAR(36) NOT NULL,
+    ts DATETIME2 NOT NULL CONSTRAINT df_history_chat_messages_ts DEFAULT SYSUTCDATETIME(),
+    q NVARCHAR(MAX) NULL,
+    a NVARCHAR(MAX) NULL,
+    meta_json NVARCHAR(MAX) NULL,
+    deleted_at DATETIME2 NULL,
+    deleted_by NVARCHAR(80) NULL,
+    CONSTRAINT fk_history_chat_messages_session FOREIGN KEY (session_id) REFERENCES history.chat_sessions(id),
+    CONSTRAINT fk_history_chat_messages_tenant FOREIGN KEY (tenant_id) REFERENCES history.chat_tenants(id)
+  );
+END;
+
+IF NOT EXISTS (
+  SELECT 1
+  FROM sys.indexes
+  WHERE object_id = OBJECT_ID(N'history.chat_messages')
+    AND name = N'ix_chat_messages_session_ts'
+)
+BEGIN
+  CREATE INDEX ix_chat_messages_session_ts
+    ON history.chat_messages (session_id, ts);
+END;
+
+IF NOT EXISTS (
+  SELECT 1
+  FROM sys.indexes
+  WHERE object_id = OBJECT_ID(N'history.chat_messages')
+    AND name = N'ix_chat_messages_tenant_deleted'
+)
+BEGIN
+  CREATE INDEX ix_chat_messages_tenant_deleted
+    ON history.chat_messages (tenant_id, deleted_at);
+END;
+
+IF OBJECT_ID(N'history.chat_tags', N'U') IS NULL
+BEGIN
+  CREATE TABLE history.chat_tags (
+    id NVARCHAR(36) NOT NULL PRIMARY KEY,
+    tenant_id NVARCHAR(36) NOT NULL,
+    name NVARCHAR(80) NOT NULL,
+    created_at DATETIME2 NOT NULL CONSTRAINT df_history_chat_tags_created_at DEFAULT SYSUTCDATETIME(),
+    CONSTRAINT uq_chat_tags_tenant_name UNIQUE (tenant_id, name),
+    CONSTRAINT fk_history_chat_tags_tenant FOREIGN KEY (tenant_id) REFERENCES history.chat_tenants(id)
+  );
+END;
+
+IF NOT EXISTS (
+  SELECT 1
+  FROM sys.indexes
+  WHERE object_id = OBJECT_ID(N'history.chat_tags')
+    AND name = N'ix_chat_tags_tenant_name'
+)
+BEGIN
+  CREATE INDEX ix_chat_tags_tenant_name
+    ON history.chat_tags (tenant_id, name);
+END;
+
+IF OBJECT_ID(N'history.chat_session_tags', N'U') IS NULL
+BEGIN
+  CREATE TABLE history.chat_session_tags (
+    session_id NVARCHAR(36) NOT NULL,
+    tag_id NVARCHAR(36) NOT NULL,
+    tenant_id NVARCHAR(36) NOT NULL,
+    created_at DATETIME2 NOT NULL CONSTRAINT df_history_chat_session_tags_created_at DEFAULT SYSUTCDATETIME(),
+    CONSTRAINT uq_chat_session_tags_session_tag UNIQUE (session_id, tag_id),
+    CONSTRAINT fk_history_chat_session_tags_session FOREIGN KEY (session_id) REFERENCES history.chat_sessions(id),
+    CONSTRAINT fk_history_chat_session_tags_tag FOREIGN KEY (tag_id) REFERENCES history.chat_tags(id),
+    CONSTRAINT fk_history_chat_session_tags_tenant FOREIGN KEY (tenant_id) REFERENCES history.chat_tenants(id),
+    PRIMARY KEY (session_id, tag_id)
+  );
+END;
+
+IF NOT EXISTS (
+  SELECT 1
+  FROM sys.indexes
+  WHERE object_id = OBJECT_ID(N'history.chat_session_tags')
+    AND name = N'ix_chat_session_tags_tenant'
+)
+BEGIN
+  CREATE INDEX ix_chat_session_tags_tenant
+    ON history.chat_session_tags (tenant_id);
+END;
+
+-- ------------------------------------------------------------------
+-- Security schema
+-- ------------------------------------------------------------------
 
 IF OBJECT_ID(N'security.groups', N'U') IS NULL
 BEGIN

@@ -115,13 +115,13 @@
   },
   "sql": {
     "enabled": false,
-    "database_type": "",
+    "database_type": "${SQL_DATABASE_TYPE}",
     "connect_timeout_seconds": 5,
     "history": {
-      "connection_url": ""
+      "connection_url": "${CHAT_HISTORY_DB_URL}"
     },
     "security": {
-      "connection_url": ""
+      "connection_url": "${SECURITY_DB_URL}"
     }
   }
 }

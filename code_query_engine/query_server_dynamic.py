@@ -28,9 +28,11 @@ from .log_utils import InteractionLogger
 from vector_db.weaviate_client import get_settings as get_weaviate_settings, create_client as create_weaviate_client
 from code_query_engine.pipeline.providers.weaviate_retrieval_backend import WeaviateRetrievalBackend
 from code_query_engine.pipeline.providers.weaviate_graph_provider import WeaviateGraphProvider
-from server.auth import get_default_user_access_provider, UserAccessContext
-from server.auth.policies_provider import default_json_provider
+from server.auth import DevUserAccessProvider, UserAccessContext
+from server.auth.policies_provider import AuthPoliciesProvider, default_json_provider
+from server.auth.sql_policies_provider import SqlAuthPoliciesProvider
 from server.app_config import AppConfigService, default_templates_store
+from server.chat_history.sql_store import SqlChatHistoryStore, SqlConversationHistoryStore
 from server.pipelines import PipelineAccessService, PipelineSnapshotStore
 from server.snapshots import SnapshotRegistry
 from code_query_engine.conversation_history.types import ConversationTurn
@@ -96,7 +98,9 @@ ALLOWED_ORIGINS = [
 _json_cache_lock = Lock()
 _json_cache: dict[str, tuple[float, dict]] = {}
 
-_user_access_provider = get_default_user_access_provider()
+_user_access_provider: Any = None
+_security_policies_provider: AuthPoliciesProvider = default_json_provider()
+_sql_history_store: SqlChatHistoryStore | None = None
 
 
 # ------------------------------------------------------------
@@ -203,6 +207,14 @@ if "developement" in _runtime_cfg:
     py_logger.error("runtime config: invalid key 'developement' (typo). Use 'development' instead.")
     raise ValueError("runtime config contains invalid key 'developement' (typo). Use 'development'.")
 
+
+# ------------------------------------------------------------
+# Logging (source of truth: config.json)
+# ------------------------------------------------------------
+
+_logging_cfg = logging_config_from_runtime_config(_runtime_cfg)
+configure_logging(_logging_cfg)
+
 _development_raw = _runtime_cfg.get("development", True)
 _development_enabled = bool(_development_raw)
 _development_env = _parse_env_bool(os.getenv("APP_DEVELOPMENT"))
@@ -212,6 +224,8 @@ elif _development_env is False:
     _development_enabled = False
 
 _mock_sql_raw = _runtime_cfg.get("mockSqlServer", False)
+if _app_profile == "prod" and bool(_mock_sql_raw):
+    raise RuntimeError("mockSqlServer=true is forbidden when APP_PROFILE=prod.")
 _mock_sql_enabled = bool(_mock_sql_raw) and _development_enabled
 _mock_sql_ttl_hours_raw = _runtime_cfg.get("mockSqlTtlHours", 24 * 60)
 try:
@@ -235,13 +249,13 @@ def _resolve_sql_runtime_cfg(runtime_cfg: dict) -> dict:
     if not isinstance(security_cfg, dict):
         security_cfg = {}
 
-    database_type = str(sql_cfg.get("database_type") or sql_cfg.get("type") or "").strip().lower()
+    database_type = _expand_env_placeholders(str(sql_cfg.get("database_type") or sql_cfg.get("type") or "")).lower()
     history_url = _expand_env_placeholders(str(history_cfg.get("connection_url") or history_cfg.get("url") or ""))
     security_url = _expand_env_placeholders(str(security_cfg.get("connection_url") or security_cfg.get("url") or ""))
     enabled_raw = sql_cfg.get("enabled")
     enabled = bool(enabled_raw) if isinstance(enabled_raw, bool) else False
 
-    if (history_url or security_url or database_type) and not enabled:
+    if (history_url or security_url) and not enabled:
         enabled = True
 
     timeout_raw = sql_cfg.get("connect_timeout_seconds")
@@ -271,7 +285,7 @@ def _sql_connect_args(database_type: str, timeout_seconds: int) -> dict:
     return {}
 
 
-def _verify_sql_connection(*, database_type: str, url: str, timeout_seconds: int, role: str) -> None:
+def _verify_sql_connection(*, database_type: str, url: str, timeout_seconds: int, role: str, require_schema: bool) -> None:
     db_type = str(database_type or "").strip().lower()
     if db_type not in ("postgres", "mysql", "mssql"):
         raise RuntimeError("sql.database_type must be one of: postgres, mysql, mssql")
@@ -288,9 +302,9 @@ def _verify_sql_connection(*, database_type: str, url: str, timeout_seconds: int
     try:
         with engine.connect() as conn:
             conn.execute(text("SELECT 1"))
-            if role == "history":
+            if role == "history" and require_schema:
                 if db_type == "postgres":
-                    exists = conn.execute(text("SELECT to_regclass('chat_sessions') IS NOT NULL")).scalar()
+                    exists = conn.execute(text("SELECT to_regclass('history.chat_sessions') IS NOT NULL")).scalar()
                 elif db_type == "mysql":
                     exists = conn.execute(
                         text(
@@ -303,14 +317,14 @@ def _verify_sql_connection(*, database_type: str, url: str, timeout_seconds: int
                     exists = conn.execute(
                         text(
                             "SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES "
-                            "WHERE TABLE_NAME = 'chat_sessions'"
+                            "WHERE TABLE_SCHEMA = 'history' AND TABLE_NAME = 'chat_sessions'"
                         )
                     ).scalar()
                     exists = bool(int(exists or 0) > 0)
                 if not bool(exists):
                     raise RuntimeError("SQL history schema missing required table: chat_sessions")
 
-            if role == "security":
+            if role == "security" and require_schema:
                 if db_type == "postgres":
                     groups_exists = conn.execute(text("SELECT to_regclass('security.groups') IS NOT NULL")).scalar()
                     cfg_exists = conn.execute(text("SELECT to_regclass('security.configuration_versions') IS NOT NULL")).scalar()
@@ -378,13 +392,28 @@ def _enforce_sql_connectivity_or_fallback(runtime_cfg: dict) -> tuple[bool, dict
     if not security_url:
         raise RuntimeError("sql.security.connection_url is required when SQL mode is enabled")
 
-    _verify_sql_connection(database_type=database_type, url=history_url, timeout_seconds=timeout_seconds, role="history")
-    _verify_sql_connection(database_type=database_type, url=security_url, timeout_seconds=timeout_seconds, role="security")
+    _verify_sql_connection(
+        database_type=database_type,
+        url=history_url,
+        timeout_seconds=timeout_seconds,
+        role="history",
+        require_schema=True,
+    )
+    _verify_sql_connection(
+        database_type=database_type,
+        url=security_url,
+        timeout_seconds=timeout_seconds,
+        role="security",
+        require_schema=False,
+    )
     py_logger.info("SQL connectivity check passed (database_type=%s).", database_type)
     return True, sql_state
 
 
 _sql_enabled, _sql_runtime = _enforce_sql_connectivity_or_fallback(_runtime_cfg)
+if _sql_enabled and _mock_sql_enabled:
+    py_logger.warning("Both SQL history and mockSqlServer are enabled; mock SQL history is disabled in favor of SQL.")
+    _mock_sql_enabled = False
 
 
 def _load_fake_users(runtime_cfg: dict) -> dict[str, dict]:
@@ -412,18 +441,230 @@ def _load_fake_users(runtime_cfg: dict) -> dict[str, dict]:
 _fake_users_by_id: dict[str, dict] = _load_fake_users(_runtime_cfg)
 
 
-# ------------------------------------------------------------
-# Logging (source of truth: config.json)
-# ------------------------------------------------------------
-
-_logging_cfg = logging_config_from_runtime_config(_runtime_cfg)
-configure_logging(_logging_cfg)
-
-
 def _warn_or_raise_security(message: str, *, strict: bool) -> None:
     if strict:
         raise ValueError(message)
     py_logger.warning(message)
+
+
+def _normalize_bool_flag(value: Any) -> bool | None:
+    if isinstance(value, bool):
+        return value
+    if value is None:
+        return None
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return bool(value)
+    s = str(value or "").strip().lower()
+    if s in ("1", "true", "yes", "on"):
+        return True
+    if s in ("0", "false", "no", "off"):
+        return False
+    return None
+
+
+def _format_import_run_label(payload: dict[str, Any]) -> str:
+    for key in ("snapshot_id", "ref_name", "tag", "branch", "import_id"):
+        val = str(payload.get(key) or "").strip()
+        if val:
+            return val
+    return "<unknown-import>"
+
+
+def _validate_acl_import_runtime_consistency(*, client: Any | None, acl_enabled: bool) -> None:
+    if client is None or not acl_enabled:
+        return
+
+    try:
+        rag_coll = client.collections.get("RagNode")
+        rag_probe = rag_coll.query.fetch_objects(limit=1, return_properties=["canonical_id"])
+        rag_objects = list(getattr(rag_probe, "objects", []) or [])
+    except Exception as ex:
+        raise RuntimeError(
+            "permissions: failed to inspect RagNode for ACL import/runtime consistency"
+        ) from ex
+
+    if not rag_objects:
+        return
+
+    try:
+        import_coll = client.collections.get("ImportRun")
+        import_cfg = import_coll.config.get()
+        import_props = {
+            str(getattr(p, "name", "") or "").strip()
+            for p in (getattr(import_cfg, "properties", None) or [])
+            if str(getattr(p, "name", "") or "").strip()
+        }
+    except Exception as ex:
+        raise RuntimeError(
+            "permissions: RagNode contains data but ImportRun metadata is unavailable; "
+            "cannot verify ACL import/runtime consistency"
+        ) from ex
+
+    if "acl_enabled" not in import_props:
+        raise RuntimeError(
+            "permissions: acl_enabled is true but ImportRun does not record ACL import mode. "
+            "This Weaviate dataset may have been imported before ACL support was enabled. "
+            "Reimport all snapshots with ACL-aware importer."
+        )
+
+    try:
+        import_runs = import_coll.query.fetch_objects(
+            limit=500,
+            return_properties=[
+                "import_id",
+                "snapshot_id",
+                "branch",
+                "ref_name",
+                "tag",
+                "status",
+                "acl_enabled",
+            ],
+        )
+        run_payloads = [
+            getattr(obj, "properties", None) or {}
+            for obj in list(getattr(import_runs, "objects", []) or [])
+        ]
+    except Exception as ex:
+        raise RuntimeError(
+            "permissions: failed to inspect ImportRun ACL metadata; "
+            "cannot verify ACL import/runtime consistency"
+        ) from ex
+
+    if not run_payloads:
+        raise RuntimeError(
+            "permissions: RagNode contains data but ImportRun is empty; "
+            "cannot verify ACL import/runtime consistency"
+        )
+
+    completed_runs = []
+    for payload in run_payloads:
+        status = str(payload.get("status") or "").strip().lower()
+        if not status or status == "completed":
+            completed_runs.append(payload)
+
+    if not completed_runs:
+        raise RuntimeError(
+            "permissions: RagNode contains data but ImportRun has no completed imports; "
+            "cannot verify ACL import/runtime consistency"
+        )
+
+    mismatched_labels: list[str] = []
+    unknown_labels: list[str] = []
+    for payload in completed_runs:
+        flag = _normalize_bool_flag(payload.get("acl_enabled"))
+        label = _format_import_run_label(payload)
+        if flag is None:
+            unknown_labels.append(label)
+        elif flag is False:
+            mismatched_labels.append(label)
+
+    if not mismatched_labels and not unknown_labels:
+        return
+
+    details: list[str] = []
+    if mismatched_labels:
+        details.append("ACL disabled at import: " + ", ".join(mismatched_labels[:5]))
+    if unknown_labels:
+        details.append("ACL import mode missing: " + ", ".join(unknown_labels[:5]))
+    suffix = f" Details: {'; '.join(details)}." if details else ""
+    raise RuntimeError(
+        "permissions: acl_enabled is true but existing Weaviate imports are inconsistent with ACL enforcement. "
+        "Reimport affected snapshots with ACL enabled." + suffix
+    )
+
+
+def _resolve_security_policies_provider(runtime_cfg: dict) -> AuthPoliciesProvider:
+    json_provider = default_json_provider()
+    if not _sql_enabled:
+        py_logger.info("Security policies source: JSON files (SQL disabled).")
+        return json_provider
+
+    database_type = str(_sql_runtime.get("database_type") or "").strip().lower()
+    security_url = str(_sql_runtime.get("security_url") or "").strip()
+    timeout_seconds = int(_sql_runtime.get("connect_timeout_seconds") or 5)
+    if not security_url or not database_type:
+        py_logger.info("Security policies source: JSON files (SQL security not configured).")
+        return json_provider
+
+    sql_provider = SqlAuthPoliciesProvider(
+        database_type=database_type,
+        connection_url=security_url,
+        connect_timeout_seconds=timeout_seconds,
+    )
+
+    try:
+        inspection = sql_provider.inspect()
+    except Exception as ex:
+        raise RuntimeError(f"Failed to inspect SQL security source: {ex}") from ex
+
+    if not inspection.schema_present:
+        py_logger.warning(
+            "SQL security schema is absent; falling back to security_conf JSON files%s",
+            " (prod fallback allowed because admin chose not to create the schema)" if _app_profile == "prod" else "",
+        )
+        return json_provider
+
+    if not inspection.schema_complete:
+        message = "SQL security schema is partially present or broken."
+        if _app_profile == "prod":
+            raise RuntimeError(message)
+        py_logger.warning("%s Falling back to security_conf JSON files.", message)
+        return json_provider
+
+    if inspection.data_empty:
+        try:
+            sql_provider.bootstrap_from_provider(source_provider=json_provider)
+            inspection = sql_provider.inspect()
+            py_logger.info("Bootstrapped SQL security tables from security_conf.")
+        except Exception as ex:
+            message = f"SQL security schema exists but bootstrap from security_conf failed: {ex}"
+            if _app_profile == "prod":
+                raise RuntimeError(message) from ex
+            py_logger.warning("%s Falling back to security_conf JSON files.", message)
+            return json_provider
+
+    if not inspection.has_required_data:
+        message = (
+            "SQL security schema exists but required security data is missing "
+            f"(groups={inspection.groups_count}, claim_mappings={inspection.claim_mappings_count}, "
+            f"claim_mapping_entries={inspection.claim_mapping_entries_count})."
+        )
+        if _app_profile == "prod":
+            raise RuntimeError(message)
+        py_logger.warning("%s Falling back to security_conf JSON files.", message)
+        return json_provider
+
+    py_logger.info("Security policies source: SQL.")
+    return sql_provider
+
+
+def _build_user_access_provider(*, policies_provider: AuthPoliciesProvider) -> Any:
+    if os.getenv("PYTEST_CURRENT_TEST"):
+        return DevUserAccessProvider(
+            group_policies={},
+            claim_group_mappings=[],
+            auto_reload_policies=False,
+            policies_provider=policies_provider,
+        )
+
+    try:
+        group_policies, claim_group_mappings = policies_provider.load()
+    except Exception as ex:
+        if _app_profile == "prod":
+            raise RuntimeError(f"Failed to load security policies: {ex}") from ex
+        py_logger.warning("Failed to load policies from selected source; using last-resort empty policy set: %s", ex)
+        group_policies, claim_group_mappings = {}, []
+
+    return DevUserAccessProvider(
+        group_policies=group_policies,
+        claim_group_mappings=claim_group_mappings,
+        auto_reload_policies=(_app_profile != "prod"),
+        policies_provider=policies_provider,
+    )
+
+
+_security_policies_provider = _resolve_security_policies_provider(_runtime_cfg)
+_user_access_provider = _build_user_access_provider(policies_provider=_security_policies_provider)
 
 
 def _validate_security_consistency(*, runtime_cfg: dict, client: Any | None, strict: bool) -> None:
@@ -432,11 +673,37 @@ def _validate_security_consistency(*, runtime_cfg: dict, client: Any | None, str
         _warn_or_raise_security("permissions config missing or invalid; security checks skipped", strict=strict)
         return
 
+    acl_enabled = bool(security.get("acl_enabled", True))
+
+    if client is not None:
+        try:
+            coll = client.collections.get("RagNode")
+            cfg = coll.config.get()
+            props = [p.name for p in (cfg.properties or [])]
+            if acl_enabled and "acl_allow" not in props:
+                _warn_or_raise_security(
+                    "permissions: acl_enabled is true but 'acl_allow' is missing in RagNode schema",
+                    strict=True,
+                )
+        except ValueError:
+            raise
+        except Exception:
+            if strict:
+                raise RuntimeError("permissions: failed to validate Weaviate schema for RagNode")
+            py_logger.exception("permissions: failed to validate Weaviate schema for RagNode")
+
+    _validate_acl_import_runtime_consistency(client=client, acl_enabled=acl_enabled)
+
     if not security.get("security_enabled", False):
-        _warn_or_raise_security(
-            "permissions.security_enabled is false; system will not enforce security filters",
-            strict=strict,
-        )
+        if acl_enabled:
+            py_logger.info(
+                "permissions.security_enabled is false; classification/doc_level security filters are disabled, ACL remains active."
+            )
+        else:
+            _warn_or_raise_security(
+                "permissions.security_enabled and permissions.acl_enabled are false; system will not enforce ACL or security filters",
+                strict=strict,
+            )
         if client is not None:
             try:
                 coll = client.collections.get("RagNode")
@@ -465,11 +732,6 @@ def _validate_security_consistency(*, runtime_cfg: dict, client: Any | None, str
             coll = client.collections.get("RagNode")
             cfg = coll.config.get()
             props = [p.name for p in (cfg.properties or [])]
-            if bool(security.get("acl_enabled", True)) and "acl_allow" not in props:
-                _warn_or_raise_security(
-                    "permissions: acl_enabled is true but 'acl_allow' is missing in RagNode schema",
-                    strict=strict,
-                )
             if kind == "clearance_level":
                 field = str((model.get("clearance_level") or {}).get("doc_level_field") or "doc_level")
                 if field not in props:
@@ -484,6 +746,8 @@ def _validate_security_consistency(*, runtime_cfg: dict, client: Any | None, str
                         f"permissions: classification labels field '{field}' not found in RagNode schema",
                         strict=strict,
                     )
+        except ValueError:
+            raise
         except Exception:
             if strict:
                 raise RuntimeError("permissions: failed to validate Weaviate schema for RagNode")
@@ -491,8 +755,7 @@ def _validate_security_consistency(*, runtime_cfg: dict, client: Any | None, str
 
     # Validate auth policies and mappings.
     try:
-        provider = default_json_provider()
-        policies, claim_group_mappings = provider.load()
+        policies, claim_group_mappings = _security_policies_provider.load()
         group_ids = set(policies.keys())
 
         for rule in claim_group_mappings:
@@ -723,7 +986,19 @@ class _ReadOnlyMockSqlHistoryStore(IUserConversationStore):
 
 # Durable store is safe to always wire: it reads from the in-memory mock SQL structures.
 # When mock SQL is disabled, history endpoints won't persist data anyway, so reads return empty.
-_durable_store: IUserConversationStore | None = _ReadOnlyMockSqlHistoryStore()
+if _sql_enabled:
+    _sql_history_store = SqlChatHistoryStore(
+        database_type=str(_sql_runtime.get("database_type") or ""),
+        connection_url=str(_sql_runtime.get("history_url") or ""),
+        connect_timeout_seconds=int(_sql_runtime.get("connect_timeout_seconds") or 5),
+    )
+    _durable_store = SqlConversationHistoryStore(
+        history_store=_sql_history_store,
+        tenant_resolver=lambda: _history_tenant_id(),
+        user_resolver=lambda: _history_user_id(),
+    )
+else:
+    _durable_store = _ReadOnlyMockSqlHistoryStore()
 _conversation_history_service = build_conversation_history_service(
     session_backend=_history_backend,
     durable_store=_durable_store,
@@ -2174,22 +2449,69 @@ def auth_check():
 
 
 # ------------------------------------------------------------
-# Chat history (mock SQL store)
+# Chat history (SQL or mock SQL store)
 # ------------------------------------------------------------
 
 @app.route("/chat-history/sessions", methods=["GET", "POST"])
 def chat_history_sessions():
-    if not _mock_sql_enabled:
+    if _sql_history_store is None and not _mock_sql_enabled:
         return _history_unavailable()
     auth_header = (request.headers.get("Authorization") or "").strip()
     auth_error = _require_bearer_if_needed(auth_header)
     if auth_error is not None:
         return auth_error
 
+    tenant_id = _history_tenant_id()
+    user_id = _history_user_id()
+
+    if _sql_history_store is not None:
+        if request.method == "GET":
+            if _history_is_anon(user_id):
+                return jsonify({"items": [], "next_cursor": None})
+            limit = int(request.args.get("limit", 50))
+            limit = max(1, min(200, limit))
+            cursor = request.args.get("cursor")
+            q = request.args.get("q")
+            return jsonify(
+                _sql_history_store.list_sessions(
+                    tenant_id=tenant_id,
+                    user_id=user_id,
+                    limit=limit,
+                    cursor=cursor,
+                    q=q,
+                )
+            )
+
+        payload = request.get_json(silent=True) or {}
+        now = _history_now_ms()
+        session_id = _valid_session_id(str(payload.get("sessionId") or payload.get("session_id") or uuid.uuid4().hex))
+        if _history_is_anon(user_id):
+            return jsonify(
+                {
+                    "sessionId": session_id,
+                    "tenantId": tenant_id,
+                    "userId": user_id,
+                    "title": str(payload.get("title") or payload.get("firstQuestion") or "New chat"),
+                    "consultantId": str(payload.get("consultantId") or payload.get("consultant") or ""),
+                    "createdAt": now,
+                    "updatedAt": now,
+                    "messageCount": 0,
+                    "deletedAt": None,
+                    "softDeletedAt": None,
+                    "status": "active",
+                }
+            )
+        session = _sql_history_store.create_session(
+            tenant_id=tenant_id,
+            user_id=user_id,
+            session_id=session_id,
+            title=str(payload.get("title") or payload.get("firstQuestion") or "New chat"),
+            consultant_id=str(payload.get("consultantId") or payload.get("consultant") or ""),
+        )
+        return jsonify(session)
+
     if request.method == "GET":
         _history_prune()
-        tenant_id = _history_tenant_id()
-        user_id = _history_user_id()
         if _history_is_anon(user_id):
             return jsonify({"items": [], "next_cursor": None})
         limit = int(request.args.get("limit", 50))
@@ -2205,8 +2527,6 @@ def chat_history_sessions():
         ))
 
     payload = request.get_json(silent=True) or {}
-    tenant_id = _history_tenant_id()
-    user_id = _history_user_id()
     now = _history_now_ms()
     session_id = _valid_session_id(str(payload.get("sessionId") or payload.get("session_id") or uuid.uuid4().hex))
 
@@ -2255,16 +2575,51 @@ def chat_history_sessions():
 
 @app.route("/chat-history/sessions/<session_id>", methods=["GET", "PATCH", "DELETE"])
 def chat_history_session(session_id: str):
-    if not _mock_sql_enabled:
+    if _sql_history_store is None and not _mock_sql_enabled:
         return _history_unavailable()
     auth_header = (request.headers.get("Authorization") or "").strip()
     auth_error = _require_bearer_if_needed(auth_header)
     if auth_error is not None:
         return auth_error
 
-    _history_prune()
     tenant_id = _history_tenant_id()
     user_id = _history_user_id()
+    if _sql_history_store is not None:
+        if _history_is_anon(user_id):
+            return jsonify({"error": "not_found"}), 404
+        visible_session_id = _valid_session_id(session_id)
+        if request.method == "GET":
+            session = _sql_history_store.get_session(
+                tenant_id=tenant_id,
+                user_id=user_id,
+                session_id=visible_session_id,
+            )
+            if session is None:
+                return jsonify({"error": "not_found"}), 404
+            return jsonify(session)
+        if request.method == "DELETE":
+            session = _sql_history_store.patch_session(
+                tenant_id=tenant_id,
+                user_id=user_id,
+                session_id=visible_session_id,
+                payload={"softDeleted": True},
+            )
+            if session is None:
+                return jsonify({"error": "not_found"}), 404
+            return jsonify({"ok": True, "sessionId": visible_session_id})
+
+        payload = request.get_json(silent=True) or {}
+        session = _sql_history_store.patch_session(
+            tenant_id=tenant_id,
+            user_id=user_id,
+            session_id=visible_session_id,
+            payload=payload,
+        )
+        if session is None:
+            return jsonify({"error": "not_found"}), 404
+        return jsonify(session)
+
+    _history_prune()
     if _history_is_anon(user_id):
         return jsonify({"error": "not_found"}), 404
     key = _history_resolve_session_key(tenant_id=tenant_id, user_id=user_id, session_id=session_id)
@@ -2304,17 +2659,59 @@ def chat_history_session(session_id: str):
 
 @app.route("/chat-history/sessions/<session_id>/messages", methods=["GET", "POST"])
 def chat_history_messages(session_id: str):
-    if not _mock_sql_enabled:
+    if _sql_history_store is None and not _mock_sql_enabled:
         return _history_unavailable()
     auth_header = (request.headers.get("Authorization") or "").strip()
     auth_error = _require_bearer_if_needed(auth_header)
     if auth_error is not None:
         return auth_error
 
-    _history_prune()
     tenant_id = _history_tenant_id()
     user_id = _history_user_id()
     session_id = _valid_session_id(session_id)
+    if _sql_history_store is not None:
+        if _history_is_anon(user_id):
+            if request.method == "GET":
+                return jsonify({"items": [], "next_cursor": None})
+            msg = {
+                "messageId": uuid.uuid4().hex,
+                "sessionId": session_id,
+                "ts": _history_now_ms(),
+                "q": "",
+                "a": "",
+                "meta": None,
+                "deletedAt": None,
+            }
+            return jsonify(msg)
+
+        if request.method == "GET":
+            limit = int(request.args.get("limit", 100))
+            limit = max(1, min(200, limit))
+            before = request.args.get("before")
+            data = _sql_history_store.list_messages(
+                tenant_id=tenant_id,
+                user_id=user_id,
+                session_id=session_id,
+                limit=limit,
+                before=before,
+            )
+            if data is None:
+                return jsonify({"error": "not_found"}), 404
+            return jsonify(data)
+
+        payload = request.get_json(silent=True) or {}
+        msg = _sql_history_store.add_message(
+            tenant_id=tenant_id,
+            user_id=user_id,
+            session_id=session_id,
+            message_id=str(payload.get("messageId") or payload.get("message_id") or uuid.uuid4().hex),
+            q="" if payload.get("q") is None else str(payload.get("q")),
+            a="" if payload.get("a") is None else str(payload.get("a")),
+            meta=payload.get("meta"),
+        )
+        return jsonify(msg)
+
+    _history_prune()
     if _history_is_anon(user_id):
         if request.method == "GET":
             return jsonify({"items": [], "next_cursor": None})

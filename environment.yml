@@ -33,6 +33,7 @@ dependencies:
       - typing-extensions # ✅ Safe for PyTorch and llama-cpp-python
       - python-dotenv
       - sqlalchemy
+      - psycopg[binary]
       - weaviate-client
       - pyjwt[crypto]
 

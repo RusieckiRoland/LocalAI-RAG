@@ -54,6 +54,12 @@
   --danger-bg: #fef2f2;
   --danger-border: #f3b4b4;
   --danger-text: #991b1b;
+  --scrollbar-track: rgba(133, 141, 153, 0.18);
+  --scrollbar-thumb: rgba(107, 114, 128, 0.72);
+  --scrollbar-thumb-hover: rgba(39, 57, 74, 0.78);
+  --code-scrollbar-track: rgba(255, 255, 255, 0.10);
+  --code-scrollbar-thumb: rgba(255, 255, 255, 0.26);
+  --code-scrollbar-thumb-hover: rgba(255, 255, 255, 0.38);
   --shadow: var(--c-shadow);
 }
 
@@ -137,6 +143,12 @@ body[data-theme="dark"] {
   --danger-bg: #2a1316;
   --danger-border: #5a1b22;
   --danger-text: #ff9aa2;
+  --scrollbar-track: rgba(182, 194, 209, 0.08);
+  --scrollbar-thumb: rgba(182, 194, 209, 0.34);
+  --scrollbar-thumb-hover: rgba(232, 238, 246, 0.48);
+  --code-scrollbar-track: rgba(255, 255, 255, 0.08);
+  --code-scrollbar-thumb: rgba(255, 255, 255, 0.24);
+  --code-scrollbar-thumb-hover: rgba(255, 255, 255, 0.34);
   --shadow: var(--c-shadow);
 }
 
@@ -166,6 +178,12 @@ body[data-theme="dark"][data-palette="legacy"] {
   --selection-hover: #52e3c2;
   --selection-soft: rgba(82, 227, 194, 0.18);
   --selection-soft-border: rgba(82, 227, 194, 0.26);
+  --scrollbar-track: rgba(179, 191, 206, 0.09);
+  --scrollbar-thumb: rgba(179, 191, 206, 0.32);
+  --scrollbar-thumb-hover: rgba(232, 238, 246, 0.44);
+  --code-scrollbar-track: rgba(255, 255, 255, 0.08);
+  --code-scrollbar-thumb: rgba(255, 255, 255, 0.24);
+  --code-scrollbar-thumb-hover: rgba(255, 255, 255, 0.34);
 
   --shadow: 0 6px 18px rgba(0,0,0,0.35);
 }

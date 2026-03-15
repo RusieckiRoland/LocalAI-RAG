@@ -98,6 +98,7 @@ A group determines:
 - If `permissions.acl_enabled=false`, ACL is **not enforced**, and importer **must not** write `acl_allow`.
 - If `permissions.acl_enabled=true`, importer MUST write `acl_allow` for **every** document (the attribute must be present even if empty `[]`). Missing `acl_allow` is invalid and must fail import/ingestion.
 - If a document has extra ACL tags, it is still visible as long as it shares **at least one** tag with `acl_tags_any`.
+- Startup consistency rule (MUST): if `permissions.acl_enabled=true`, the server MUST fail fast when existing Weaviate imports were created with ACL disabled, or when import metadata is too old to verify ACL mode. The operator must reimport the affected snapshots with ACL-aware importer settings.
 
 ### 4.5. `classification_labels_all` semantics (MUST) – when `security_model.kind=labels_universe_subset`
 - `classification_labels_all` means **ALL/subset check** (`doc_labels ⊆ user_labels`).
@@ -231,11 +232,18 @@ UserAccessContext(
 ### 5.3. Group policies provider (interface)
 There is an **interface** for group policies:
 - `server/auth/policies_provider.py`
-- default implementation reads `security_conf/auth_policies.json`
+- fallback implementation reads `security_conf/auth_policies.json`
+- SQL-backed implementation reads the `security` schema / database when present
 
 ### 5.4. Group policies in JSON
 Policies are stored in a dedicated file:
 - `security_conf/auth_policies.json`
+
+Current runtime precedence:
+- if SQL security schema/database exists and contains valid data, the server uses SQL,
+- if SQL security schema/database exists but is empty, the server bootstraps it from `security_conf/*`,
+- if SQL security schema/database is absent, the server falls back to `security_conf/*`,
+- in `APP_PROFILE=prod`, a partial/broken SQL security schema is a hard startup error.
 
 Example (current):
 ```json
@@ -391,8 +399,8 @@ For `prod` endpoints, token validation follows this order:
 
 
 ## 8. Roadmap to PROD
-- `DevUserAccessProvider` will be replaced by a database-backed provider.
-- `security_conf/auth_policies.json` will be removed.
+- `DevUserAccessProvider` will be replaced by a database-backed or IAM-backed provider.
+- `security_conf/auth_policies.json` remains a bootstrap / fallback source, not the preferred production source.
 - The frontend will stop using fake login.
 - Permissions will be managed by admins or an IAM system.
 
@@ -401,8 +409,8 @@ The `UserAccessContext` interface remains stable between DEV and PROD.
 ### 8.1. DEV vs PROD (summary)
 | Element | DEV | PROD (plan) |
 | --- | --- | --- |
-| Provider | `DevUserAccessProvider` | Database / IAM provider |
-| Policy source | `security_conf/auth_policies.json` | DB / external IAM |
+| Provider | `DevUserAccessProvider` | SQL / IAM-backed provider |
+| Policy source | SQL if present, otherwise `security_conf/auth_policies.json` | SQL / external IAM |
 | Token format | `dev-user:<user_id>` | JWT / OAuth2 / OIDC |
 | Fake login | Yes | No |
 | Permissions changes | Manual JSON edits | Admin panel / API |

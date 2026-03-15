@@ -4,7 +4,7 @@ import os
 from dataclasses import dataclass, field
 from typing import Dict, Iterable, List, Optional
 
-from .policies_provider import default_json_provider, GroupPolicy
+from .policies_provider import AuthPoliciesProvider, default_json_provider, GroupPolicy
 
 
 @dataclass(frozen=True)
@@ -60,12 +60,14 @@ class DevUserAccessProvider(UserAccessProvider):
         claim_group_mappings: Optional[List[Dict[str, object]]] = None,
         user_extra_groups: Optional[Dict[str, List[str]]] = None,
         auto_reload_policies: bool = False,
+        policies_provider: Optional[AuthPoliciesProvider] = None,
     ) -> None:
         self._user_group_prefix = user_group_prefix
         self._group_policies = group_policies or {}
         self._claim_group_mappings = claim_group_mappings or []
         self._user_extra_groups = user_extra_groups or {}
         self._auto_reload_policies = bool(auto_reload_policies)
+        self._policies_provider = policies_provider or default_json_provider()
 
     def resolve(
         self,
@@ -77,8 +79,7 @@ class DevUserAccessProvider(UserAccessProvider):
     ) -> UserAccessContext:
         if self._auto_reload_policies:
             try:
-                provider = default_json_provider()
-                group_policies, claim_group_mappings = provider.load()
+                group_policies, claim_group_mappings = self._policies_provider.load()
                 self._group_policies = group_policies or {}
                 self._claim_group_mappings = claim_group_mappings or []
             except Exception:
@@ -413,5 +414,6 @@ def get_default_user_access_provider() -> UserAccessProvider:
             group_policies=group_policies,
             claim_group_mappings=claim_group_mappings,
             auto_reload_policies=auto_reload,
+            policies_provider=(provider if not os.getenv("PYTEST_CURRENT_TEST") else None),
         )
     return _default_provider

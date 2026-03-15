@@ -1,8 +1,7 @@
 # Local PostgreSQL (Docker) — history + security
 
 Minimal local PostgreSQL container for:
-- chat history schema (`docs/sqldb/chat_history_schema_postgres.sql`)
-- security schema (`docs/sqldb/security_schema_postgres.sql`)
+- combined history + security DDL (`docs/sqldb/history_security_schema_postgres.sql`)
 
 Uses the lightweight image: `postgres:17-alpine`.
 
@@ -26,9 +25,17 @@ CHAT_HISTORY_DB_URL=postgresql+psycopg://localai:<PASSWORD>@127.0.0.1:15432/loca
 SECURITY_DB_URL=postgresql+psycopg://localai:<PASSWORD>@127.0.0.1:15432/localai_rag
 ```
 
+The application environment should include `psycopg[binary]` (the repo `environment.yml` does),
+so the explicit SQLAlchemy driver `postgresql+psycopg://...` works without separate PostgreSQL client setup.
+
+The script creates `history` and `security` schemas inside the same PostgreSQL database.
+On first application startup, if `security` is empty, the server bootstraps the SQL tables
+from `security_conf/auth_policies.json` and `security_conf/claim_group_mappings.json`.
+
 ## Notes
 
 - SQL init scripts run only on first boot (empty volume).
+- Root project `.env` should use the same DB name/user/password as `docker-postgres-local/.env`.
 - To re-run schema init from scratch:
 
 ```bash

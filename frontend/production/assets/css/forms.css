@@ -640,22 +640,36 @@
       border-radius: 0.55rem;
     }
 
-    /* Menu switch (palette toggle): label left, visual toggle right */
-    .auth-compact-menu button.menu-switch {
+    .auth-compact-menu button.menu-setting {
       justify-content: space-between;
       gap: 0.75rem;
     }
-    .auth-compact-menu button.menu-switch .menu-left {
+    .auth-compact-menu .menu-left {
       display: inline-flex;
       align-items: center;
       gap: 0.5rem;
       min-width: 0;
       flex: 1 1 auto;
     }
-    .auth-compact-menu button.menu-switch #paletteToggleLabel {
+    .auth-compact-menu .menu-label {
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
+    }
+    .auth-compact-menu .menu-value {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 64px;
+      padding: 0.12rem 0.5rem;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      background: var(--surface-2);
+      color: var(--text-muted);
+      font-size: 0.77rem;
+      font-weight: 700;
+      line-height: 1.2;
+      flex: 0 0 auto;
     }
     .auth-compact-menu button.menu-switch .switch {
       width: 34px;
@@ -699,6 +713,14 @@
       align-items: center;
       justify-content: center;
       color: var(--text-muted);
+    }
+    .auth-compact-menu .theme-icon {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 16px;
+      line-height: 1;
+      font-size: 0.95rem;
     }
     .auth-compact-menu svg { width: 16px; height: 16px; fill: currentColor; }
     body.history-collapsed .auth-controls { display: none; }

@@ -63,3 +63,57 @@ body[data-theme="dark"] .rag-toast {
 .selection-balloon-btn:hover {
   background: rgba(51, 65, 85, 0.98);
 }
+
+:where(#response, .trace-list, .trace-doc-modal-body, .history-list, .history-search-results) {
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+}
+
+:where(#response, .trace-list, .trace-doc-modal-body, .history-list, .history-search-results)::-webkit-scrollbar {
+  width: 11px;
+  height: 11px;
+}
+
+:where(#response, .trace-list, .trace-doc-modal-body, .history-list, .history-search-results)::-webkit-scrollbar-track {
+  background: var(--scrollbar-track);
+  border-radius: 999px;
+}
+
+:where(#response, .trace-list, .trace-doc-modal-body, .history-list, .history-search-results)::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+:where(#response, .trace-list, .trace-doc-modal-body, .history-list, .history-search-results)::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover);
+  background-clip: padding-box;
+}
+
+.markdown-content pre {
+  scrollbar-width: thin;
+  scrollbar-color: var(--code-scrollbar-thumb) var(--code-scrollbar-track);
+}
+
+.markdown-content pre::-webkit-scrollbar {
+  width: 12px;
+  height: 12px;
+}
+
+.markdown-content pre::-webkit-scrollbar-track {
+  background: var(--code-scrollbar-track);
+  border-radius: 999px;
+}
+
+.markdown-content pre::-webkit-scrollbar-thumb {
+  background: var(--code-scrollbar-thumb);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+.markdown-content pre::-webkit-scrollbar-thumb:hover {
+  background: var(--code-scrollbar-thumb-hover);
+  background-clip: padding-box;
+}

@@ -54,13 +54,20 @@ All operations must filter by `tenant_id` and `user_id`.
 - Session store mock (Redis replacement) must be swapped for real Redis.
 - Durable store mock (SQL replacement) must be swapped for real SQL.
 
-## Development Rules (Mock-Only)
+## Development Rules
 
 ### When mock history is enabled
 - Controlled by `mockSqlServer` in `config.json`.
 - Mock history is enabled **only when** `development=true`.
 - If `mockSqlServer=true` but `development=false`, the mock is disabled and the server returns:
   `503` with `history_persistence_unavailable`.
+- If `APP_PROFILE=prod`, `mockSqlServer=true` is forbidden at startup.
+
+### When SQL history is enabled
+- Controlled by `config.sql`.
+- If SQL connection URLs are configured, chat history endpoints use SQL instead of the in-memory mock.
+- In `APP_PROFILE=prod`, SQL history is mandatory.
+- In `APP_PROFILE=dev|test`, SQL history is optional; if SQL is not configured, the app may keep using mock history.
 
 ### Mock storage behavior
 - Mock history is stored in memory for the life of the server process.

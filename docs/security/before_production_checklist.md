@@ -7,14 +7,15 @@ This document lists what must be completed before moving to production. It focus
 ## 1. Authentication and Authorization
 **DEV state**
 1. `DevUserAccessProvider` assigns `authenticated` group to any token `Bearer dev-user:<id>`.
-2. Policies are in `security_conf/auth_policies.json`.
+2. Policies may come from SQL security tables or, as a fallback, from `security_conf/auth_policies.json`.
 
 **Required before production**
 1. Integrate a real identity provider (OpenID Connect (OIDC), e.g. Keycloak) and use Authorization Code Flow with PKCE for the browser UI.
 2. Validate tokens cryptographically (signature, expiry, issuer, audience).
 3. Map token groups to application groups.
-4. If token only provides `user_id`, add DB mapping `user_id → groups`.
-5. Disable Fake Login in frontend.
+4. Ensure SQL security data is present and complete if the `security` schema/database exists.
+5. If token only provides `user_id`, add DB mapping `user_id → groups`.
+6. Disable Fake Login in frontend.
 
 **Related files**
 1. `server/auth/user_access.py`
@@ -23,10 +24,11 @@ This document lists what must be completed before moving to production. It focus
 
 ## 2. Permission Policies (pipelines / commands)
 **DEV state**
-1. `allowed_pipelines`, `acl_tags_any`, `classification_labels_all` from `auth_policies.json`.
+1. `allowed_pipelines`, `acl_tags_any`, `classification_labels_all` come from SQL security tables when available.
+2. If SQL security is absent, the server may fall back to `security_conf/*` outside production.
 
 **Required before production**
-1. Move policies to target source (DB / IAM).
+1. Keep policies in the target source (DB / IAM) for production deployments that create SQL security schema.
 2. Keep separation:
    - `allowed_pipelines` → pipeline access
    - `acl_tags_any` → data access filtering (OR)
@@ -129,6 +131,7 @@ Clarification:
 1. Store secrets outside repo.
 2. Validate production `config.json`.
 3. Validate Weaviate config.
+4. Validate `CHAT_HISTORY_DB_URL`, `SECURITY_DB_URL`, and `SQL_DATABASE_TYPE`.
 
 ---
 

@@ -169,9 +169,30 @@ def ensure_schema(client: "weaviate.WeaviateClient") -> None:
                 wvc.config.Property(name="finished_utc", data_type=wvc.config.DataType.TEXT),
                 wvc.config.Property(name="error", data_type=wvc.config.DataType.TEXT),
                 wvc.config.Property(name="stats_json", data_type=wvc.config.DataType.TEXT),
+                wvc.config.Property(name="acl_enabled", data_type=wvc.config.DataType.BOOL),
+                wvc.config.Property(name="security_enabled", data_type=wvc.config.DataType.BOOL),
+                wvc.config.Property(name="security_kind", data_type=wvc.config.DataType.TEXT),
             ],
         )
         LOG.info("Created collection: %s", COL_IMPORT)
+    else:
+        coll = client.collections.get(COL_IMPORT)
+        try:
+            cfg = coll.config.get()
+            existing_props = {str(getattr(p, "name", "") or "").strip() for p in (cfg.properties or [])}
+        except Exception:
+            existing_props = set()
+        extra_props = [
+            wvc.config.Property(name="acl_enabled", data_type=wvc.config.DataType.BOOL),
+            wvc.config.Property(name="security_enabled", data_type=wvc.config.DataType.BOOL),
+            wvc.config.Property(name="security_kind", data_type=wvc.config.DataType.TEXT),
+        ]
+        for prop in extra_props:
+            prop_name = str(getattr(prop, "name", "") or "").strip()
+            if prop_name and prop_name not in existing_props:
+                coll.config.add_property(prop)
+                LOG.info("Added ImportRun property: %s", prop_name)
+                existing_props.add(prop_name)
 
     # Nodes: text + metadata + vector
     if COL_NODE not in existing:
@@ -311,6 +332,9 @@ def upsert_import_run(
         "finished_utc": finished_utc,
         "error": error,
         "stats_json": json.dumps(stats or {}, ensure_ascii=False),
+        "acl_enabled": bool(_ACL_ENABLED),
+        "security_enabled": bool(_SECURITY_ENABLED),
+        "security_kind": str(_SECURITY_KIND or ""),
     }
 
     run_uuid = generate_uuid5(f"{meta.repo}::{meta.snapshot_id}::{import_id}")
