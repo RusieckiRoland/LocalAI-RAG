@@ -10,8 +10,8 @@ here="$(pwd)"
 need_bin() {
   if ! command -v "$1" >/dev/null 2>&1; then
     echo "ERROR: Missing '$1'. Install it first." >&2
-    if [ "$1" = "huggingface-cli" ]; then
-      echo "Hint: pip install --upgrade huggingface_hub" >&2
+    if [ "$1" = "hf" ]; then
+      echo "Hint: install package 'huggingface-hub' in your environment." >&2
     fi
     exit 1
   fi
@@ -32,28 +32,28 @@ download_file() {
 
 # --- Sanity checks ---------------------------------------------------------
 need_bin wget
-need_bin huggingface-cli
+need_bin hf
 
 # --- Paths (must match your repo tree) -------------------------------------
-CODE_DIR="models/code_analysis/codeLlama_13b_Instruct"
+CODE_DIR="models/code_analysis/Codestral"
 EMBD_DIR="models/embedding/e5-base-v2"
 EN_PL_DIR="models/translation/en_pl/Helsinki_NLPopus_mt_en_pl"   # EN→PL (files from gsarti/opus-mt-tc-en-pl)
 PL_EN_DIR="models/translation/pl_en/Helsinki_NLPopus_mt_pl_en"   # PL→EN (Helsinki-NLP/opus-mt-pl-en)
 
-# --- 1) Code model: TheBloke/CodeLlama-13B-Instruct-GGUF (Q8_0) -----------
+# --- 1) Code model: Codestral 22B GGUF (Q6_K) ------------------------------
 echo "==> Code model"
 ensure_dir "$CODE_DIR"
 pushd "$CODE_DIR" >/dev/null
 download_file \
-  "https://huggingface.co/TheBloke/CodeLlama-13B-Instruct-GGUF/resolve/main/codellama-13b-instruct.Q8_0.gguf" \
-  "codellama-13b-instruct.Q8_0.gguf"
+  "https://huggingface.co/bartowski/Codestral-22B-v0.1-GGUF/resolve/main/Codestral-22B-v0.1-Q6_K.gguf?download=true" \
+  "Codestral-22B-v0.1-Q6_K.gguf"
 popd >/dev/null
 
 # --- 2) Embedding: intfloat/e5-base-v2 ------------------------------------
 echo "==> Embedding model (e5-base-v2)"
 ensure_dir "$EMBD_DIR"
 pushd "$EMBD_DIR" >/dev/null
-huggingface-cli download intfloat/e5-base-v2 \
+hf download intfloat/e5-base-v2 \
   --include "model.safetensors" "config.json" "modules.json" "1_Pooling/*" \
            "sentence_bert_config.json" "tokenizer.json" "tokenizer_config.json" \
            "special_tokens_map.json" "vocab.txt" \
@@ -88,7 +88,7 @@ download_file "https://huggingface.co/Helsinki-NLP/opus-mt-pl-en/resolve/main/vo
 popd >/dev/null
 
 echo "✅ Done. Models downloaded into:"
-echo " - $CODE_DIR"
+echo " - $CODE_DIR/Codestral-22B-v0.1-Q6_K.gguf"
 echo " - $EMBD_DIR"
 echo " - $EN_PL_DIR"
 echo " - $PL_EN_DIR"
