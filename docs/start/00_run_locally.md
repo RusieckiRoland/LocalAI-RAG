@@ -160,10 +160,10 @@ A convenience script is provided at the **repo root**. It fetches all required m
 
 **Requirements:**
 
-* Linux/WSL2 shell with `wget` and `huggingface-cli`
+* Linux/WSL2 shell with `wget` and `hf` (Hugging Face CLI)
 
   * Install: `pip install --upgrade huggingface_hub`
-  * If needed: `huggingface-cli login`
+  * If needed: `hf auth login` (legacy alias: `huggingface-cli login`)
 
 **Run from the repo root:**
 
@@ -200,7 +200,10 @@ If something fails, or links change upstream, open the `download_model.md` locat
 
 Git tracks **only** the `download_model.md` placeholders; all downloaded weights remain untracked.
 
-Ensure `config.json["model_path_analysis"]` points to the GGUF you downloaded.
+Ensure `model_path_analysis` points to the GGUF you downloaded in:
+
+* active runtime config (`config.dev.json` / `config.prod.json` / `config.test.json`, selected by `APP_PROFILE`)
+* `config.json` (used by `dev_tools/test_llama_gpu.py`)
 
 **Do not proceed to tests until all four folders contain the downloaded files.**
 
@@ -208,12 +211,21 @@ Ensure `config.json["model_path_analysis"]` points to the GGUF you downloaded.
 
 ## 7) Configuration files
 
-### `config.json`
+### Runtime config (`config.dev.json` / `config.prod.json` / `config.test.json`)
+
+The server selects the runtime config file by `APP_PROFILE`:
+
+* `APP_PROFILE=dev` → `config.dev.json`
+* `APP_PROFILE=prod` → `config.prod.json`
+* `APP_PROFILE=test` → `config.test.json`
+* unset `APP_PROFILE` → `prod` (default)
+
+Minimal model-related keys (same shape in all config files):
 
 ```json
 {
   "model_path_embd": "models/embedding/e5-base-v2",
-  "model_path_analysis": "models/code_analysis/qwenCoder/qwen2.5-coder-32b-instruct-q4_k_m.gguf",
+  "model_path_analysis": "models/code_analysis/Codestral/Codestral-22B-v0.1-Q6_K.gguf",
   "model_translation_en_pl": "models/translation/en_pl/Helsinki_NLPopus_mt_en_pl",
   "model_translation_pl_en": "models/translation/pl_en/Helsinki_NLPopus_mt_pl_en",
   "use_gpu": true,
@@ -229,15 +241,18 @@ Ensure `config.json["model_path_analysis"]` points to the GGUF you downloaded.
 * `use_gpu` — enables GPU acceleration for LLaMA and local embedding computation when `true`.
 * `plantuml_server` — optional local PlantUML server endpoint.
 
-> Keep secrets out of `config.json`. If needed, commit `config.json.example` and create a local `config.json` from it.
+> Keep secrets out of config files.
 
 ---
 
 ### `.env.example`
 
 ```bash
+# === Security ===
 APP_SECRET_KEY=change-me-to-a-long-random-string
 API_TOKEN=your-internal-token-here
+APP_PROFILE=dev
+DEV_ALLOW_NO_AUTH=false
 
 # === Server settings ===
 APP_HOST=0.0.0.0
@@ -256,17 +271,30 @@ RAG_PIPELINE_TRACE_DIR=log/pipeline_traces
 
 # === Weaviate (secrets) ===
 WEAVIATE_API_KEY=your-weaviate-api-key-here
+
+# === SQL (history + security) ===
+# Default local PostgreSQL profile (docker-postgres-local).
+SQL_DATABASE_TYPE=postgres
+LOCAL_POSTGRES_DB=localai_rag
+LOCAL_POSTGRES_USER=localai
+LOCAL_POSTGRES_PASSWORD=change-me-local-postgres-password
+CHAT_HISTORY_DB_URL=postgresql+psycopg://localai:change-me-local-postgres-password@127.0.0.1:15432/localai_rag
+SECURITY_DB_URL=postgresql+psycopg://localai:change-me-local-postgres-password@127.0.0.1:15432/localai_rag
 ```
 
 **Description:**
 
 * `APP_SECRET_KEY` — currently unused by the backend (no Flask `secret_key` is configured).
 * `API_TOKEN` — internal API token for service-to-service calls.
+* `APP_PROFILE` — selects runtime config (`dev`/`prod`/`test`).
+* `DEV_ALLOW_NO_AUTH` — enables local fake-login mode only when `APP_PROFILE!=prod`.
 * `APP_HOST` / `APP_PORT` — currently unused (the dev entrypoint binds `0.0.0.0:5000`).
 * `ALLOWED_ORIGINS` — comma-separated list of allowed CORS origins.
 * `APP_MAX_QUERY_LEN` / `APP_MAX_FIELD_LEN` — optional server-side limits for incoming requests.
 * `RAG_PIPELINE_TRACE_FILE` / `RAG_PIPELINE_TRACE_DIR` — optional per-query trace output (debug only).
 * `WEAVIATE_API_KEY` — API key used by Weaviate clients (if your Weaviate is secured).
+* `SQL_DATABASE_TYPE`, `CHAT_HISTORY_DB_URL`, `SECURITY_DB_URL` — SQL runtime settings consumed from config placeholders.
+* `LOCAL_POSTGRES_DB`, `LOCAL_POSTGRES_USER`, `LOCAL_POSTGRES_PASSWORD` — local helper values for `docker-postgres-local`.
 
 ### OIDC resource server settings in `config.json`
 
@@ -455,7 +483,7 @@ future versions may include advanced features such as **repository comparison**,
 
 ## 13) Quickstart (TL;DR)
 
-> **This section is fully consistent with the README.** It uses the Conda env name from `environment.yml` (**rag-weaviate**), installs the correct CUDA wheel of `llama-cpp-python` via a local file with `--no-deps`, downloads models via the one‑shot script first, and then provides verification and server start commands.
+> Quick local path aligned with current repo defaults (`rag-weaviate`, Codestral GGUF in `models/`, downloader script, and `.env` profile settings).
 
 ---
 
@@ -480,4 +508,8 @@ chmod +x download_models.sh
 
 # 4) Verify GPU acceleration (after models are present)
 python dev_tools/test_llama_gpu.py
+
+# 5) Prepare env file and start server
+cp .env.example .env
+python start_AI_server.py --env
 ```
